@@ -16,6 +16,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Moq;
 using NUnit.Framework;
 using QuantConnect.Algorithm.CSharp;
 using QuantConnect.Data;
@@ -65,7 +66,7 @@ namespace QuantConnect.Tests.Common.Securities
         {
             var optionSymbol = Symbol.Create("GOOG", SecurityType.Option, Market.USA);
 
-            var configs = _subscriptionManager.SubscriptionDataConfigService.Add(typeof(ZipEntryName), optionSymbol, Resolution.Second, false, false, false);
+            var configs = _subscriptionManager.SubscriptionDataConfigService.Add(typeof(ZipEntryName), optionSymbol, Resolution.Minute, false, false, false);
             var option = _securityService.CreateSecurity(optionSymbol, configs, 1.0m, false);
 
             Assert.AreEqual(option.Subscriptions.Count(), 1);
@@ -116,13 +117,15 @@ namespace QuantConnect.Tests.Common.Securities
         }
 
         [Test]
-        [ExpectedException(typeof(ArgumentException), MatchType = MessageMatch.Contains, ExpectedMessage = "Symbol can't be found in the Symbol Properties Database")]
         public void ThrowOnCreateCryptoNotDescribedInCSV()
         {
             var symbol = Symbol.Create("ABCDEFG", SecurityType.Crypto, Market.GDAX);
 
-            var configs = _subscriptionManager.SubscriptionDataConfigService.Add(typeof(QuoteBar), symbol, Resolution.Minute, false, false, false);
-            var actual = _securityService.CreateSecurity(symbol, configs, 1.0m, false);
+            Assert.Throws<ArgumentException>(() =>
+            {
+                var configs = _subscriptionManager.SubscriptionDataConfigService.Add(typeof(QuoteBar), symbol, Resolution.Minute, false, false, false);
+                var actual = _securityService.CreateSecurity(symbol, configs, 1.0m, false);
+            }, "Symbol can't be found in the Symbol Properties Database");
         }
 
         [Test]
@@ -139,7 +142,7 @@ namespace QuantConnect.Tests.Common.Securities
                 new Tuple<Type, TickType>(typeof(OpenInterest), TickType.OpenInterest)
             };
 
-            var configs = _subscriptionManager.SubscriptionDataConfigService.Add(optionSymbol, Resolution.Second, false, false, false, false, false, subscriptionTypes);
+            var configs = _subscriptionManager.SubscriptionDataConfigService.Add(optionSymbol, Resolution.Minute, false, false, false, false, false, subscriptionTypes);
             var security = _securityService.CreateSecurity(optionSymbol, configs, 1.0m, false);
 
             Assert.IsFalse(optionSymbol.IsCanonical());
@@ -153,9 +156,8 @@ namespace QuantConnect.Tests.Common.Securities
         [Test]
         public void CanCreate_ConcreteFutures_WithCorrectSubscriptions()
         {
-            var identifier = SecurityIdentifier.GenerateFuture(new DateTime(2020, 12, 15), "ED", Market.USA);
+            var identifier = SecurityIdentifier.GenerateFuture(new DateTime(2020, 12, 15), "ED", Market.CME);
             var symbol = new Symbol(identifier, "ED", Symbol.Empty);
-            _marketHoursDatabase.SetEntryAlwaysOpen(Market.USA, "ED", SecurityType.Future, TimeZones.NewYork);
 
             var subscriptionTypes = new List<Tuple<Type, TickType>>
             {
@@ -173,6 +175,91 @@ namespace QuantConnect.Tests.Common.Securities
             Assert.IsTrue(security.Subscriptions.Any(x => x.TickType == TickType.OpenInterest && x.Type == typeof(OpenInterest)));
             Assert.IsTrue(security.Subscriptions.Any(x => x.TickType == TickType.Quote && x.Type == typeof(QuoteBar)));
             Assert.IsTrue(security.Subscriptions.Any(x => x.TickType == TickType.Trade && x.Type == typeof(TradeBar)));
+        }
+        
+        [Test]
+        public void CreatesEquityOptionWithContractMultiplierEqualsToContractUnitOfTrade()
+        {
+            var underlying = Symbol.Create("TWX", SecurityType.Equity, Market.USA);
+            var equityOption = Symbol.CreateOption(
+                underlying, 
+                Market.USA, 
+                OptionStyle.American, 
+                OptionRight.Call, 
+                320m,
+                new DateTime(2020, 12, 18));
+            
+            var subscriptionTypes = new List<Tuple<Type, TickType>>
+            {
+                new Tuple<Type, TickType>(typeof(TradeBar), TickType.Trade),
+                new Tuple<Type, TickType>(typeof(QuoteBar), TickType.Quote),
+                new Tuple<Type, TickType>(typeof(OpenInterest), TickType.OpenInterest)
+            };
+
+            var configs = _subscriptionManager.SubscriptionDataConfigService.Add(equityOption, Resolution.Minute, true, false, false, false, false, subscriptionTypes);
+            var equityOptionSecurity = (QuantConnect.Securities.Option.Option)_securityService.CreateSecurity(equityOption, configs, 1.0m);
+            
+            Assert.AreEqual(100, equityOptionSecurity.ContractMultiplier);
+            Assert.AreEqual(100,equityOptionSecurity.ContractUnitOfTrade);
+        }
+
+        [Test]
+        public void CreatesFutureOptionWithContractMultiplierEqualsToFutureContractMultiplier()
+        {
+            var underlying = Symbol.CreateFuture(
+                QuantConnect.Securities.Futures.Indices.SP500EMini,
+                Market.CME,
+                new DateTime(2020, 12, 18));
+
+            var futureOption = Symbol.CreateOption(
+                underlying, 
+                Market.CME, 
+                OptionStyle.American, 
+                OptionRight.Call, 
+                3250m,
+                new DateTime(2020, 12, 18));
+            
+            var subscriptionTypes = new List<Tuple<Type, TickType>>
+            {
+                new Tuple<Type, TickType>(typeof(TradeBar), TickType.Trade),
+                new Tuple<Type, TickType>(typeof(QuoteBar), TickType.Quote),
+                new Tuple<Type, TickType>(typeof(OpenInterest), TickType.OpenInterest)
+            };
+
+            var configs = _subscriptionManager.SubscriptionDataConfigService.Add(futureOption, Resolution.Minute, true, false, false, false, false, subscriptionTypes);
+            var futureOptionSecurity = (QuantConnect.Securities.Option.Option)_securityService.CreateSecurity(futureOption, configs, 1.0m);
+            
+            Assert.AreEqual(50, futureOptionSecurity.ContractMultiplier);
+            Assert.AreEqual(1, futureOptionSecurity.ContractUnitOfTrade);
+        }
+
+        [Test]
+        public void AddPrimaryExchangeToSecurityObject()
+        {
+            // Arrange
+            var equitySymbol = Symbol.Create("AAPL", SecurityType.Equity, Market.USA);
+            var mockedPrimaryExchangeProvider = new Mock<IPrimaryExchangeProvider>();
+            mockedPrimaryExchangeProvider.Setup(pep => pep.GetPrimaryExchange(equitySymbol.ID)).Returns(PrimaryExchange.NASDAQ);
+
+            var algorithm = new AlgorithmStub();
+            var securityService = new SecurityService(algorithm.Portfolio.CashBook,
+                MarketHoursDatabase.FromDataFolder(),
+                SymbolPropertiesDatabase.FromDataFolder(),
+                algorithm,
+                new RegisteredSecurityDataTypesProvider(),
+                new SecurityCacheProvider(algorithm.Portfolio), 
+                mockedPrimaryExchangeProvider.Object);
+
+            var configs = _subscriptionManager.SubscriptionDataConfigService.Add(typeof(TradeBar), equitySymbol, Resolution.Second, false, false, false);
+            
+            // Act
+            var equity = securityService.CreateSecurity(equitySymbol, configs, 1.0m, false);
+
+            // Assert
+            Assert.AreEqual(equity.Subscriptions.Count(), 1);
+            Assert.AreEqual(equity.Subscriptions.First().Type, typeof(TradeBar));
+            Assert.AreEqual(equity.Subscriptions.First().TickType, TickType.Trade);
+            Assert.AreEqual(((QuantConnect.Securities.Equity.Equity)equity).PrimaryExchange, PrimaryExchange.NASDAQ);
         }
     }
 }

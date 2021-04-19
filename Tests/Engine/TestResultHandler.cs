@@ -23,8 +23,6 @@ using QuantConnect.Lean.Engine.Results;
 using QuantConnect.Lean.Engine.TransactionHandlers;
 using QuantConnect.Orders;
 using QuantConnect.Packets;
-using QuantConnect.Securities;
-using QuantConnect.Statistics;
 
 namespace QuantConnect.Tests.Engine
 {
@@ -41,40 +39,41 @@ namespace QuantConnect.Tests.Engine
         private readonly Action<Packet> _packetHandler;
         private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
 
-        public ConcurrentQueue<Packet> Messages { get; set; }
-        public ConcurrentDictionary<string, Chart> Charts { get; set; }
-        public TimeSpan ResamplePeriod { get; private set; }
-        public TimeSpan NotificationPeriod { get; private set; }
-        public bool IsActive { get; private set; }
+        public new ConcurrentQueue<Packet> Messages { get; set; }
+        public new ConcurrentDictionary<string, Chart> Charts { get; set; }
+        public new bool IsActive { get; private set; }
 
         public TestResultHandler(Action<Packet> packetHandler = null)
         {
-            _packetHandler = packetHandler ?? (packet => { });
             Messages = new ConcurrentQueue<Packet>();
-            Task.Run(() =>
+            _packetHandler = packetHandler;
+            if (_packetHandler != null)
             {
-                try
+                Task.Run(() =>
                 {
-                    IsActive = true;
-                    while (!_cancellationTokenSource.IsCancellationRequested)
+                    try
                     {
-                        Packet packet;
-                        if (Messages.TryDequeue(out packet))
+                        IsActive = true;
+                        while (!_cancellationTokenSource.IsCancellationRequested)
                         {
-                            _packetHandler(packet);
-                        }
+                            Packet packet;
+                            if (Messages.TryDequeue(out packet))
+                            {
+                                _packetHandler(packet);
+                            }
 
-                        Thread.Sleep(1);
+                            Thread.Sleep(1);
+                        }
                     }
-                }
-                finally
-                {
-                    IsActive = false;
-                }
-            });
+                    finally
+                    {
+                        IsActive = false;
+                    }
+                });
+            }
         }
 
-        public void Initialize(AlgorithmNodePacket job,
+        public override void Initialize(AlgorithmNodePacket job,
             IMessagingHandler messagingHandler,
             IApi api,
             ITransactionHandler transactionHandler)
@@ -82,7 +81,7 @@ namespace QuantConnect.Tests.Engine
             _job = job;
         }
 
-        public void Run()
+        protected override void Run()
         {
         }
 
@@ -116,7 +115,7 @@ namespace QuantConnect.Tests.Engine
             Messages.Enqueue(new RuntimeErrorPacket(_job.UserId, _job.AlgorithmId, message, stacktrace));
         }
 
-        public void Sample(string chartName, string seriesName, int seriesIndex, SeriesType seriesType, DateTime time, decimal value, string unit = "$")
+        protected override void Sample(string chartName, string seriesName, int seriesIndex, SeriesType seriesType, DateTime time, decimal value, string unit = "$")
         {
             //Add a copy locally:
             if (!Charts.ContainsKey(chartName))
@@ -134,27 +133,11 @@ namespace QuantConnect.Tests.Engine
             Charts[chartName].Series[seriesName].Values.Add(new ChartPoint(time, value));
         }
 
-        public void SampleEquity(DateTime time, decimal value)
+        protected override void AddToLogStore(string message)
         {
-            Sample("Strategy Equity", "Equity", 0, SeriesType.Candle, time, value);
         }
 
-        public void SamplePerformance(DateTime time, decimal value)
-        {
-            Sample("Strategy Equity", "Daily Performance", 1, SeriesType.Line, time, value, "%");
-        }
-
-        public void SampleBenchmark(DateTime time, decimal value)
-        {
-            Sample("Benchmark", "Benchmark", 0, SeriesType.Line, time, value);
-        }
-
-        public void SampleAssetPrices(Symbol symbol, DateTime time, decimal value)
-        {
-            Sample("Stockplot: " + symbol.Value, "Stockplot: " + symbol.Value, 0, SeriesType.Line, time, value);
-        }
-
-        public void SampleRange(List<Chart> updates)
+        protected void SampleRange(List<Chart> updates)
         {
             foreach (var update in updates)
             {
@@ -183,11 +166,7 @@ namespace QuantConnect.Tests.Engine
         {
         }
 
-        public void StoreResult(Packet packet, bool async = false)
-        {
-        }
-
-        public void SendFinalResult()
+        protected override void StoreResult(Packet packet)
         {
         }
 
@@ -195,26 +174,17 @@ namespace QuantConnect.Tests.Engine
         {
         }
 
-        public void SetChartSubscription(string symbol)
-        {
-        }
-
         public void RuntimeStatistic(string key, string value)
         {
         }
 
-        public void OrderEvent(OrderEvent newEvent)
+        public override void OrderEvent(OrderEvent newEvent)
         {
         }
 
-        public void Exit()
+        public override void Exit()
         {
             _cancellationTokenSource.Cancel();
-        }
-
-        public void PurgeQueue()
-        {
-            Messages.Clear();
         }
 
         public void ProcessSynchronousEvents(bool forceProcess = false)

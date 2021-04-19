@@ -49,7 +49,7 @@ namespace QuantConnect.Logging
         /// Initializes a new instance of the <see cref="FileLogHandler"/> class using 'log.txt' for the filepath.
         /// </summary>
         public FileLogHandler()
-            : this("log.txt")
+            : this(Log.FilePath)
         {
         }
 
@@ -116,10 +116,11 @@ namespace QuantConnect.Logging
         /// </summary>
         private void WriteMessage(string text, string level)
         {
+            var message = CreateMessage(text, level);
             lock (_lock)
             {
                 if (_disposed) return;
-                _writer.Value.WriteLine(CreateMessage(text, level));
+                _writer.Value.WriteLine(message);
                 _writer.Value.Flush();
             }
         }

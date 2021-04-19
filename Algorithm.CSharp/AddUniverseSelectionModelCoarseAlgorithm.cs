@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -91,37 +91,46 @@ namespace QuantConnect.Algorithm.CSharp
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
             {"Total Trades", "23"},
-            {"Average Win", "0.00%"},
+            {"Average Win", "0.01%"},
             {"Average Loss", "-0.01%"},
-            {"Compounding Annual Return", "-75.360%"},
+            {"Compounding Annual Return", "-75.293%"},
             {"Drawdown", "5.800%"},
-            {"Expectancy", "-0.859"},
-            {"Net Profit", "-5.594%"},
-            {"Sharpe Ratio", "-5.582"},
+            {"Expectancy", "-0.822"},
+            {"Net Profit", "-5.584%"},
+            {"Sharpe Ratio", "-3.264"},
+            {"Probabilistic Sharpe Ratio", "5.887%"},
             {"Loss Rate", "92%"},
             {"Win Rate", "8%"},
-            {"Profit-Loss Ratio", "0.70"},
-            {"Alpha", "-1.228"},
-            {"Beta", "1.742"},
-            {"Annual Standard Deviation", "0.212"},
-            {"Annual Variance", "0.045"},
-            {"Information Ratio", "-7.989"},
-            {"Tracking Error", "0.151"},
-            {"Treynor Ratio", "-0.681"},
-            {"Total Fees", "$25.92"},
+            {"Profit-Loss Ratio", "1.13"},
+            {"Alpha", "-0.593"},
+            {"Beta", "0.711"},
+            {"Annual Standard Deviation", "0.204"},
+            {"Annual Variance", "0.042"},
+            {"Information Ratio", "-2.924"},
+            {"Tracking Error", "0.193"},
+            {"Treynor Ratio", "-0.935"},
+            {"Total Fees", "$25.95"},
+            {"Estimated Strategy Capacity", "$69000000.00"},
+            {"Fitness Score", "0.004"},
+            {"Kelly Criterion Estimate", "0"},
+            {"Kelly Criterion Probability Value", "1"},
+            {"Sortino Ratio", "-4.452"},
+            {"Return Over Maximum Drawdown", "-13.058"},
+            {"Portfolio Turnover", "0.083"},
             {"Total Insights Generated", "33"},
             {"Total Insights Closed", "30"},
             {"Total Insights Analysis Completed", "30"},
             {"Long Insight Count", "33"},
             {"Short Insight Count", "0"},
             {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$-7788114"},
-            {"Total Accumulated Estimated Alpha Value", "$-3937325"},
-            {"Mean Population Estimated Insight Value", "$-131244.2"},
-            {"Mean Population Direction", "46.6667%"},
-            {"Mean Population Magnitude", "46.6667%"},
-            {"Rolling Averaged Population Direction", "61.4247%"},
-            {"Rolling Averaged Population Magnitude", "61.4247%"}
+            {"Estimated Monthly Alpha Value", "$0"},
+            {"Total Accumulated Estimated Alpha Value", "$0"},
+            {"Mean Population Estimated Insight Value", "$0"},
+            {"Mean Population Direction", "0%"},
+            {"Mean Population Magnitude", "0%"},
+            {"Rolling Averaged Population Direction", "0%"},
+            {"Rolling Averaged Population Magnitude", "0%"},
+            {"OrderListHash", "be3b0d8b0e2cb312aae1b043e1bef9aa"}
         };
     }
 }

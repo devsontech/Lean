@@ -14,9 +14,7 @@
 */
 
 using System;
-using System.Net;
 using Newtonsoft.Json;
-using QuantConnect.API;
 using QuantConnect.Configuration;
 using QuantConnect.Logging;
 using QuantConnect.Orders;
@@ -48,8 +46,7 @@ namespace QuantConnect.Api
         {
             _token = token;
             _userId = userId.ToStringInvariant();
-            var apiUrl = Config.Get("cloud-api-url", "https://www.quantconnect.com/api/v2/");
-            Client = new RestClient(apiUrl);
+            Client = new RestClient("https://www.quantconnect.com/api/v2/");
         }
 
         /// <summary>
@@ -109,11 +106,17 @@ namespace QuantConnect.Api
                     return false;
                 }
 
+                if (!restsharpResponse.IsSuccessful)
+                {
+                    Log.Error($"ApiConnect.TryRequest(): Content: {restsharpResponse.Content}");
+                }
+
                 responseContent = restsharpResponse.Content;
                 result = JsonConvert.DeserializeObject<T>(responseContent);
-                if (!result.Success)
+
+                if (result == null || !result.Success)
                 {
-                    //result;
+                    Log.Debug($"ApiConnection.TryRequest(): Raw response: '{responseContent}'");
                     return false;
                 }
             }

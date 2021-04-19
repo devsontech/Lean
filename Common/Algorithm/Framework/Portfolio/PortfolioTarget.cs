@@ -14,6 +14,7 @@
 */
 
 using System;
+using System.Collections.Generic;
 using QuantConnect.Interfaces;
 using QuantConnect.Securities;
 using static QuantConnect.StringExtensions;
@@ -82,21 +83,32 @@ namespace QuantConnect.Algorithm.Framework.Portfolio
                 return null;
             }
 
-            var security = algorithm.Securities[symbol];
+            Security security;
+            try
+            {
+                security = algorithm.Securities[symbol];
+            }
+            catch (KeyNotFoundException)
+            {
+                algorithm.Error(Invariant($"{symbol} not found in portfolio. Request this data when initializing the algorithm."));
+                return null;
+            }
+
             if (security.Price == 0)
             {
-                algorithm.Error(Invariant(
-                    $"The order quantity for {symbol.Value} cannot be calculated: the price of the security is zero."
-                ));
-
+                algorithm.Error(symbol.GetZeroPriceMessage());
                 return null;
             }
 
             // Factoring in FreePortfolioValuePercentage.
-            var adjustedPercent = percent * (1 - algorithm.Settings.FreePortfolioValuePercentage);
+            var adjustedPercent = percent * (algorithm.Portfolio.TotalPortfolioValue - algorithm.Settings.FreePortfolioValue)
+                                  / algorithm.Portfolio.TotalPortfolioValue;
 
-            var result = security.BuyingPowerModel.GetMaximumOrderQuantityForTargetValue(
-                new GetMaximumOrderQuantityForTargetValueParameters(algorithm.Portfolio, security, adjustedPercent)
+            // we normalize the target buying power by the leverage so we work in the land of margin
+            var targetFinalMarginPercentage = adjustedPercent / security.BuyingPowerModel.GetLeverage(security);
+
+            var result = security.BuyingPowerModel.GetMaximumOrderQuantityForTargetBuyingPower(
+                new GetMaximumOrderQuantityForTargetBuyingPowerParameters(algorithm.Portfolio, security, targetFinalMarginPercentage, silenceNonErrorReasons:true)
             );
 
             if (result.IsError)

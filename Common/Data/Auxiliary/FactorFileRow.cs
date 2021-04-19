@@ -113,7 +113,6 @@ namespace QuantConnect.Data.Auxiliary
         /// <returns>An enumerable of factor file rows</returns>
         public static List<FactorFileRow> Parse(IEnumerable<string> lines, out DateTime? factorFileMinimumDate)
         {
-            var hasInfEntry = false;
             factorFileMinimumDate = null;
 
             var rows = new List<FactorFileRow>();
@@ -121,20 +120,15 @@ namespace QuantConnect.Data.Auxiliary
             // parse factor file lines
             foreach (var line in lines)
             {
-                if (line.Contains("inf"))
+                // Exponential notation is treated as inf is because of the loss of precision. In
+                // all cases, the significant part has fewer decimals than the needed for a correct
+                // representation, E.g., 1.6e+6 when the correct factor is 1562500.
+                if (line.Contains("inf") || line.Contains("e+"))
                 {
-                    hasInfEntry = true;
                     continue;
                 }
 
                 var row = Parse(line);
-
-                if (hasInfEntry && rows.Count == 0)
-                {
-                    // special handling for INF values: set minimum date
-                    factorFileMinimumDate = row.Date.AddDays(1);
-                    row = new FactorFileRow(row.Date.AddDays(-1), row.PriceFactor, row.SplitFactor, row.ReferencePrice);
-                }
 
                 // ignore zero factor rows
                 if (row.PriceScaleFactor > 0)
@@ -235,8 +229,9 @@ namespace QuantConnect.Data.Auxiliary
         /// <param name="futureFactorFileRow">The next factor file row in time</param>
         /// <param name="symbol">The symbol to use for the dividend</param>
         /// <param name="exchangeHours">Exchange hours used for resolving the previous trading day</param>
+        /// <param name="decimalPlaces">The number of decimal places to round the dividend's distribution to, defaulting to 2</param>
         /// <returns>A new dividend instance</returns>
-        public Dividend GetDividend(FactorFileRow futureFactorFileRow, Symbol symbol, SecurityExchangeHours exchangeHours)
+        public Dividend GetDividend(FactorFileRow futureFactorFileRow, Symbol symbol, SecurityExchangeHours exchangeHours, int decimalPlaces=2)
         {
             if (futureFactorFileRow.PriceFactor == 0m)
             {
@@ -252,7 +247,8 @@ namespace QuantConnect.Data.Auxiliary
                 symbol,
                 previousTradingDay,
                 ReferencePrice,
-                PriceFactor / futureFactorFileRow.PriceFactor
+                PriceFactor / futureFactorFileRow.PriceFactor,
+                decimalPlaces
             );
         }
 
@@ -288,7 +284,7 @@ namespace QuantConnect.Data.Auxiliary
         /// <summary>
         /// Parses the specified line as a factor file row
         /// </summary>
-        public static FactorFileRow Parse(string line)
+        private static FactorFileRow Parse(string line)
         {
             var csv = line.Split(',');
             return new FactorFileRow(
@@ -306,9 +302,9 @@ namespace QuantConnect.Data.Auxiliary
         {
             source = source == null ? "" : $",{source}";
             return $"{Date.ToStringInvariant(DateFormat.EightCharacter)}," +
-                   Invariant($"{Math.Round(PriceFactor, 6).Normalize()},") +
-                   Invariant($"{Math.Round(SplitFactor, 7).Normalize()},") +
-                   Invariant($"{Math.Round(ReferencePrice, 2).Normalize()}") +
+                   Invariant($"{Math.Round(PriceFactor, 7)},") +
+                   Invariant($"{Math.Round(SplitFactor, 8)},") +
+                   Invariant($"{Math.Round(ReferencePrice, 4).Normalize()}") +
                    $"{source}";
         }
 

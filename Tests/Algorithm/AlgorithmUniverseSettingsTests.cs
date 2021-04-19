@@ -16,7 +16,6 @@
 using NUnit.Framework;
 using QuantConnect.Algorithm;
 using QuantConnect.Data.UniverseSelection;
-using QuantConnect.Interfaces;
 using QuantConnect.Lean.Engine.DataFeeds;
 using QuantConnect.Securities;
 using System;
@@ -40,6 +39,8 @@ namespace QuantConnect.Tests.Algorithm
             var symbol = Symbols.SPY;
             algorithm.UniverseSettings.DataNormalizationMode = dataNormalizationMode;
             algorithm.AddUniverse(coarse => new[] { symbol });
+            // OnEndOfTimeStep will add all pending universe additions
+            algorithm.OnEndOfTimeStep();
 
             var changes = dataManager.UniverseSelection
                 .ApplyUniverseSelection(
@@ -68,6 +69,8 @@ namespace QuantConnect.Tests.Algorithm
             var symbol = spy.Symbol;
             algorithm.UniverseSettings.DataNormalizationMode = DataNormalizationMode.Raw;
             algorithm.AddUniverse(coarse => new[] { symbol });
+            // OnEndOfTimeStep will add all pending universe additions
+            algorithm.OnEndOfTimeStep();
 
             var changes = dataManager.UniverseSelection
                 .ApplyUniverseSelection(
@@ -89,7 +92,7 @@ namespace QuantConnect.Tests.Algorithm
 
             var marketHoursDatabase = MarketHoursDatabase.FromDataFolder();
             var symbolPropertiesDatabase = SymbolPropertiesDatabase.FromDataFolder();
-
+            var dataPermissionManager = new DataPermissionManager();
             var dataManager = new DataManager(
                 new MockDataFeed(),
                 new UniverseSelection(
@@ -98,17 +101,25 @@ namespace QuantConnect.Tests.Algorithm
                         algorithm.Portfolio.CashBook,
                         marketHoursDatabase,
                         symbolPropertiesDatabase,
-                        algorithm)),
+                        algorithm,
+                        RegisteredSecurityDataTypesProvider.Null,
+                        new SecurityCacheProvider(algorithm.Portfolio)),
+                    dataPermissionManager,
+                    new DefaultDataProvider()),
                 algorithm,
                 algorithm.TimeKeeper,
                 marketHoursDatabase,
-                false);
+                false,
+                RegisteredSecurityDataTypesProvider.Null,
+                dataPermissionManager);
 
             var securityService = new SecurityService(
                 algorithm.Portfolio.CashBook,
                 marketHoursDatabase,
                 symbolPropertiesDatabase,
-                algorithm);
+                algorithm,
+                RegisteredSecurityDataTypesProvider.Null,
+                new SecurityCacheProvider(algorithm.Portfolio));
 
             algorithm.SubscriptionManager.SetDataManager(dataManager);
             algorithm.Securities.SetSecurityService(securityService);

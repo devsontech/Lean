@@ -26,7 +26,7 @@ namespace QuantConnect.Tests.Logging
         [Test]
         public void WritesMessageToFile()
         {
-            const string file = "log.txt";
+            const string file = "log2.txt";
             File.Delete(file);
 
             var debugMessage = "*debug message*" + DateTime.UtcNow.ToStringInvariant("o");
@@ -40,6 +40,28 @@ namespace QuantConnect.Tests.Logging
             Assert.IsTrue(contents.Contains(debugMessage));
 
             File.Delete(file);
+        }
+
+        [Test]
+        public void UsesGlobalFilePath()
+        {
+            var previous = Log.FilePath;
+            Directory.CreateDirectory("filePathTest");
+            Log.FilePath = Path.Combine("filePathTest", "log2.txt");
+            File.Delete(Log.FilePath);
+
+            var debugMessage = "*debug message*" + DateTime.UtcNow.ToStringInvariant("o");
+            using (var log = new FileLogHandler())
+            {
+                log.Debug(debugMessage);
+            }
+
+            var contents = File.ReadAllText(Log.FilePath);
+            File.Delete(Log.FilePath);
+            Log.FilePath = previous;
+
+            Assert.IsNotNull(contents);
+            Assert.IsTrue(contents.Contains(debugMessage));
         }
     }
 }

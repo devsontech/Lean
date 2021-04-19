@@ -31,7 +31,7 @@ using QuantConnect.Tests.Engine.DataFeeds;
 
 namespace QuantConnect.Tests.Algorithm
 {
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.Fixtures)]
     public class AlgorithmLiveTradingTests
     {
         [Test]
@@ -73,10 +73,13 @@ namespace QuantConnect.Tests.Algorithm
         private class NullBrokerage : IBrokerage
         {
             public void Dispose() {}
+#pragma warning disable 0067 // NullBrokerage doesn't use any of these so we will just ignore them
             public event EventHandler<OrderEvent> OrderStatusChanged;
             public event EventHandler<OrderEvent> OptionPositionAssigned;
             public event EventHandler<AccountEvent> AccountChanged;
             public event EventHandler<BrokerageMessageEvent> Message;
+#pragma warning restore 0067
+
             public string Name => "NullBrokerage";
             public bool IsConnected { get; } = true;
             public List<Order> GetOpenOrders() { return new List<Order>(); }
@@ -88,6 +91,7 @@ namespace QuantConnect.Tests.Algorithm
             public void Connect() {}
             public void Disconnect() {}
             public bool AccountInstantlyUpdated { get; } = true;
+            public string AccountBaseCurrency => Currencies.USD;
             public IEnumerable<BaseData> GetHistory(HistoryRequest request) { return Enumerable.Empty<BaseData>(); }
             public DateTime LastSyncDateTimeUtc { get; } = DateTime.UtcNow;
             public bool ShouldPerformCashSync(DateTime currentTimeUtc) { return false; }

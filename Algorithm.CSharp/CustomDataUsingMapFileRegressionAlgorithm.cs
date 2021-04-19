@@ -48,6 +48,14 @@ namespace QuantConnect.Algorithm.CSharp
 
             var foxa = QuantConnect.Symbol.Create("FOXA", SecurityType.Equity, Market.USA);
             _symbol = AddData<CustomDataUsingMapping>(foxa).Symbol;
+
+            foreach (var config in SubscriptionManager.SubscriptionDataConfigService.GetSubscriptionDataConfigs(_symbol))
+            {
+                if (config.Resolution != Resolution.Minute)
+                {
+                    throw new Exception("Expected resolution to be set to Minute");
+                }
+            }
         }
 
         /// <summary>
@@ -61,16 +69,15 @@ namespace QuantConnect.Algorithm.CSharp
                 Log($"{Time} - Ticker changed from: {mappingEvent.OldSymbol} to {mappingEvent.NewSymbol}");
                 if (Time.Date == new DateTime(2013, 06, 27))
                 {
-                    // initial mapping event since we added FOXA and it's currently NWSA - GH issue 3327
+                    // we should Not receive the initial mapping event
                     if (mappingEvent.NewSymbol != "NWSA"
                         || mappingEvent.OldSymbol != "FOXA")
                     {
                         throw new Exception($"Unexpected mapping event {mappingEvent}");
                     }
-
                     _initialMapping = true;
                 }
-                else if(Time.Date == new DateTime(2013, 06, 29))
+                else if (Time.Date == new DateTime(2013, 06, 29))
                 {
                     if (mappingEvent.NewSymbol != "FOXA"
                         || mappingEvent.OldSymbol != "NWSA")
@@ -89,9 +96,9 @@ namespace QuantConnect.Algorithm.CSharp
         /// </summary>
         public override void OnEndOfAlgorithm()
         {
-            if (!_initialMapping)
+            if (_initialMapping)
             {
-                throw new Exception("The ticker did not generate the initial rename event");
+                throw new Exception("The ticker generated the initial rename event");
             }
             if (!_executionMapping)
             {
@@ -117,22 +124,44 @@ namespace QuantConnect.Algorithm.CSharp
             {"Total Trades", "1"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
-            {"Compounding Annual Return", "-99.882%"},
-            {"Drawdown", "52.600%"},
+            {"Compounding Annual Return", "-99.920%"},
+            {"Drawdown", "11.100%"},
             {"Expectancy", "0"},
             {"Net Profit", "-10.486%"},
-            {"Sharpe Ratio", "-8.145"},
+            {"Sharpe Ratio", "-1.534"},
+            {"Probabilistic Sharpe Ratio", "0.001%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "-4.451"},
-            {"Beta", "-0.082"},
-            {"Annual Standard Deviation", "0.55"},
-            {"Annual Variance", "0.302"},
-            {"Information Ratio", "-8.63"},
-            {"Tracking Error", "0.556"},
-            {"Treynor Ratio", "54.53"},
+            {"Alpha", "-0.909"},
+            {"Beta", "-5.676"},
+            {"Annual Standard Deviation", "0.651"},
+            {"Annual Variance", "0.424"},
+            {"Information Ratio", "-1.362"},
+            {"Tracking Error", "0.745"},
+            {"Treynor Ratio", "0.176"},
             {"Total Fees", "$0.00"},
+            {"Estimated Strategy Capacity", "$0"},
+            {"Fitness Score", "0.127"},
+            {"Kelly Criterion Estimate", "0"},
+            {"Kelly Criterion Probability Value", "0"},
+            {"Sortino Ratio", "79228162514264337593543950335"},
+            {"Return Over Maximum Drawdown", "-9.383"},
+            {"Portfolio Turnover", "0.249"},
+            {"Total Insights Generated", "0"},
+            {"Total Insights Closed", "0"},
+            {"Total Insights Analysis Completed", "0"},
+            {"Long Insight Count", "0"},
+            {"Short Insight Count", "0"},
+            {"Long/Short Ratio", "100%"},
+            {"Estimated Monthly Alpha Value", "$0"},
+            {"Total Accumulated Estimated Alpha Value", "$0"},
+            {"Mean Population Estimated Insight Value", "$0"},
+            {"Mean Population Direction", "0%"},
+            {"Mean Population Magnitude", "0%"},
+            {"Rolling Averaged Population Direction", "0%"},
+            {"Rolling Averaged Population Magnitude", "0%"},
+            {"OrderListHash", "1c319ae4b15416184a247bb47b31aabc"}
         };
 
         /// <summary>
@@ -163,6 +192,26 @@ namespace QuantConnect.Algorithm.CSharp
             public override BaseData Reader(SubscriptionDataConfig config, string line, DateTime date, bool isLiveMode)
             {
                 return ParseEquity(config, line, date);
+            }
+
+            /// <summary>
+            /// Gets the default resolution for this data and security type
+            /// </summary>
+            /// <remarks>This is a method and not a property so that python
+            /// custom data types can override it</remarks>
+            public override Resolution DefaultResolution()
+            {
+                return Resolution.Minute;
+            }
+
+            /// <summary>
+            /// Gets the supported resolution for this data and security type
+            /// </summary>
+            /// <remarks>This is a method and not a property so that python
+            /// custom data types can override it</remarks>
+            public override List<Resolution> SupportedResolutions()
+            {
+                return new List<Resolution> { Resolution.Minute };
             }
         }
     }

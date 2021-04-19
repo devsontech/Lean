@@ -70,6 +70,11 @@ namespace QuantConnect.Brokerages
         public string ConnectionId { get; private set; }
 
         /// <summary>
+        /// Returns true if the connection has been lost
+        /// </summary>
+        public bool IsConnectionLost => _connectionLost;
+
+        /// <summary>
         /// Initializes the connection handler
         /// </summary>
         /// <param name="connectionId">The connection id</param>
@@ -187,6 +192,7 @@ namespace QuantConnect.Brokerages
         /// </summary>
         protected virtual void OnConnectionLost()
         {
+            Log.Error("DefaultConnectionHandler.OnConnectionLost(): WebSocket connection lost.");
             ConnectionLost?.Invoke(this, EventArgs.Empty);
         }
 
@@ -195,6 +201,7 @@ namespace QuantConnect.Brokerages
         /// </summary>
         protected virtual void OnConnectionRestored()
         {
+            Log.Trace("DefaultConnectionHandler.OnConnectionRestored(): WebSocket connection restored.");
             ConnectionRestored?.Invoke(this, EventArgs.Empty);
         }
 

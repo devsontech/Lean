@@ -39,6 +39,7 @@ namespace QuantConnect.ToolBox.AlgoSeekFuturesConverter
         private readonly string _destination;
         private readonly List<Resolution> _resolutions;
         private readonly DateTime _referenceDate;
+        private readonly HashSet<string> _symbolFilter;
 
         /// <summary>
         /// Create a new instance of the AlgoSeekFutures Converter. Parse a single input directory into an output.
@@ -48,13 +49,15 @@ namespace QuantConnect.ToolBox.AlgoSeekFuturesConverter
         /// <param name="remote">Remote directory of the .bz algoseek files</param>
         /// <param name="source">Source directory of the .csv algoseek files</param>
         /// <param name="destination">Destination directory of the processed future files</param>
-        public AlgoSeekFuturesConverter(List<Resolution> resolutions, DateTime referenceDate, string remote, string source, string destination)
+        /// <param name="symbolFilter">Collection of underlying ticker to process.</param>
+        public AlgoSeekFuturesConverter(List<Resolution> resolutions, DateTime referenceDate, string remote, string source, string destination, HashSet<string> symbolFilter = null)
         {
             _source = new DirectoryInfo(source);
             _remote = new DirectoryInfo(remote);
             _referenceDate = referenceDate;
             _destination = destination;
             _resolutions = resolutions;
+            _symbolFilter = symbolFilter;
         }
 
         /// <summary>
@@ -78,8 +81,6 @@ namespace QuantConnect.ToolBox.AlgoSeekFuturesConverter
             var totalFilesProcessed = 0;
             var start = DateTime.MinValue;
 
-            var zipper = OS.IsWindows ? "C:/Program Files/7-Zip/7z.exe" : "7z";
-
             var symbolMultipliers = LoadSymbolMultipliers();
 
             //Extract each file massively in parallel.
@@ -100,40 +101,14 @@ namespace QuantConnect.ToolBox.AlgoSeekFuturesConverter
                         Directory.CreateDirectory(csvFileInfo.DirectoryName);
 
                         Log.Trace("AlgoSeekFuturesConverter.Convert(): Extracting " + file);
-                        var psi = new ProcessStartInfo(zipper, " e " + file.FullName + " -o" + _source.FullName)
-                        {
-                            CreateNoWindow = true,
-                            WindowStyle = ProcessWindowStyle.Hidden,
-                            UseShellExecute = false,
-                            RedirectStandardOutput = true
-                        };
 
-                        var process = new Process();
-                        process.StartInfo = psi;
-                        process.Start();
-
-                        while (!process.StandardOutput.EndOfStream)
-                        {
-                            process.StandardOutput.ReadLine();
-                        }
-
-                        if (!process.WaitForExit(ExecTimeout * 1000))
-                        {
-                            Log.Error("7Zip timed out: " + file);
-                        }
-                        else
-                        {
-                            if (process.ExitCode > 0)
-                            {
-                                Log.Error("7Zip Exited Unsuccessfully: " + file);
-                            }
-                        }
+                        Compression.Extract7ZipArchive(file.FullName, _source.FullName);
                     }
 
                     // setting up local processors
                     var processors = new Processors();
 
-                    var reader = new AlgoSeekFuturesReader(csvFile, symbolMultipliers);
+                    var reader = new AlgoSeekFuturesReader(csvFile, symbolMultipliers, _symbolFilter);
                     if (start == DateTime.MinValue)
                     {
                         start = DateTime.Now;
@@ -203,8 +178,8 @@ namespace QuantConnect.ToolBox.AlgoSeekFuturesConverter
         {
             var files = new List<FileInfo>();
 
-            var command = OS.IsLinux ? "ls" : "dir";
-            var arguments = OS.IsWindows ? "/b /a-d" : string.Empty;
+            var command = OS.IsLinux ? "ls" : "cmd.exe";
+            var arguments = OS.IsWindows ? "/c dir /b /a-d" : string.Empty;
 
             var processStartInfo = new ProcessStartInfo(command, arguments)
             {
@@ -242,11 +217,8 @@ namespace QuantConnect.ToolBox.AlgoSeekFuturesConverter
         /// <returns></returns>
         private Dictionary<string, decimal> LoadSymbolMultipliers()
         {
-            const int columnsCount = 4;
             const int columnUnderlying = 0;
-            const int columnProductName = 1;
             const int columnMultipleFactor = 2;
-            const int columnInfo = 3;
 
             return File.ReadAllLines("AlgoSeekFuturesConverter/AlgoSeek.US.Futures.PriceMultipliers.1.1.csv")
                     .Select(line => line.ToCsvData())

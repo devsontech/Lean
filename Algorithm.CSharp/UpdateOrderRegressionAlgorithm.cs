@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using QuantConnect.Data;
 using QuantConnect.Orders;
@@ -46,7 +47,7 @@ namespace QuantConnect.Algorithm.CSharp
 
         private readonly CircularQueue<OrderType> _orderTypesQueue = new CircularQueue<OrderType>(Enum.GetValues(typeof(OrderType))
                                                                         .OfType<OrderType>()
-                                                                        .Where (x => x != OrderType.OptionExercise));
+                                                                        .Where (x => x != OrderType.OptionExercise && x != OrderType.LimitIfTouched));
         private readonly List<OrderTicket> _tickets = new List<OrderTicket>();
 
         /// <summary>
@@ -93,7 +94,7 @@ namespace QuantConnect.Algorithm.CSharp
                 {
                     limitPrice = !isLong ? (1 + LimitPercentage) * data.Bars[symbol].High : (1 - LimitPercentage) * data.Bars[symbol].Low;
                 }
-                var request = new SubmitOrderRequest(orderType, SecType, symbol, Quantity, stopPrice, limitPrice, UtcTime, orderType.ToString());
+                var request = new SubmitOrderRequest(orderType, SecType, symbol, Quantity, stopPrice, limitPrice, UtcTime, ((int)orderType).ToString(CultureInfo.InvariantCulture));
                 var ticket = Transactions.AddOrder(request);
                 _tickets.Add(ticket);
             }
@@ -108,7 +109,7 @@ namespace QuantConnect.Algorithm.CSharp
                         ticket.Update(new UpdateOrderFields
                         {
                             Quantity = ticket.Quantity + Math.Sign(Quantity)*DeltaQuantity,
-                            Tag = "Change quantity: " + Time
+                            Tag = "Change quantity: " + Time.Day
                         });
                         Log("UPDATE1:: " + ticket.UpdateRequests.Last());
                     }
@@ -122,7 +123,7 @@ namespace QuantConnect.Algorithm.CSharp
                         {
                             LimitPrice = Security.Price*(1 - Math.Sign(ticket.Quantity)*LimitPercentageDelta),
                             StopPrice = Security.Price*(1 + Math.Sign(ticket.Quantity)*StopPercentageDelta),
-                            Tag = "Change prices: " + Time
+                            Tag = "Change prices: " + Time.Day
                         });
                         Log("UPDATE2:: " + ticket.UpdateRequests.Last());
                     }
@@ -132,7 +133,7 @@ namespace QuantConnect.Algorithm.CSharp
                     if (ticket.UpdateRequests.Count == 2 && ticket.Status.IsOpen())
                     {
                         Log("TICKET:: " + ticket);
-                        ticket.Cancel(Time + " and is still open!");
+                        ticket.Cancel(Time.Day + " and is still open!");
                         Log("CANCELLED:: " + ticket.CancelRequest);
                     }
                 }
@@ -195,23 +196,45 @@ namespace QuantConnect.Algorithm.CSharp
         {
             {"Total Trades", "21"},
             {"Average Win", "0%"},
-            {"Average Loss", "-1.60%"},
-            {"Compounding Annual Return", "-7.774%"},
-            {"Drawdown", "15.700%"},
+            {"Average Loss", "-1.51%"},
+            {"Compounding Annual Return", "-7.320%"},
+            {"Drawdown", "15.000%"},
             {"Expectancy", "-1"},
-            {"Net Profit", "-14.944%"},
-            {"Sharpe Ratio", "-1.359"},
+            {"Net Profit", "-14.103%"},
+            {"Sharpe Ratio", "-1.182"},
+            {"Probabilistic Sharpe Ratio", "0.043%"},
             {"Loss Rate", "100%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "0.016"},
-            {"Beta", "-0.445"},
-            {"Annual Standard Deviation", "0.058"},
+            {"Alpha", "-0.066"},
+            {"Beta", "0.034"},
+            {"Annual Standard Deviation", "0.05"},
             {"Annual Variance", "0.003"},
-            {"Information Ratio", "-1.792"},
-            {"Tracking Error", "0.163"},
-            {"Treynor Ratio", "0.178"},
-            {"Total Fees", "$21.00"}
+            {"Information Ratio", "-2.23"},
+            {"Tracking Error", "0.11"},
+            {"Treynor Ratio", "-1.716"},
+            {"Total Fees", "$21.00"},
+            {"Estimated Strategy Capacity", "$2700000000.00"},
+            {"Fitness Score", "0.001"},
+            {"Kelly Criterion Estimate", "0"},
+            {"Kelly Criterion Probability Value", "0"},
+            {"Sortino Ratio", "-2.096"},
+            {"Return Over Maximum Drawdown", "-0.489"},
+            {"Portfolio Turnover", "0.006"},
+            {"Total Insights Generated", "0"},
+            {"Total Insights Closed", "0"},
+            {"Total Insights Analysis Completed", "0"},
+            {"Long Insight Count", "0"},
+            {"Short Insight Count", "0"},
+            {"Long/Short Ratio", "100%"},
+            {"Estimated Monthly Alpha Value", "$0"},
+            {"Total Accumulated Estimated Alpha Value", "$0"},
+            {"Mean Population Estimated Insight Value", "$0"},
+            {"Mean Population Direction", "0%"},
+            {"Mean Population Magnitude", "0%"},
+            {"Rolling Averaged Population Direction", "0%"},
+            {"Rolling Averaged Population Magnitude", "0%"},
+            {"OrderListHash", "8d76366ca3ee70abc907723b4583d56e"}
         };
     }
 }

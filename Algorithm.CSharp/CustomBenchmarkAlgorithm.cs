@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -38,6 +38,10 @@ namespace QuantConnect.Algorithm.CSharp
             // Find more symbols here: http://quantconnect.com/data
             AddSecurity(SecurityType.Equity, "SPY", Resolution.Second);
 
+            // Disabling the benchmark / setting to a fixed value
+            // SetBenchmark(time => 0);
+
+            // Set the benchmark to AAPL US Equity
             SetBenchmark("AAPL");
         }
 
@@ -78,22 +82,44 @@ namespace QuantConnect.Algorithm.CSharp
             {"Total Trades", "1"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
-            {"Compounding Annual Return", "233.235%"},
+            {"Compounding Annual Return", "272.157%"},
             {"Drawdown", "2.200%"},
             {"Expectancy", "0"},
-            {"Net Profit", "1.663%"},
-            {"Sharpe Ratio", "4.076"},
+            {"Net Profit", "1.694%"},
+            {"Sharpe Ratio", "8.897"},
+            {"Probabilistic Sharpe Ratio", "67.609%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "0.533"},
-            {"Beta", "0.287"},
-            {"Annual Standard Deviation", "0.173"},
-            {"Annual Variance", "0.03"},
-            {"Information Ratio", "0.518"},
-            {"Tracking Error", "0.198"},
-            {"Treynor Ratio", "2.464"},
-            {"Total Fees", "$3.26"}
+            {"Alpha", "1.178"},
+            {"Beta", "0.805"},
+            {"Annual Standard Deviation", "0.222"},
+            {"Annual Variance", "0.049"},
+            {"Information Ratio", "5.718"},
+            {"Tracking Error", "0.172"},
+            {"Treynor Ratio", "2.453"},
+            {"Total Fees", "$3.45"},
+            {"Estimated Strategy Capacity", "$270000000.00"},
+            {"Fitness Score", "0.246"},
+            {"Kelly Criterion Estimate", "0"},
+            {"Kelly Criterion Probability Value", "0"},
+            {"Sortino Ratio", "9.761"},
+            {"Return Over Maximum Drawdown", "107.509"},
+            {"Portfolio Turnover", "0.249"},
+            {"Total Insights Generated", "0"},
+            {"Total Insights Closed", "0"},
+            {"Total Insights Analysis Completed", "0"},
+            {"Long Insight Count", "0"},
+            {"Short Insight Count", "0"},
+            {"Long/Short Ratio", "100%"},
+            {"Estimated Monthly Alpha Value", "$0"},
+            {"Total Accumulated Estimated Alpha Value", "$0"},
+            {"Mean Population Estimated Insight Value", "$0"},
+            {"Mean Population Direction", "0%"},
+            {"Mean Population Magnitude", "0%"},
+            {"Rolling Averaged Population Direction", "0%"},
+            {"Rolling Averaged Population Magnitude", "0%"},
+            {"OrderListHash", "e10039d74166b161f3ea2851a5e85843"}
         };
     }
 }

@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using QuantConnect.Data;
 using QuantConnect.Data.UniverseSelection;
 using QuantConnect.Securities;
+using static System.FormattableString;
 
 namespace QuantConnect.Algorithm.Framework.Alphas
 {
@@ -72,12 +73,12 @@ namespace QuantConnect.Algorithm.Framework.Alphas
             Name = $"{nameof(ConstantAlphaModel)}({type},{direction},{period}";
             if (magnitude.HasValue)
             {
-                Name += $",{magnitude.Value}";
+                Name += Invariant($",{magnitude.Value}");
             }
 
             if (confidence.HasValue)
             {
-                Name += $",{confidence.Value}";
+                Name += Invariant($",{confidence.Value}");
             }
 
             Name += ")";
@@ -119,6 +120,11 @@ namespace QuantConnect.Algorithm.Framework.Alphas
             }
         }
 
+        /// <summary>
+        /// Determine if its time to emit insight for this symbol
+        /// </summary>
+        /// <param name="utcTime">Time of the insight</param>
+        /// <param name="symbol">The symbol to emit an insight for</param>
         protected virtual bool ShouldEmitInsight(DateTime utcTime, Symbol symbol)
         {
             DateTime generatedTimeUtc;

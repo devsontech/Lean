@@ -34,10 +34,10 @@ namespace QuantConnect.Lean.Engine.DataFeeds
         private bool _ensureCurrencyDataFeeds;
         private bool _pendingSubscriptionDataConfigs;
         private readonly CashBook _cashBook;
+        private readonly Resolution _defaultResolution;
         private readonly SecurityManager _securityManager;
         private readonly SubscriptionManager _subscriptionManager;
         private readonly ISecurityService _securityService;
-        private readonly IBrokerageModel _brokerageModel;
 
         /// <summary>
         /// Creates a new instance
@@ -46,12 +46,12 @@ namespace QuantConnect.Lean.Engine.DataFeeds
         /// <param name="securityManager">The SecurityManager, required by the cash book for creating new securities</param>
         /// <param name="subscriptionManager">The SubscriptionManager, required by the cash book for creating new subscription data configs</param>
         /// <param name="securityService">The SecurityService, required by the cash book for creating new securities</param>
-        /// <param name="brokerageModel">The BrokerageModel, required by the cash book for creating new securities</param>
+        /// <param name="defaultResolution">The default resolution to use for the internal subscriptions</param>
         public CurrencySubscriptionDataConfigManager(CashBook cashBook,
             SecurityManager securityManager,
             SubscriptionManager subscriptionManager,
             ISecurityService securityService,
-            IBrokerageModel brokerageModel)
+            Resolution defaultResolution)
         {
             cashBook.Updated += (sender, updateType) =>
             {
@@ -61,11 +61,11 @@ namespace QuantConnect.Lean.Engine.DataFeeds
                 }
             };
 
+            _defaultResolution = defaultResolution;
             _pendingSubscriptionDataConfigs = false;
             _securityManager = securityManager;
             _subscriptionManager = subscriptionManager;
             _securityService = securityService;
-            _brokerageModel = brokerageModel;
             _cashBook = cashBook;
             _addedCurrencySubscriptionDataConfigs = new HashSet<SubscriptionDataConfig>();
             _toBeAddedCurrencySubscriptionDataConfigs = new HashSet<SubscriptionDataConfig>();
@@ -97,12 +97,12 @@ namespace QuantConnect.Lean.Engine.DataFeeds
         /// Will update pending currency <see cref="SubscriptionDataConfig"/>
         /// </summary>
         /// <returns>True when there are pending currency subscriptions <see cref="GetPendingSubscriptionDataConfigs"/></returns>
-        public bool UpdatePendingSubscriptionDataConfigs()
+        public bool UpdatePendingSubscriptionDataConfigs(IBrokerageModel brokerageModel)
         {
             if (_ensureCurrencyDataFeeds)
             {
                 // this allows us to handle the case where SetCash is called when no security has been really added
-                EnsureCurrencySubscriptionDataConfigs(SecurityChanges.None);
+                EnsureCurrencySubscriptionDataConfigs(SecurityChanges.None, brokerageModel);
             }
             return _pendingSubscriptionDataConfigs;
         }
@@ -130,7 +130,7 @@ namespace QuantConnect.Lean.Engine.DataFeeds
         /// <summary>
         /// Checks the current <see cref="SubscriptionDataConfig"/> and adds new necessary currency pair feeds to provide real time conversion data
         /// </summary>
-        public void EnsureCurrencySubscriptionDataConfigs(SecurityChanges securityChanges)
+        public void EnsureCurrencySubscriptionDataConfigs(SecurityChanges securityChanges, IBrokerageModel brokerageModel)
         {
             _ensureCurrencyDataFeeds = false;
             // remove any 'to be added' if the security has already been added
@@ -140,9 +140,10 @@ namespace QuantConnect.Lean.Engine.DataFeeds
             var newConfigs = _cashBook.EnsureCurrencyDataFeeds(
                 _securityManager,
                 _subscriptionManager,
-                _brokerageModel.DefaultMarkets,
+                brokerageModel.DefaultMarkets,
                 securityChanges,
-                _securityService);
+                _securityService,
+                _defaultResolution);
             foreach (var config in newConfigs)
             {
                 _toBeAddedCurrencySubscriptionDataConfigs.Add(config);

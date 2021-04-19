@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -33,6 +33,7 @@ namespace QuantConnect.Algorithm.CSharp
         private decimal _previousSecurityValue;
         private bool _universeSelected;
         private bool _onDataWasCalled;
+        private int _benchmarkPriceDidNotChange;
 
         /// <summary>
         /// Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. All algorithms must initialized.
@@ -111,20 +112,32 @@ namespace QuantConnect.Algorithm.CSharp
 
             // assert benchmark updates only on date change
             var currentValue = Benchmark.Evaluate(data.Time);
-            if (_previousTime.Date == data.Time.Date)
+            if (_previousTime.Hour == data.Time.Hour)
             {
                 if (currentValue != _previousBenchmarkValue)
                 {
-                    throw new Exception($"Benchmark value error - expected: {_previousBenchmarkValue}, actual: {currentValue}. " +
-                                        "Benchmark value should only change when there is a date change");
+                    throw new Exception($"Benchmark value error - expected: {_previousBenchmarkValue} {_previousTime}, actual: {currentValue} {data.Time}. " +
+                                        "Benchmark value should only change when there is a change in hours");
                 }
             }
             else
             {
-                if (currentValue == _previousBenchmarkValue)
+                if (data.Time.Minute == 0)
                 {
-                    throw new Exception($"Benchmark value error - expected a new value, current {currentValue}" +
-                                        "Benchmark value should change when there is a date change");
+                    if (currentValue == _previousBenchmarkValue)
+                    {
+                        _benchmarkPriceDidNotChange++;
+                        // there are two consecutive equal data points so we give it some room
+                        if (_benchmarkPriceDidNotChange > 1)
+                        {
+                            throw new Exception($"Benchmark value error - expected a new value, current {currentValue} {data.Time}" +
+                                                "Benchmark value should change when there is a change in hours");
+                        }
+                    }
+                    else
+                    {
+                        _benchmarkPriceDidNotChange = 0;
+                    }
                 }
             }
             _previousBenchmarkValue = currentValue;
@@ -168,6 +181,7 @@ namespace QuantConnect.Algorithm.CSharp
             {"Expectancy", "0"},
             {"Net Profit", "0%"},
             {"Sharpe Ratio", "0"},
+            {"Probabilistic Sharpe Ratio", "0%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
@@ -175,10 +189,31 @@ namespace QuantConnect.Algorithm.CSharp
             {"Beta", "0"},
             {"Annual Standard Deviation", "0"},
             {"Annual Variance", "0"},
-            {"Information Ratio", "0"},
-            {"Tracking Error", "0"},
+            {"Information Ratio", "-2.564"},
+            {"Tracking Error", "0.214"},
             {"Treynor Ratio", "0"},
-            {"Total Fees", "$0.00"}
+            {"Total Fees", "$0.00"},
+            {"Estimated Strategy Capacity", "$0"},
+            {"Fitness Score", "0"},
+            {"Kelly Criterion Estimate", "0"},
+            {"Kelly Criterion Probability Value", "0"},
+            {"Sortino Ratio", "79228162514264337593543950335"},
+            {"Return Over Maximum Drawdown", "79228162514264337593543950335"},
+            {"Portfolio Turnover", "0"},
+            {"Total Insights Generated", "0"},
+            {"Total Insights Closed", "0"},
+            {"Total Insights Analysis Completed", "0"},
+            {"Long Insight Count", "0"},
+            {"Short Insight Count", "0"},
+            {"Long/Short Ratio", "100%"},
+            {"Estimated Monthly Alpha Value", "$0"},
+            {"Total Accumulated Estimated Alpha Value", "$0"},
+            {"Mean Population Estimated Insight Value", "$0"},
+            {"Mean Population Direction", "0%"},
+            {"Mean Population Magnitude", "0%"},
+            {"Rolling Averaged Population Direction", "0%"},
+            {"Rolling Averaged Population Magnitude", "0%"},
+            {"OrderListHash", "d41d8cd98f00b204e9800998ecf8427e"}
         };
     }
 }

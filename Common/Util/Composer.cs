@@ -24,6 +24,7 @@ using System.ComponentModel.Composition.ReflectionModel;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using QuantConnect.Configuration;
 using QuantConnect.Logging;
@@ -64,18 +65,30 @@ namespace QuantConnect.Util
                 new DirectoryInfo(PluginDirectory).FullName != primaryDllLookupDirectory;
             _composableParts = Task.Run(() =>
             {
-                var catalogs = new List<ComposablePartCatalog>
+                try
                 {
-                    new DirectoryCatalog(primaryDllLookupDirectory, "*.dll"),
-                    new DirectoryCatalog(primaryDllLookupDirectory, "*.exe")
-                };
-                if (loadFromPluginDir)
-                {
-                    catalogs.Add(new DirectoryCatalog(PluginDirectory, "*.dll"));
+                    var catalogs = new List<ComposablePartCatalog>
+                    {
+                        new DirectoryCatalog(primaryDllLookupDirectory, "*.dll"),
+                        new DirectoryCatalog(primaryDllLookupDirectory, "*.exe")
+                    };
+                    if (loadFromPluginDir)
+                    {
+                        catalogs.Add(new DirectoryCatalog(PluginDirectory, "*.dll"));
+                    }
+                    var aggregate = new AggregateCatalog(catalogs);
+                    _compositionContainer = new CompositionContainer(aggregate);
+                    return _compositionContainer.Catalog.Parts.ToList();
                 }
-                var aggregate = new AggregateCatalog(catalogs);
-                _compositionContainer = new CompositionContainer(aggregate);
-                return _compositionContainer.Catalog.Parts.ToList();
+                catch (Exception exception)
+                {
+                    // ThreadAbortException is triggered when we shutdown ignore the error log
+                    if (!(exception is ThreadAbortException))
+                    {
+                        Log.Error(exception);
+                    }
+                }
+                return new List<ComposablePartDefinition>();
             });
 
             // for performance we will load our assemblies and keep their exported types
@@ -161,6 +174,23 @@ namespace QuantConnect.Util
         }
 
         /// <summary>
+        /// Gets the first type T instance if any
+        /// </summary>
+        /// <typeparam name="T">The contract type</typeparam>
+        public T GetPart<T>()
+        {
+            lock (_exportedValuesLockObject)
+            {
+                IEnumerable values;
+                if (_exportedValues.TryGetValue(typeof(T), out values))
+                {
+                    return ((IList<T>)values).FirstOrDefault();
+                }
+                return default(T);
+            }
+        }
+
+        /// <summary>
         /// Extension method to searches the composition container for an export that has a matching type name. This function
         /// will first try to match on Type.AssemblyQualifiedName, then Type.FullName, and finally on Type.Name
         ///
@@ -189,7 +219,19 @@ namespace QuantConnect.Util
                         }
                     }
 
-                    var typeT = _exportedTypes.FirstOrDefault(type1 => type.IsAssignableFrom(type1) && type1.MatchesTypeName(typeName));
+                    var typeT = _exportedTypes.Where(type1 =>
+                            {
+                                try
+                                {
+                                    return type.IsAssignableFrom(type1) && type1.MatchesTypeName(typeName);
+                                }
+                                catch
+                                {
+                                    return false;
+                                }
+                            })
+                        .FirstOrDefault();
+
                     if (typeT != null)
                     {
                         instance = (T)Activator.CreateInstance(typeT);
@@ -199,10 +241,19 @@ namespace QuantConnect.Util
                     {
                         // we want to get the requested part without instantiating each one of that type
                         var selectedPart = _composableParts.Result
-                            .Select(x => new { part = x, Type = ReflectionModelServices.GetPartType(x).Value })
-                            .Where(x => type.IsAssignableFrom(x.Type))
-                            .Where(x => x.Type.MatchesTypeName(typeName))
-                            .Select(x => x.part)
+                            .Where(x =>
+                                {
+                                    try
+                                    {
+                                        var xType =  ReflectionModelServices.GetPartType(x).Value;
+                                        return type.IsAssignableFrom(xType) && xType.MatchesTypeName(typeName);
+                                    }
+                                    catch
+                                    {
+                                        return false;
+                                    }
+                                }
+                            )
                             .FirstOrDefault();
 
                         if (selectedPart == null)
@@ -258,21 +309,33 @@ namespace QuantConnect.Util
         /// </summary>
         public IEnumerable<T> GetExportedValues<T>()
         {
-            lock (_exportedValuesLockObject)
+            try
             {
-                IEnumerable values;
-                if (_exportedValues.TryGetValue(typeof (T), out values))
+                lock (_exportedValuesLockObject)
                 {
+                    IEnumerable values;
+                    if (_exportedValues.TryGetValue(typeof (T), out values))
+                    {
+                        return values.OfType<T>();
+                    }
+
+                    if (!_composableParts.IsCompleted)
+                    {
+                        _composableParts.Wait();
+                    }
+                    values = _compositionContainer.GetExportedValues<T>().ToList();
+                    _exportedValues[typeof (T)] = values;
                     return values.OfType<T>();
                 }
-
-                if (!_composableParts.IsCompleted)
+            }
+            catch (ReflectionTypeLoadException err)
+            {
+                foreach (var exception in err.LoaderExceptions)
                 {
-                    _composableParts.Wait();
+                    Log.Error(exception);
                 }
-                values = _compositionContainer.GetExportedValues<T>().ToList();
-                _exportedValues[typeof (T)] = values;
-                return values.OfType<T>();
+
+                throw;
             }
         }
 

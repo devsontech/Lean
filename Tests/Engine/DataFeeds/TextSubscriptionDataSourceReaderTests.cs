@@ -14,18 +14,23 @@
 */
 
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Accord.Math.Comparers;
 using NUnit.Framework;
 using QuantConnect.Data;
 using QuantConnect.Data.Market;
 using QuantConnect.Interfaces;
 using QuantConnect.Lean.Engine.DataFeeds;
+using QuantConnect.Logging;
 
 namespace QuantConnect.Tests.Engine.DataFeeds
 {
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.Fixtures)]
     public class TextSubscriptionDataSourceReaderTests
     {
         private SubscriptionDataConfig _config;
@@ -220,6 +225,133 @@ namespace QuantConnect.Tests.Engine.DataFeeds
             Assert.AreEqual(!shouldBeCached, TestTradeBarFactory.ReaderWasCalled);
         }
 
+        [Test, Explicit("Performance test")]
+        public void CacheMissPerformance()
+        {
+            long counter = 0;
+            var datas = new List<IEnumerable<BaseData>>();
+
+            var factory = new TradeBar();
+            var cacheProvider = new CustomEphemeralDataCacheProvider();
+
+            // we load SPY hour zip into memory and use it as the source of different fake tickers
+            var config = new SubscriptionDataConfig(typeof(TradeBar),
+                Symbols.SPY,
+                Resolution.Hour,
+                TimeZones.NewYork,
+                TimeZones.NewYork,
+                true,
+                true,
+                false);
+            var fakeSource = factory.GetSource(config, new DateTime(2013, 10, 07), false);
+            cacheProvider.Data = string.Join(Environment.NewLine, QuantConnect.Compression.ReadLines(fakeSource.Source));
+
+            for (var i = 0; i < 500; i++)
+            {
+                var ticker = $"{i}";
+                var fakeConfig = new SubscriptionDataConfig(
+                    typeof(TradeBar),
+                    Symbol.Create(ticker, SecurityType.Equity, Market.USA),
+                    Resolution.Hour,
+                    TimeZones.NewYork,
+                    TimeZones.NewYork,
+                    true,
+                    true,
+                    false);
+                var reader = new TextSubscriptionDataSourceReader(cacheProvider, fakeConfig, Time.EndOfTime, false);
+
+                var source = factory.GetSource(fakeConfig, Time.BeginningOfTime, false);
+                datas.Add(reader.Read(source));
+            }
+
+            var timer = new Stopwatch();
+            timer.Start();
+            Parallel.ForEach(datas, enumerable =>
+            {
+                // after the first call should use the cache
+                foreach (var data in enumerable)
+                {
+                    Interlocked.Increment(ref counter);
+                }
+            });
+            timer.Stop();
+            Log.Trace($"Took {timer.ElapsedMilliseconds}ms. Data count {counter}");
+
+            timer.Reset();
+            timer.Start();
+            Parallel.ForEach(datas, enumerable =>
+            {
+                // after the first call should use the cache
+                foreach (var data in enumerable)
+                {
+                    Interlocked.Increment(ref counter);
+                }
+            });
+            timer.Stop();
+            Log.Trace($"Took2 {timer.ElapsedMilliseconds}ms. Data count {counter}");
+        }
+
+        [Test, Explicit("Performance test")]
+        public void CacheHappyPerformance()
+        {
+            long counter = 0;
+            var datas = new List<IEnumerable<BaseData>>();
+
+            var factory = new TradeBar();
+            var cacheProvider = new CustomEphemeralDataCacheProvider();
+
+            // we load SPY hour zip into memory and use it as the source of different fake tickers
+            var config = new SubscriptionDataConfig(typeof(TradeBar),
+                Symbols.SPY,
+                Resolution.Hour,
+                TimeZones.NewYork,
+                TimeZones.NewYork,
+                true,
+                true,
+                false);
+            var fakeSource = factory.GetSource(config, new DateTime(2013, 10, 07), false);
+            cacheProvider.Data = string.Join(Environment.NewLine, QuantConnect.Compression.ReadLines(fakeSource.Source));
+
+            for (var i = 0; i < 500; i++)
+            {
+                var ticker = $"{i}";
+                var fakeConfig = new SubscriptionDataConfig(
+                    typeof(TradeBar),
+                    Symbol.Create(ticker, SecurityType.Equity, Market.USA),
+                    Resolution.Hour,
+                    TimeZones.NewYork,
+                    TimeZones.NewYork,
+                    true,
+                    true,
+                    false);
+                var reader = new TextSubscriptionDataSourceReader(cacheProvider, fakeConfig, Time.EndOfTime, false);
+
+                var source = factory.GetSource(fakeConfig, Time.BeginningOfTime, false);
+                datas.Add(reader.Read(source));
+            }
+
+            var timer = new Stopwatch();
+            timer.Start();
+            Parallel.ForEach(datas, enumerable =>
+            {
+                // after the first call should use the cache
+                foreach (var data in enumerable)
+                {
+                    Interlocked.Increment(ref counter);
+                }
+                foreach (var data in enumerable)
+                {
+                    Interlocked.Increment(ref counter);
+                }
+                foreach (var data in enumerable)
+                {
+                    Interlocked.Increment(ref counter);
+                }
+            });
+            timer.Stop();
+            Log.Trace($"Took {timer.ElapsedMilliseconds}ms. Data count {counter}");
+        }
+
         private class TestTradeBarFactory : TradeBar
         {
             /// <summary>
@@ -231,6 +363,11 @@ namespace QuantConnect.Tests.Engine.DataFeeds
             {
                 ReaderWasCalled = true;
                 return base.Reader(config, line, date, isLiveMode);
+            }
+            public override BaseData Reader(SubscriptionDataConfig config, StreamReader streamReader, DateTime date, bool isLiveMode)
+            {
+                ReaderWasCalled = true;
+                return base.Reader(config, streamReader, date, isLiveMode);
             }
         }
 

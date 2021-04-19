@@ -17,6 +17,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Newtonsoft.Json;
+using QuantConnect.Python;
 using QuantConnect.Configuration;
 using QuantConnect.Interfaces;
 using QuantConnect.Logging;
@@ -35,12 +36,12 @@ namespace QuantConnect.Queues
         private const string PaperBrokerageTypeName = "PaperBrokerage";
         private const string DefaultHistoryProvider = "SubscriptionDataReaderHistoryProvider";
         private const string DefaultDataQueueHandler = "LiveDataQueue";
+        private const string DefaultDataChannelProvider = "DataChannelProvider";
         private bool _liveMode = Config.GetBool("live-mode");
         private static readonly string AccessToken = Config.Get("api-access-token");
         private static readonly int UserId = Config.GetInt("job-user-id", 0);
         private static readonly int ProjectId = Config.GetInt("job-project-id", 0);
         private readonly string AlgorithmTypeName = Config.Get("algorithm-type-name");
-        private readonly string AlgorithmPathPython = Config.Get("algorithm-path-python", "../../../Algorithm.Python/");
         private readonly Language Language = (Language)Enum.Parse(typeof(Language), Config.Get("algorithm-language"));
 
         /// <summary>
@@ -93,22 +94,14 @@ namespace QuantConnect.Queues
 
             if ((Language)Enum.Parse(typeof(Language), Config.Get("algorithm-language")) == Language.Python)
             {
-                // Set the python path for loading python algorithms.
+                // Set the python path for loading python algorithms ("algorithm-location" config parameter)
                 var pythonFile = new FileInfo(location);
-                var pythonPath = new List<string>
-                {
-                    pythonFile.Directory.FullName,
-                    new DirectoryInfo(Environment.CurrentDirectory).FullName,
-                };
-                // Don't include an empty environment variable in pythonPath, otherwise the PYTHONPATH
-                // environment variable won't be used in the module import process
-                var pythonPathEnvironmentVariable = Environment.GetEnvironmentVariable("PYTHONPATH");
-                if (!string.IsNullOrEmpty(pythonPathEnvironmentVariable))
-                {
-                    pythonPath.Add(pythonPathEnvironmentVariable);
-                }
-                Environment.SetEnvironmentVariable("PYTHONPATH", string.Join(OS.IsLinux ? ":" : ";", pythonPath));
+
+                // PythonInitializer automatically adds the current working directory for us
+                PythonInitializer.SetPythonPathEnvironmentVariable(new string[] { pythonFile.Directory.FullName });
             }
+
+            var algorithmId = Config.Get("algorithm-id", AlgorithmTypeName);
 
             //If this isn't a backtesting mode/request, attempt a live job.
             if (_liveMode)
@@ -120,12 +113,13 @@ namespace QuantConnect.Queues
                     Brokerage = Config.Get("live-mode-brokerage", PaperBrokerageTypeName),
                     HistoryProvider = Config.Get("history-provider", DefaultHistoryProvider),
                     DataQueueHandler = Config.Get("data-queue-handler", DefaultDataQueueHandler),
+                    DataChannelProvider = Config.Get("data-channel-provider", DefaultDataChannelProvider),
                     Channel = AccessToken,
                     UserToken = AccessToken,
                     UserId = UserId,
                     ProjectId = ProjectId,
                     Version = Globals.Version,
-                    DeployId = AlgorithmTypeName,
+                    DeployId = algorithmId,
                     Parameters = parameters,
                     Language = Language,
                     Controls = controls
@@ -146,7 +140,7 @@ namespace QuantConnect.Queues
             }
 
             //Default run a backtesting job.
-            var backtestJob = new BacktestNodePacket(0, 0, "", new byte[] {}, 10000, "local")
+            var backtestJob = new BacktestNodePacket(0, 0, "", new byte[] {}, "local")
             {
                 Type = PacketType.BacktestNode,
                 Algorithm = File.ReadAllBytes(AlgorithmLocation),
@@ -156,7 +150,7 @@ namespace QuantConnect.Queues
                 UserId = UserId,
                 ProjectId = ProjectId,
                 Version = Globals.Version,
-                BacktestId = AlgorithmTypeName,
+                BacktestId = algorithmId,
                 Language = Language,
                 Parameters = parameters,
                 Controls = controls
@@ -177,7 +171,7 @@ namespace QuantConnect.Queues
                 if (!File.Exists(pythonSource))
                 {
                     // Copies file to execution location
-                    foreach (var file in new DirectoryInfo(AlgorithmPathPython).GetFiles("*.py"))
+                    foreach (var file in new DirectoryInfo(Path.GetDirectoryName(AlgorithmLocation)).GetFiles("*.py"))
                     {
                         file.CopyTo(file.FullName.Replace(file.DirectoryName, Environment.CurrentDirectory), true);
                     }
@@ -198,8 +192,13 @@ namespace QuantConnect.Queues
         public void AcknowledgeJob(AlgorithmNodePacket job)
         {
             // Make the console window pause so we can read log output before exiting and killing the application completely
-            Console.WriteLine("Engine.Main(): Analysis Complete. Press any key to continue.");
-            System.Console.Read();
+            Console.WriteLine("Engine.Main(): Analysis Complete.");
+            // closing automatically is useful for optimization, we don't want to leave open all the ended lean instances
+            if (!Config.GetBool("close-automatically"))
+            {
+                Console.WriteLine("Engine.Main(): Press any key to continue.");
+                System.Console.Read();
+            }
         }
     }
 

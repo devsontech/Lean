@@ -1,17 +1,17 @@
-﻿﻿/*
- * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
- * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+﻿/*
+* QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+* Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*
 */
 
 using System;
@@ -165,7 +165,7 @@ namespace QuantConnect.Data.Auxiliary
         public static bool HasScalingFactors(string permtick, string market)
         {
             // check for factor files
-            var path = Path.Combine(Globals.DataFolder, "equity", market, "factor_files", permtick.ToLowerInvariant() + ".csv");
+            var path = Path.Combine(Globals.CacheDataFolder, "equity", market, "factor_files", permtick.ToLowerInvariant() + ".csv");
             if (File.Exists(path))
             {
                 return true;
@@ -187,9 +187,12 @@ namespace QuantConnect.Data.Auxiliary
         /// <param name="date">The date to check the factor file for a dividend event</param>
         /// <param name="priceFactorRatio">When this function returns true, this value will be populated
         /// with the price factor ratio required to scale the closing value (pf_i/pf_i+1)</param>
-        public bool HasDividendEventOnNextTradingDay(DateTime date, out decimal priceFactorRatio)
+        /// <param name="referencePrice">When this function returns true, this value will be populated
+        /// with the reference raw price, which is the close of the provided date</param>
+        public bool HasDividendEventOnNextTradingDay(DateTime date, out decimal priceFactorRatio, out decimal referencePrice)
         {
             priceFactorRatio = 0;
+            referencePrice = 0;
             var index = SortedFactorFileData.IndexOfKey(date);
             if (index > -1 && index < SortedFactorFileData.Count - 1)
             {
@@ -200,7 +203,8 @@ namespace QuantConnect.Data.Auxiliary
                 // if the price factors have changed then it's a dividend event
                 if (thisRow.PriceFactor != nextRow.PriceFactor)
                 {
-                    priceFactorRatio = thisRow.PriceFactor/nextRow.PriceFactor;
+                    priceFactorRatio = thisRow.PriceFactor / nextRow.PriceFactor;
+                    referencePrice = thisRow.ReferencePrice;
                     return true;
                 }
             }
@@ -217,9 +221,15 @@ namespace QuantConnect.Data.Auxiliary
         /// has a split on 1999.03.29, but in the factor file the split factor is applied on
         /// 1999.03.26, which is the first trading day BEFORE the actual split date.
         /// </remarks>
-        public bool HasSplitEventOnNextTradingDay(DateTime date, out decimal splitFactor)
+        /// <param name="date">The date to check the factor file for a split event</param>
+        /// <param name="splitFactor">When this function returns true, this value will be populated
+        /// with the split factor ratio required to scale the closing value</param>
+        /// <param name="referencePrice">When this function returns true, this value will be populated
+        /// with the reference raw price, which is the close of the provided date</param>
+        public bool HasSplitEventOnNextTradingDay(DateTime date, out decimal splitFactor, out decimal referencePrice)
         {
             splitFactor = 1;
+            referencePrice = 0;
             var index = SortedFactorFileData.IndexOfKey(date);
             if (index > -1 && index < SortedFactorFileData.Count - 1)
             {
@@ -230,7 +240,8 @@ namespace QuantConnect.Data.Auxiliary
                 // if the split factors have changed then it's a split event
                 if (thisRow.SplitFactor != nextRow.SplitFactor)
                 {
-                    splitFactor = thisRow.SplitFactor/nextRow.SplitFactor;
+                    splitFactor = thisRow.SplitFactor / nextRow.SplitFactor;
+                    referencePrice = thisRow.ReferencePrice;
                     return true;
                 }
             }
@@ -264,8 +275,9 @@ namespace QuantConnect.Data.Auxiliary
         /// </summary>
         /// <param name="symbol">The symbol to ues for the dividend and split objects</param>
         /// <param name="exchangeHours">Exchange hours used for resolving the previous trading day</param>
+        /// <param name="decimalPlaces">The number of decimal places to round the dividend's distribution to, defaulting to 2</param>
         /// <returns>All splits and diviends represented by this factor file in chronological order</returns>
-        public List<BaseData> GetSplitsAndDividends(Symbol symbol, SecurityExchangeHours exchangeHours)
+        public List<BaseData> GetSplitsAndDividends(Symbol symbol, SecurityExchangeHours exchangeHours, int decimalPlaces = 2)
         {
             var dividendsAndSplits = new List<BaseData>();
             if (SortedFactorFileData.Count == 0)
@@ -275,10 +287,10 @@ namespace QuantConnect.Data.Auxiliary
             }
 
             var futureFactorFileRow = SortedFactorFileData.Last().Value;
-            for (var i = SortedFactorFileData.Count - 2; i >= 0 ; i--)
+            for (var i = SortedFactorFileData.Count - 2; i >= 0; i--)
             {
                 var row = SortedFactorFileData.Values[i];
-                var dividend = row.GetDividend(futureFactorFileRow, symbol, exchangeHours);
+                var dividend = row.GetDividend(futureFactorFileRow, symbol, exchangeHours, decimalPlaces);
                 if (dividend.Distribution != 0m)
                 {
                     dividendsAndSplits.Add(dividend);
@@ -312,10 +324,14 @@ namespace QuantConnect.Data.Auxiliary
             }
 
             var factorFileRows = new List<FactorFileRow>();
+            var firstEntry = SortedFactorFileData.First().Value;
             var lastEntry = SortedFactorFileData.Last().Value;
             factorFileRows.Add(lastEntry);
 
-            var combinedData = GetSplitsAndDividends(data[0].Symbol, exchangeHours).Concat(data)
+            var splitsAndDividends = GetSplitsAndDividends(data[0].Symbol, exchangeHours);
+
+            var combinedData = splitsAndDividends.Concat(data)
+                .DistinctBy(e => $"{e.GetType().Name}{e.Time.ToStringInvariant(DateFormat.EightCharacter)}")
                 .OrderByDescending(d => d.Time.Date);
 
             foreach (var datum in combinedData)
@@ -347,6 +363,9 @@ namespace QuantConnect.Data.Auxiliary
                     }
                 }
             }
+
+            var firstFactorFileRow = new FactorFileRow(firstEntry.Date, factorFileRows.Last().PriceFactor, factorFileRows.Last().SplitFactor, firstEntry.ReferencePrice == 0 ? 0 : firstEntry.ReferencePrice);
+            factorFileRows.Add(firstFactorFileRow);
 
             return new FactorFile(Permtick, factorFileRows, FactorFileMinimumDate);
         }

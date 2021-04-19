@@ -84,22 +84,44 @@ namespace QuantConnect.Algorithm.CSharp
             {"Total Trades", "1"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
-            {"Compounding Annual Return", "155.210%"},
+            {"Compounding Annual Return", "157.497%"},
             {"Drawdown", "84.800%"},
             {"Expectancy", "0"},
-            {"Net Profit", "5123.170%"},
-            {"Sharpe Ratio", "1.199"},
+            {"Net Profit", "5319.007%"},
+            {"Sharpe Ratio", "2.086"},
+            {"Probabilistic Sharpe Ratio", "69.456%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "0.989"},
-            {"Beta", "0.157"},
+            {"Alpha", "1.736"},
+            {"Beta", "0.142"},
             {"Annual Standard Deviation", "0.84"},
             {"Annual Variance", "0.706"},
-            {"Information Ratio", "1.054"},
+            {"Information Ratio", "1.925"},
             {"Tracking Error", "0.846"},
-            {"Treynor Ratio", "6.405"},
-            {"Total Fees", "$0.00"}
+            {"Treynor Ratio", "12.333"},
+            {"Total Fees", "$0.00"},
+            {"Estimated Strategy Capacity", "$0"},
+            {"Fitness Score", "0"},
+            {"Kelly Criterion Estimate", "0"},
+            {"Kelly Criterion Probability Value", "0"},
+            {"Sortino Ratio", "2.269"},
+            {"Return Over Maximum Drawdown", "1.858"},
+            {"Portfolio Turnover", "0"},
+            {"Total Insights Generated", "0"},
+            {"Total Insights Closed", "0"},
+            {"Total Insights Analysis Completed", "0"},
+            {"Long Insight Count", "0"},
+            {"Short Insight Count", "0"},
+            {"Long/Short Ratio", "100%"},
+            {"Estimated Monthly Alpha Value", "$0"},
+            {"Total Accumulated Estimated Alpha Value", "$0"},
+            {"Mean Population Estimated Insight Value", "$0"},
+            {"Mean Population Direction", "0%"},
+            {"Mean Population Magnitude", "0%"},
+            {"Rolling Averaged Population Direction", "0%"},
+            {"Rolling Averaged Population Magnitude", "0%"},
+            {"OrderListHash", "50faa37f15732bf5c24ad1eeaa335bc7"}
         };
 
         /// <summary>
@@ -191,6 +213,7 @@ namespace QuantConnect.Algorithm.CSharp
                 {
                     string[] data = line.Split(',');
                     coin.Time = DateTime.Parse(data[0], CultureInfo.InvariantCulture);
+                    coin.EndTime = coin.Time.AddDays(1);
                     coin.Open = Convert.ToDecimal(data[1], CultureInfo.InvariantCulture);
                     coin.High = Convert.ToDecimal(data[2], CultureInfo.InvariantCulture);
                     coin.Low = Convert.ToDecimal(data[3], CultureInfo.InvariantCulture);

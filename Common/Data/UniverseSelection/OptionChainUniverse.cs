@@ -29,13 +29,13 @@ namespace QuantConnect.Data.UniverseSelection
     /// </summary>
     public class OptionChainUniverse : Universe
     {
-        private BaseData _underlying;
+        private readonly OptionFilterUniverse _optionFilterUniverse;
         private readonly UniverseSettings _universeSettings;
         private readonly bool _liveMode;
         // as an array to make it easy to prepend to selected symbols
         private readonly Symbol[] _underlyingSymbol;
-
         private DateTime _cacheDate;
+        private DateTime _lastExchangeDate;
 
         // used for time-based removals in live mode
         private readonly TimeSpan _minimumTimeInUniverse = TimeSpan.FromMinutes(15);
@@ -54,8 +54,9 @@ namespace QuantConnect.Data.UniverseSelection
         {
             Option = option;
             _underlyingSymbol = new[] { Option.Symbol.Underlying };
-            _universeSettings = universeSettings;
+            _universeSettings = new UniverseSettings(universeSettings) { DataNormalizationMode = DataNormalizationMode.Raw };
             _liveMode = liveMode;
+            _optionFilterUniverse = new OptionFilterUniverse();
         }
 
         /// <summary>
@@ -74,8 +75,9 @@ namespace QuantConnect.Data.UniverseSelection
         {
             Option = option;
             _underlyingSymbol = new[] { Option.Symbol.Underlying };
-            _universeSettings = universeSettings;
+            _universeSettings = new UniverseSettings(universeSettings) { DataNormalizationMode = DataNormalizationMode.Raw };
             _liveMode = liveMode;
+            _optionFilterUniverse = new OptionFilterUniverse();
         }
 
         /// <summary>
@@ -105,26 +107,24 @@ namespace QuantConnect.Data.UniverseSelection
                 throw new ArgumentException($"Expected data of type '{typeof(OptionChainUniverseDataCollection).Name}'");
             }
 
-            _underlying = optionsUniverseDataCollection.Underlying ?? _underlying;
-            optionsUniverseDataCollection.Underlying = _underlying;
-
-            if (_underlying == null || data.Data.Count == 0)
-            {
-                return Unchanged;
-            }
-
-            if (_cacheDate == data.Time.Date)
+            // date change detection needs to be done in exchange time zone
+            var exchangeDate = data.Time.ConvertFromUtc(Option.Exchange.TimeZone).Date;
+            if (_cacheDate == exchangeDate)
             {
                 return Unchanged;
             }
 
             var availableContracts = optionsUniverseDataCollection.Data.Select(x => x.Symbol);
-            var results = Option.ContractFilter.Filter(new OptionFilterUniverse(availableContracts, _underlying));
+            // we will only update unique strikes when there is an exchange date change
+            _optionFilterUniverse.Refresh(availableContracts, optionsUniverseDataCollection.Underlying, _lastExchangeDate != exchangeDate);
+            _lastExchangeDate = exchangeDate;
+
+            var results = Option.ContractFilter.Filter(_optionFilterUniverse);
 
             // if results are not dynamic, we cache them and won't call filtering till the end of the day
             if (!results.IsDynamic)
             {
-                _cacheDate = data.Time.Date;
+                _cacheDate = data.Time.ConvertFromUtc(Option.Exchange.TimeZone).Date;
             }
 
             // always prepend the underlying symbol
@@ -244,18 +244,20 @@ namespace QuantConnect.Data.UniverseSelection
         public override IEnumerable<SubscriptionRequest> GetSubscriptionRequests(Security security, DateTime currentTimeUtc, DateTime maximumEndTimeUtc,
                                                                                  ISubscriptionDataConfigService subscriptionService)
         {
-            var result = subscriptionService.Add(security.Symbol, UniverseSettings.Resolution,
-                                                 UniverseSettings.FillForward,
-                                                 UniverseSettings.ExtendedMarketHours,
-                                                 // force raw data normalization mode for underlying
-                                                 dataNormalizationMode: DataNormalizationMode.Raw);
+            if (Option.Symbol.Underlying == security.Symbol)
+            {
+                Option.Underlying = security;
+                security.SetDataNormalizationMode(DataNormalizationMode.Raw);
+            }
+            else
+            {
+                // set the underlying security and pricing model from the canonical security
+                var option = (Option)security;
+                option.Underlying = Option.Underlying;
+                option.PriceModel = Option.PriceModel;
+            }
 
-            return result.Select(config => new SubscriptionRequest(isUniverseSubscription: false,
-                                                                   universe: this,
-                                                                   security: security,
-                                                                   configuration: config,
-                                                                   startTimeUtc: currentTimeUtc,
-                                                                   endTimeUtc: maximumEndTimeUtc));
+            return base.GetSubscriptionRequests(security, currentTimeUtc, maximumEndTimeUtc, subscriptionService);
         }
     }
 }

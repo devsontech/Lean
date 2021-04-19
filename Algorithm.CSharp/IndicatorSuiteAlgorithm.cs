@@ -141,11 +141,11 @@ namespace QuantConnect.Algorithm.CSharp
         {
             if (!_indicators.BB.IsReady || !_indicators.RSI.IsReady) return;
 
-            _price = data["SPY"].Close;
+            _price = data[_symbol].Close;
 
             if (!Portfolio.HoldStock)
             {
-                int quantity = (int)Math.Floor(Portfolio.Cash / data[_symbol].Close);
+                int quantity = (int)Math.Floor(Portfolio.Cash / _price);
 
                 //Order function places trades: enter the string symbol and the quantity you want:
                 Order(_symbol, quantity);
@@ -158,8 +158,10 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// Fire plotting events once per day.
         /// </summary>
-        public override void OnEndOfDay()
+        public override void OnEndOfDay(Symbol symbol)
         {
+            if (symbol != _symbol) return;
+
             if (!_indicators.BB.IsReady) return;
 
             Plot("BB", "Price", _price);
@@ -244,22 +246,44 @@ namespace QuantConnect.Algorithm.CSharp
             {"Total Trades", "1"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
-            {"Compounding Annual Return", "19.104%"},
+            {"Compounding Annual Return", "19.058%"},
             {"Drawdown", "7.300%"},
             {"Expectancy", "0"},
-            {"Net Profit", "41.858%"},
-            {"Sharpe Ratio", "1.649"},
+            {"Net Profit", "41.748%"},
+            {"Sharpe Ratio", "1.596"},
+            {"Probabilistic Sharpe Ratio", "76.886%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "-0.026"},
-            {"Beta", "0.965"},
-            {"Annual Standard Deviation", "0.109"},
-            {"Annual Variance", "0.012"},
-            {"Information Ratio", "-1.513"},
-            {"Tracking Error", "0.022"},
-            {"Treynor Ratio", "0.187"},
-            {"Total Fees", "$1.00"}
+            {"Alpha", "0.171"},
+            {"Beta", "-0.064"},
+            {"Annual Standard Deviation", "0.1"},
+            {"Annual Variance", "0.01"},
+            {"Information Ratio", "-0.186"},
+            {"Tracking Error", "0.147"},
+            {"Treynor Ratio", "-2.51"},
+            {"Total Fees", "$1.00"},
+            {"Estimated Strategy Capacity", "$500000000.00"},
+            {"Fitness Score", "0.001"},
+            {"Kelly Criterion Estimate", "0"},
+            {"Kelly Criterion Probability Value", "0"},
+            {"Sortino Ratio", "2.283"},
+            {"Return Over Maximum Drawdown", "2.627"},
+            {"Portfolio Turnover", "0.001"},
+            {"Total Insights Generated", "0"},
+            {"Total Insights Closed", "0"},
+            {"Total Insights Analysis Completed", "0"},
+            {"Long Insight Count", "0"},
+            {"Short Insight Count", "0"},
+            {"Long/Short Ratio", "100%"},
+            {"Estimated Monthly Alpha Value", "$0"},
+            {"Total Accumulated Estimated Alpha Value", "$0"},
+            {"Mean Population Estimated Insight Value", "$0"},
+            {"Mean Population Direction", "0%"},
+            {"Mean Population Magnitude", "0%"},
+            {"Rolling Averaged Population Direction", "0%"},
+            {"Rolling Averaged Population Magnitude", "0%"},
+            {"OrderListHash", "ee33b931de5b59dfa930cbcacdaa2c9b"}
         };
     }
 }

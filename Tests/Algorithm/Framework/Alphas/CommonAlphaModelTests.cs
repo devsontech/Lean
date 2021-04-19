@@ -39,7 +39,7 @@ namespace QuantConnect.Tests.Algorithm.Framework.Alphas
     {
         private QCAlgorithm _algorithm;
 
-        [TestFixtureSetUp]
+        [OneTimeSetUp]
         public void Initialize()
         {
             PythonInitializer.Initialize();
@@ -161,11 +161,6 @@ namespace QuantConnect.Tests.Algorithm.Framework.Alphas
                 }
 
                 _algorithm.OnFrameworkData(slice);
-            }
-
-            foreach (var insight in actualInsights)
-            {
-                Console.WriteLine(insight);
             }
 
             Assert.AreEqual(expectedInsights.Count, actualInsights.Count);

@@ -37,7 +37,7 @@ namespace QuantConnect.ToolBox.IBDownloader
         /// </summary>
         public IBDataDownloader()
         {
-            _brokerage = new InteractiveBrokersBrokerage(null, null, null);
+            _brokerage = new InteractiveBrokersBrokerage(null, null, null, null, null);
             _brokerage.Connect();
         }
 
@@ -75,7 +75,31 @@ namespace QuantConnect.ToolBox.IBDownloader
             var data = _brokerage.GetHistory(historyRequest);
 
             return data;
+        }
 
+        /// <summary>
+        /// Returns an IEnumerable of Future/Option contract symbols for the given root ticker
+        /// </summary>
+        /// <param name="symbol">The Symbol to get futures/options chain for</param>
+        /// <param name="includeExpired">Include expired contracts</param>
+        public IEnumerable<Symbol> GetChainSymbols(Symbol symbol, bool includeExpired)
+        {
+            return _brokerage.LookupSymbols(symbol, includeExpired);
+        }
+
+        /// <summary>
+        /// Downloads historical data from the brokerage and saves it in LEAN format.
+        /// </summary>
+        /// <param name="symbols">The list of symbols</param>
+        /// <param name="tickType">The tick type</param>
+        /// <param name="resolution">The resolution</param>
+        /// <param name="securityType">The security type</param>
+        /// <param name="startTimeUtc">The starting date/time (UTC)</param>
+        /// <param name="endTimeUtc">The ending date/time (UTC)</param>
+        public void DownloadAndSave(List<Symbol> symbols, Resolution resolution, SecurityType securityType, TickType tickType, DateTime startTimeUtc, DateTime endTimeUtc)
+        {
+            var writer = new LeanDataWriter(Globals.DataFolder, resolution, securityType, tickType);
+            writer.DownloadAndSave(_brokerage, symbols, startTimeUtc, endTimeUtc);
         }
 
         /// <summary>
@@ -155,6 +179,11 @@ namespace QuantConnect.ToolBox.IBDownloader
             Console.Write($"\r[{bar}] {(p * 100).ToStringInvariant("N2")}%");
         }
 
+        #endregion
+
+        /// <summary>
+        /// Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.
+        /// </summary>
         public void Dispose()
         {
             if (_brokerage != null)
@@ -163,7 +192,5 @@ namespace QuantConnect.ToolBox.IBDownloader
                 _brokerage.Dispose();
             }
         }
-
-        #endregion
     }
 }

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -66,7 +66,7 @@ namespace QuantConnect.Algorithm.CSharp
                 }
 
                 var eurUsdSubscription = SubscriptionManager.SubscriptionDataConfigService
-                    .GetSubscriptionDataConfigs(QuantConnect.Symbol.Create("EURUSD", SecurityType.Forex, Market.FXCM),
+                    .GetSubscriptionDataConfigs(QuantConnect.Symbol.Create("EURUSD", SecurityType.Forex, Market.Oanda),
                         includeInternalConfigs: true)
                     .Single();
                 if (!eurUsdSubscription.IsInternalFeed)
@@ -100,22 +100,44 @@ namespace QuantConnect.Algorithm.CSharp
             {"Total Trades", "1"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
-            {"Compounding Annual Return", "17.116%"},
+            {"Compounding Annual Return", "14.647%"},
             {"Drawdown", "4.800%"},
             {"Expectancy", "0"},
-            {"Net Profit", "0.913%"},
-            {"Sharpe Ratio", "0.845"},
+            {"Net Profit", "0.819%"},
+            {"Sharpe Ratio", "0.81"},
+            {"Probabilistic Sharpe Ratio", "47.420%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "0.126"},
-            {"Beta", "0.981"},
-            {"Annual Standard Deviation", "0.156"},
-            {"Annual Variance", "0.024"},
-            {"Information Ratio", "5.281"},
-            {"Tracking Error", "0.024"},
-            {"Treynor Ratio", "0.135"},
-            {"Total Fees", "$2.60"}
+            {"Alpha", "0.104"},
+            {"Beta", "0.183"},
+            {"Annual Standard Deviation", "0.157"},
+            {"Annual Variance", "0.025"},
+            {"Information Ratio", "0.004"},
+            {"Tracking Error", "0.201"},
+            {"Treynor Ratio", "0.697"},
+            {"Total Fees", "$2.75"},
+            {"Estimated Strategy Capacity", "$460000000.00"},
+            {"Fitness Score", "0.04"},
+            {"Kelly Criterion Estimate", "0"},
+            {"Kelly Criterion Probability Value", "0"},
+            {"Sortino Ratio", "1.44"},
+            {"Return Over Maximum Drawdown", "3.028"},
+            {"Portfolio Turnover", "0.052"},
+            {"Total Insights Generated", "0"},
+            {"Total Insights Closed", "0"},
+            {"Total Insights Analysis Completed", "0"},
+            {"Long Insight Count", "0"},
+            {"Short Insight Count", "0"},
+            {"Long/Short Ratio", "100%"},
+            {"Estimated Monthly Alpha Value", "$0"},
+            {"Total Accumulated Estimated Alpha Value", "$0"},
+            {"Mean Population Estimated Insight Value", "$0"},
+            {"Mean Population Direction", "0%"},
+            {"Mean Population Magnitude", "0%"},
+            {"Rolling Averaged Population Direction", "0%"},
+            {"Rolling Averaged Population Magnitude", "0%"},
+            {"OrderListHash", "96a8985ed6c3b95ddb3ac6c7b12a725e"}
         };
     }
 }

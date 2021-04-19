@@ -40,6 +40,7 @@ namespace QuantConnect.ToolBox.OandaDownloader
             // Set Oanda account credentials
             _brokerage = new OandaBrokerage(null,
                 null,
+                null,
                 Environment.Practice,
                 accessToken,
                 accountId);

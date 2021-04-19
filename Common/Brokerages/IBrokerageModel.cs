@@ -16,7 +16,9 @@
 
 using System;
 using System.Collections.Generic;
+using QuantConnect.Benchmarks;
 using QuantConnect.Data.Market;
+using QuantConnect.Interfaces;
 using QuantConnect.Orders;
 using QuantConnect.Orders.Fees;
 using QuantConnect.Orders.Fills;
@@ -102,6 +104,13 @@ namespace QuantConnect.Brokerages
         decimal GetLeverage(Security security);
 
         /// <summary>
+        /// Get the benchmark for this model
+        /// </summary>
+        /// <param name="securities">SecurityService to create the security with if needed</param>
+        /// <returns>The benchmark for this brokerage</returns>
+        IBenchmark GetBenchmark(SecurityManager securities);
+
+        /// <summary>
         /// Gets a new fill model that represents this brokerage's fill behavior
         /// </summary>
         /// <param name="security">The security to get fill model for</param>
@@ -153,6 +162,12 @@ namespace QuantConnect.Brokerages
         /// <returns>The buying power model for this brokerage/security</returns>
         [Obsolete("Flagged deprecated and will remove December 1st 2018")]
         IBuyingPowerModel GetBuyingPowerModel(Security security, AccountType accountType);
+
+        /// <summary>
+        /// Gets the shortable provider
+        /// </summary>
+        /// <returns>Shortable provider</returns>
+        IShortableProvider GetShortableProvider();
     }
 
     /// <summary>
@@ -163,10 +178,11 @@ namespace QuantConnect.Brokerages
         /// <summary>
         /// Creates a new <see cref="IBrokerageModel"/> for the specified <see cref="BrokerageName"/>
         /// </summary>
+        /// <param name="orderProvider">The order provider</param>
         /// <param name="brokerage">The name of the brokerage</param>
         /// <param name="accountType">The account type</param>
         /// <returns>The model for the specified brokerage</returns>
-        public static IBrokerageModel Create(BrokerageName brokerage, AccountType accountType)
+        public static IBrokerageModel Create(IOrderProvider orderProvider, BrokerageName brokerage, AccountType accountType)
         {
             switch (brokerage)
             {
@@ -188,11 +204,23 @@ namespace QuantConnect.Brokerages
                 case BrokerageName.Bitfinex:
                     return new BitfinexBrokerageModel(accountType);
 
+                case BrokerageName.Binance:
+                    return new BinanceBrokerageModel(accountType);
+
                 case BrokerageName.GDAX:
                     return new GDAXBrokerageModel(accountType);
 
-                case BrokerageName.Alpaca:
-                    return new AlpacaBrokerageModel(accountType);
+                case BrokerageName.AlphaStreams:
+                    return new AlphaStreamsBrokerageModel(accountType);
+
+                case BrokerageName.Zerodha:
+                    return new ZerodhaBrokerageModel(accountType);
+                
+                case BrokerageName.Atreyu:
+                    return new AtreyuBrokerageModel(accountType);
+
+                case BrokerageName.TradingTechnologies:
+                    return new TradingTechnologiesBrokerageModel(accountType);
 
                 default:
                     throw new ArgumentOutOfRangeException(nameof(brokerage), brokerage, null);

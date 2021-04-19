@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -15,7 +15,6 @@
 */
 
 using System;
-using System.Linq;
 using System.Collections.Generic;
 using QuantConnect.Algorithm.Framework.Selection;
 using QuantConnect.Data;
@@ -79,7 +78,7 @@ namespace QuantConnect.Algorithm.CSharp
         public override void OnSecuritiesChanged(SecurityChanges changes)
         {
             bool iterated = false;
-            foreach (var added in changes.AddedSecurities.Where(x => x.Symbol.SecurityType == SecurityType.Equity))
+            foreach (var added in changes.AddedSecurities)
             {
                 if (!iterated)
                 {
@@ -108,22 +107,44 @@ namespace QuantConnect.Algorithm.CSharp
             {"Total Trades", "1"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
-            {"Compounding Annual Return", "-33.688%"},
+            {"Compounding Annual Return", "-33.612%"},
             {"Drawdown", "2.000%"},
             {"Expectancy", "0"},
-            {"Net Profit", "-1.674%"},
-            {"Sharpe Ratio", "-5.986"},
+            {"Net Profit", "-1.669%"},
+            {"Sharpe Ratio", "-4.888"},
+            {"Probabilistic Sharpe Ratio", "5.495%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "-0.363"},
-            {"Beta", "0.432"},
-            {"Annual Standard Deviation", "0.059"},
+            {"Alpha", "-0.273"},
+            {"Beta", "0.047"},
+            {"Annual Standard Deviation", "0.057"},
             {"Annual Variance", "0.003"},
-            {"Information Ratio", "-5.507"},
-            {"Tracking Error", "0.068"},
-            {"Treynor Ratio", "-0.817"},
+            {"Information Ratio", "-1.581"},
+            {"Tracking Error", "0.112"},
+            {"Treynor Ratio", "-5.872"},
             {"Total Fees", "$3.50"},
+            {"Estimated Strategy Capacity", "$48000000.00"},
+            {"Fitness Score", "0"},
+            {"Kelly Criterion Estimate", "0"},
+            {"Kelly Criterion Probability Value", "0"},
+            {"Sortino Ratio", "-7.289"},
+            {"Return Over Maximum Drawdown", "-16.95"},
+            {"Portfolio Turnover", "0.038"},
+            {"Total Insights Generated", "0"},
+            {"Total Insights Closed", "0"},
+            {"Total Insights Analysis Completed", "0"},
+            {"Long Insight Count", "0"},
+            {"Short Insight Count", "0"},
+            {"Long/Short Ratio", "100%"},
+            {"Estimated Monthly Alpha Value", "$0"},
+            {"Total Accumulated Estimated Alpha Value", "$0"},
+            {"Mean Population Estimated Insight Value", "$0"},
+            {"Mean Population Direction", "0%"},
+            {"Mean Population Magnitude", "0%"},
+            {"Rolling Averaged Population Direction", "0%"},
+            {"Rolling Averaged Population Magnitude", "0%"},
+            {"OrderListHash", "6b05339bfcb5bd93bfd66e32a1d2181a"}
         };
     }
 }

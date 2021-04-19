@@ -15,6 +15,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Globalization;
 using NodaTime;
 using QuantConnect.Logging;
@@ -175,6 +176,27 @@ namespace QuantConnect
         }
 
         /// <summary>
+        /// Create a C# DateTime from a UnixTimestamp
+        /// </summary>
+        /// <param name="unixTimeStamp">Int64 unix timestamp (Time since Midnight Jan 1 1970) in nanoseconds</param>
+        /// <returns>C# date timeobject</returns>
+        public static DateTime UnixNanosecondTimeStampToDateTime(long unixTimeStamp)
+        {
+            DateTime time;
+            try
+            {
+                var ticks = unixTimeStamp / 100;
+                time = EpochTime.AddTicks(ticks);
+            }
+            catch (Exception err)
+            {
+                Log.Error(err, Invariant($"UnixTimeStamp: {unixTimeStamp}"));
+                time = DateTime.Now;
+            }
+            return time;
+        }
+
+        /// <summary>
         /// Convert a Datetime to Unix Timestamp
         /// </summary>
         /// <param name="time">C# datetime object</param>
@@ -185,6 +207,44 @@ namespace QuantConnect
             try
             {
                 timestamp = (time - new DateTime(1970, 1, 1, 0, 0, 0, 0)).TotalSeconds;
+            }
+            catch (Exception err)
+            {
+                Log.Error(err, Invariant($"{time:o}"));
+            }
+            return timestamp;
+        }
+
+        /// <summary>
+        /// Convert a Datetime to Unix Timestamp
+        /// </summary>
+        /// <param name="time">C# datetime object</param>
+        /// <returns>Double unix timestamp</returns>
+        public static double DateTimeToUnixTimeStampMilliseconds(DateTime time)
+        {
+            double timestamp = 0;
+            try
+            {
+                timestamp = (time - new DateTime(1970, 1, 1, 0, 0, 0, 0)).TotalMilliseconds;
+            }
+            catch (Exception err)
+            {
+                Log.Error(err, Invariant($"{time:o}"));
+            }
+            return timestamp;
+        }
+
+        /// <summary>
+        /// Convert a Datetime to Unix Timestamp
+        /// </summary>
+        /// <param name="time">C# datetime object</param>
+        /// <returns>Int64 unix timestamp</returns>
+        public static long DateTimeToUnixTimeStampNanoseconds(DateTime time)
+        {
+            long timestamp = 0;
+            try
+            {
+                timestamp = (time - new DateTime(1970, 1, 1, 0, 0, 0, 0)).Ticks * 100;
             }
             catch (Exception err)
             {
@@ -264,11 +324,27 @@ namespace QuantConnect
                 {
                     return date;
                 }
-                if (DateTime.TryParseExact(dateToParse.Substring(0, 19), DateFormat.JsonFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
+                if (DateTime.TryParseExact(dateToParse, DateFormat.TwelveCharacter, CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
+                {
+                    return date;
+                }
+                if (DateTime.TryParseExact(dateToParse.SafeSubstring(0, 19), DateFormat.JsonFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
+                {
+                    return date;
+                }
+                if (DateTime.TryParseExact(dateToParse, DateFormat.USShort, CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
+                {
+                    return date;
+                }
+                if (DateTime.TryParseExact(dateToParse, DateFormat.USShortDateOnly, CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
                 {
                     return date;
                 }
                 if (DateTime.TryParseExact(dateToParse, DateFormat.US, CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
+                {
+                    return date;
+                }
+                if (DateTime.TryParseExact(dateToParse, DateFormat.USDateOnly, CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
                 {
                     return date;
                 }
@@ -285,6 +361,33 @@ namespace QuantConnect
             return DateTime.Now;
         }
 
+        /// <summary>
+        /// Parse a standard YY MM DD date into a DateTime. Attempt common date formats
+        /// </summary>
+        /// <param name="dateToParse">String date time to parse</param>
+        /// <returns>Date time</returns>
+        public static DateTime ParseFIXUtcTimestamp(string dateToParse)
+        {
+            try
+            {
+                //First try the exact options:
+                DateTime date;
+                if (DateTime.TryParseExact(dateToParse, DateFormat.FIX, CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
+                {
+                    return date;
+                }
+                if (DateTime.TryParseExact(dateToParse, DateFormat.FIXWithMillisecond, CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
+                {
+                    return date;
+                }
+            }
+            catch (Exception err)
+            {
+                Log.Error(err);
+            }
+
+            return DateTime.UtcNow;
+        }
 
         /// <summary>
         /// Define an enumerable date range and return each date as a datetime object in the date range
@@ -449,15 +552,17 @@ namespace QuantConnect
         /// <param name="barSize">The length of each bar</param>
         /// <param name="barCount">The number of bars requested</param>
         /// <param name="extendedMarketHours">True to allow extended market hours bars, otherwise false for only normal market hours</param>
+        /// <param name="dataTimeZone">Timezone for this data</param>
         /// <returns>The start time that would provide the specified number of bars ending at the specified end time, rounded down by the requested bar size</returns>
-        public static DateTime GetStartTimeForTradeBars(SecurityExchangeHours exchangeHours, DateTime end, TimeSpan barSize, int barCount, bool extendedMarketHours)
+        public static DateTime GetStartTimeForTradeBars(SecurityExchangeHours exchangeHours, DateTime end, TimeSpan barSize, int barCount, bool extendedMarketHours, DateTimeZone dataTimeZone)
         {
             if (barSize <= TimeSpan.Zero)
             {
                 throw new ArgumentException("barSize must be greater than TimeSpan.Zero", nameof(barSize));
             }
 
-            var current = end.RoundDown(barSize);
+            // need to round down in data timezone because data is stored in this time zone
+            var current = end.RoundDownInTimeZone(barSize, exchangeHours.TimeZone, dataTimeZone);
             for (int i = 0; i < barCount;)
             {
                 var previous = current;

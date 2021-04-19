@@ -30,7 +30,7 @@ namespace QuantConnect.Tests.AlgorithmFactory
         [SetUp]
         public void SetUp()
         {
-            _workerThread = new WorkerThread();
+            _workerThread = new TestWorkerThread();
         }
 
         [TearDown]
@@ -39,7 +39,7 @@ namespace QuantConnect.Tests.AlgorithmFactory
             _workerThread.Dispose();
         }
 
-        [Test, Ignore]
+        [Test]
         public void LoadsSamePythonAlgorithmTwice()
         {
             var assemblyPath = "../../../Algorithm.Python/BasicTemplateAlgorithm.py";
@@ -47,17 +47,17 @@ namespace QuantConnect.Tests.AlgorithmFactory
             string error1;
             IAlgorithm algorithm1;
             var one = new Loader(false, Language.Python, TimeSpan.FromMinutes(1), names => names.SingleOrDefault(), _workerThread)
-                .TryCreateAlgorithmInstanceWithIsolator(assemblyPath, 512, out algorithm1, out error1);
+                .TryCreateAlgorithmInstanceWithIsolator(assemblyPath, 5120, out algorithm1, out error1);
 
             string error2;
             IAlgorithm algorithm2;
             var two = new Loader(false, Language.Python, TimeSpan.FromMinutes(1), names => names.SingleOrDefault(), _workerThread)
-                .TryCreateAlgorithmInstanceWithIsolator(assemblyPath, 512, out algorithm2, out error2);
+                .TryCreateAlgorithmInstanceWithIsolator(assemblyPath, 5120, out algorithm2, out error2);
 
             Assert.AreNotEqual(algorithm1.ToString(), algorithm2.ToString());
         }
 
-        [Test, Ignore]
+        [Test]
         public void LoadsTwoDifferentPythonAlgorithm()
         {
             var assemblyPath1 = "../../../Algorithm.Python/BasicTemplateAlgorithm.py";
@@ -66,25 +66,27 @@ namespace QuantConnect.Tests.AlgorithmFactory
             string error1;
             IAlgorithm algorithm1;
             var one = new Loader(false, Language.Python, TimeSpan.FromMinutes(1), names => names.SingleOrDefault(), _workerThread)
-                .TryCreateAlgorithmInstanceWithIsolator(assemblyPath1, 512, out algorithm1, out error1);
+                .TryCreateAlgorithmInstanceWithIsolator(assemblyPath1, 5120, out algorithm1, out error1);
 
             string error2;
             IAlgorithm algorithm2;
             var two = new Loader(false, Language.Python, TimeSpan.FromMinutes(1), names => names.SingleOrDefault(), _workerThread)
-                .TryCreateAlgorithmInstanceWithIsolator(assemblyPath2, 512, out algorithm2, out error2);
+                .TryCreateAlgorithmInstanceWithIsolator(assemblyPath2, 5120, out algorithm2, out error2);
 
             Assert.AreNotEqual(algorithm1.ToString(), algorithm2.ToString());
         }
 
         [Test]
-        public void LoadsAlgorithm_UsingSingleOrAlgorithmTypeName_ExtensionMethod()
+        [TestCase("BasicTemplateAlgorithm")]
+        [TestCase("QuantConnect.Algorithm.CSharp.BasicTemplateAlgorithm")]
+        public void LoadsAlgorithm_UsingSingleOrAlgorithmTypeName_ExtensionMethod(string algorithmName)
         {
             var assemblyPath1 = "QuantConnect.Algorithm.CSharp.dll";
 
             string error1;
             IAlgorithm algorithm1;
-            var one = new Loader(false, Language.CSharp, TimeSpan.FromMinutes(1), names => names.SingleOrAlgorithmTypeName("BasicTemplateAlgorithm"), _workerThread)
-                .TryCreateAlgorithmInstanceWithIsolator(assemblyPath1, 512, out algorithm1, out error1);
+            var one = new Loader(false, Language.CSharp, TimeSpan.FromMinutes(1), names => names.SingleOrAlgorithmTypeName(algorithmName), _workerThread)
+                .TryCreateAlgorithmInstanceWithIsolator(assemblyPath1, 5120, out algorithm1, out error1);
 
             Assert.IsTrue(one);
         }
@@ -97,16 +99,21 @@ namespace QuantConnect.Tests.AlgorithmFactory
             string error1;
             IAlgorithm algorithm1;
             var one = new Loader(false, Language.CSharp, TimeSpan.FromMinutes(1), names => names.SingleOrAlgorithmTypeName("BasicTemplateAlgorithm"), _workerThread)
-                .TryCreateAlgorithmInstanceWithIsolator(assemblyPath, 512, out algorithm1, out error1);
+                .TryCreateAlgorithmInstanceWithIsolator(assemblyPath, 5120, out algorithm1, out error1);
 
             string error2;
             IAlgorithm algorithm2;
             var two = new Loader(false, Language.CSharp, TimeSpan.FromMinutes(1), names => names.SingleOrAlgorithmTypeName("BasicTemplateForexAlgorithm"), _workerThread)
-                .TryCreateAlgorithmInstanceWithIsolator(assemblyPath, 512, out algorithm2, out error2);
+                .TryCreateAlgorithmInstanceWithIsolator(assemblyPath, 5120, out algorithm2, out error2);
 
             Assert.IsTrue(one);
             Assert.IsTrue(two);
             Assert.AreNotEqual(algorithm1.ToString(), algorithm2.ToString());
+        }
+
+        private class TestWorkerThread : WorkerThread
+        {
+
         }
     }
 }

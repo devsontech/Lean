@@ -53,7 +53,12 @@ namespace QuantConnect.Orders
         /// <summary>
         /// Option Exercise Order Type
         /// </summary>
-        OptionExercise
+        OptionExercise,
+        
+        /// <summary>
+        ///  Limit if Touched Order Type - a limit order to be placed after first reaching a trigger value.
+        /// </summary>
+        LimitIfTouched
     }
 
     /// <summary>
@@ -124,6 +129,11 @@ namespace QuantConnect.Orders
         /// <summary>
         /// Order waiting for confirmation of cancellation
         /// </summary>
-        CancelPending = 8
+        CancelPending = 8,
+
+        /// <summary>
+        /// Order update submitted to the market
+        /// </summary>
+        UpdateSubmitted = 9
     }
 }

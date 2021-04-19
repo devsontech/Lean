@@ -16,6 +16,8 @@
 using Newtonsoft.Json;
 using System;
 using System.IO;
+using NodaTime;
+using ProtoBuf;
 using static QuantConnect.StringExtensions;
 
 namespace QuantConnect.Data.Custom.Estimize
@@ -23,30 +25,34 @@ namespace QuantConnect.Data.Custom.Estimize
     /// <summary>
     /// Consensus of the specified release
     /// </summary>
-    [JsonObject(MemberSerialization.OptIn)]
+    [ProtoContract(SkipConstructor = true)]
     public class EstimizeConsensus : BaseData
     {
         /// <summary>
         /// The unique identifier for the estimate
         /// </summary>
+        [ProtoMember(10)]
         [JsonProperty(PropertyName = "id")]
         public string Id { get; set; }
 
         /// <summary>
         /// Consensus source (Wall Street or Estimize)
         /// </summary>
+        [ProtoMember(11)]
         [JsonProperty(PropertyName = "source")]
         public Source? Source { get; set; }
 
         /// <summary>
         /// Type of Consensus (EPS or Revenue)
         /// </summary>
+        [ProtoMember(12)]
         [JsonProperty(PropertyName = "type")]
         public Type? Type { get; set; }
 
         /// <summary>
         /// The mean of the distribution of estimates (the "consensus")
         /// </summary>
+        [ProtoMember(13)]
         [JsonProperty(PropertyName = "mean")]
         public decimal? Mean { get; set; }
 
@@ -58,42 +64,53 @@ namespace QuantConnect.Data.Custom.Estimize
         /// <summary>
         /// The highest estimate in the distribution
         /// </summary>
+        [ProtoMember(14)]
         [JsonProperty(PropertyName = "high")]
         public decimal? High { get; set; }
 
         /// <summary>
         /// The lowest estimate in the distribution
         /// </summary>
+        [ProtoMember(15)]
         [JsonProperty(PropertyName = "low")]
         public decimal? Low { get; set; }
 
         /// <summary>
         /// The standard deviation of the distribution
         /// </summary>
+        [ProtoMember(16)]
         [JsonProperty(PropertyName = "standard_deviation")]
         public decimal? StandardDeviation { get; set; }
 
         /// <summary>
         /// The number of estimates in the distribution
         /// </summary>
+        [ProtoMember(17)]
         [JsonProperty(PropertyName = "count")]
         public int? Count { get; set; }
 
         /// <summary>
         /// The timestamp of this consensus (UTC)
         /// </summary>
+        [ProtoMember(18)]
         [JsonProperty(PropertyName = "updated_at")]
-        public DateTime UpdatedAt { get; set; }
+        public DateTime UpdatedAt
+        {
+            get { return Time; }
+            set { Time = value; }
+        }
 
         /// <summary>
         /// The fiscal year for the release
         /// </summary>
+        [ProtoMember(19)]
         [JsonProperty(PropertyName = "fiscal_year")]
         public int? FiscalYear { get; set; }
 
         /// <summary>
         /// The fiscal quarter for the release
         /// </summary>
+        [ProtoMember(20)]
         [JsonProperty(PropertyName = "fiscal_quarter")]
         public int? FiscalQuarter { get; set; }
 
@@ -119,10 +136,9 @@ namespace QuantConnect.Data.Custom.Estimize
             var csv = csvLine.Split(',');
 
             UpdatedAt = Parse.DateTimeExact(csv[0], "yyyyMMdd HH:mm:ss");
-            Time = UpdatedAt;
             Id = csv[1];
-            Source = csv[2].ConvertInvariant<Source>();
-            Type = csv[3].IfNotNullOrEmpty(s => s.ConvertInvariant<Type>());
+            Source = (Source)Enum.Parse(typeof(Source), csv[2]);
+            Type = csv[3].IfNotNullOrEmpty(s => (Type)Enum.Parse(typeof(Type), s));
             Mean = csv[4].IfNotNullOrEmpty<decimal?>(s => Parse.Decimal(s));
             High = csv[5].IfNotNullOrEmpty<decimal?>(s => Parse.Decimal(s));
             Low = csv[6].IfNotNullOrEmpty<decimal?>(s => Parse.Decimal(s));
@@ -191,6 +207,15 @@ namespace QuantConnect.Data.Custom.Estimize
         public override bool RequiresMapping()
         {
             return true;
+        }
+
+        /// <summary>
+        /// Specifies the data time zone for this data type. This is useful for custom data types
+        /// </summary>
+        /// <returns>The <see cref="DateTimeZone"/> of this data type</returns>
+        public override DateTimeZone DataTimeZone()
+        {
+            return TimeZones.Utc;
         }
     }
 

@@ -34,13 +34,13 @@ namespace QuantConnect.Tests.Common
         };
 
         [Theory]
-        [TestCaseSource("GetSymbolCreateTestCaseData")]
+        [TestCaseSource(nameof(GetSymbolCreateTestCaseData))]
         public void SymbolCreate(string ticker, SecurityType securityType, string market, Symbol expected)
         {
             Assert.AreEqual(Symbol.Create(ticker, securityType, market), expected);
         }
 
-        private TestCaseData[] GetSymbolCreateTestCaseData()
+        private static TestCaseData[] GetSymbolCreateTestCaseData()
         {
             return new []
             {
@@ -325,6 +325,28 @@ namespace QuantConnect.Tests.Common
         }
 
         [Test]
+        public void EqualsAgainstNullOrEmpty()
+        {
+            var validSymbol = Symbols.SPY;
+            var emptySymbol = Symbol.Empty;
+            var emptySymbolInstance = new Symbol(SecurityIdentifier.Empty, string.Empty);
+            Symbol nullSymbol = null;
+
+            Assert.IsTrue(emptySymbol.Equals(nullSymbol));
+            Assert.IsTrue(Symbol.Empty.Equals(nullSymbol));
+            Assert.IsTrue(emptySymbolInstance.Equals(nullSymbol));
+
+            Assert.IsTrue(emptySymbol.Equals(emptySymbol));
+            Assert.IsTrue(Symbol.Empty.Equals(emptySymbol));
+            Assert.IsTrue(emptySymbolInstance.Equals(emptySymbol));
+
+            Assert.IsFalse(validSymbol.Equals(nullSymbol));
+            Assert.IsFalse(validSymbol.Equals(emptySymbol));
+            Assert.IsFalse(validSymbol.Equals(emptySymbolInstance));
+            Assert.IsFalse(Symbol.Empty.Equals(validSymbol));
+        }
+
+        [Test]
         public void ComparesAgainstNullOrEmpty()
         {
             var validSymbol = Symbols.SPY;
@@ -400,8 +422,14 @@ namespace QuantConnect.Tests.Common
             string stringEurusd = eurusd;
             Assert.AreEqual(eurusd.ID.ToString(), stringEurusd);
 
-            Symbol notASymbol = "this will not resolve to a proper Symbol instance";
-            Assert.AreEqual(Symbol.Empty, notASymbol);
+            Assert.Throws<ArgumentException>(() =>
+            {
+                Symbol symbol = "this will not resolve to a proper Symbol instance";
+            });
+
+            Symbol notASymbol = "NotASymbol";
+            Assert.AreNotEqual(Symbol.Empty, notASymbol);
+            Assert.IsTrue(notASymbol.ToString().Contains("NotASymbol"));
 #pragma warning restore 0618
         }
 
@@ -439,7 +467,7 @@ namespace QuantConnect.Tests.Common
             SymbolCache.Set("EURUSD", Symbols.EURUSD);
             var expected = SymbolCache.GetSymbol("EURUSD");
             string stringValue = expected;
-            string notFound = "EURGBP 5O";
+            string notFound = "EURGBP 8G";
             var expectedNotFoundSymbol = Symbols.EURGBP;
             string sid = expected.ID.ToString();
             Symbol actual = sid;
@@ -473,8 +501,8 @@ namespace QuantConnect.Tests.Common
             var symbol = Symbol.CreateOption("SPY", Market.USA, OptionStyle.American, OptionRight.Call, 200, new DateTime(2012, 09, 22));
             var weeklySymbol = Symbol.CreateOption("SPY", Market.USA, OptionStyle.American, OptionRight.Call, 200, new DateTime(2012, 09, 07));
 
-            Assert.True(OptionSymbol.IsStandardContract(symbol));
-            Assert.False(OptionSymbol.IsStandardContract(weeklySymbol));
+            Assert.True(OptionSymbol.IsStandard(symbol));
+            Assert.False(OptionSymbol.IsStandard(weeklySymbol));
 
             Assert.AreEqual(new DateTime(2012, 09, 21)/*Friday*/, OptionSymbol.GetLastDayOfTrading(symbol));
             Assert.AreEqual(new DateTime(2012, 09, 07)/*Friday*/, OptionSymbol.GetLastDayOfTrading(weeklySymbol));
@@ -486,11 +514,25 @@ namespace QuantConnect.Tests.Common
             var symbol = Symbol.CreateOption("SPY", Market.USA, OptionStyle.American, OptionRight.Call, 200, new DateTime(2016, 02, 19));
             var weeklySymbol = Symbol.CreateOption("SPY", Market.USA, OptionStyle.American, OptionRight.Call, 200, new DateTime(2016, 02, 05));
 
-            Assert.True(OptionSymbol.IsStandardContract(symbol));
-            Assert.False(OptionSymbol.IsStandardContract(weeklySymbol));
+            Assert.True(OptionSymbol.IsStandard(symbol));
+            Assert.False(OptionSymbol.IsStandard(weeklySymbol));
 
             Assert.AreEqual(new DateTime(2016, 02, 19)/*Friday*/, OptionSymbol.GetLastDayOfTrading(symbol));
             Assert.AreEqual(new DateTime(2016, 02, 05)/*Friday*/, OptionSymbol.GetLastDayOfTrading(weeklySymbol));
+        }
+
+        [Test]
+        public void TestIfWeDetectCorrectlyWeeklies()
+        {
+            var weeklySymbol = Symbol.CreateOption("SPY", Market.USA, OptionStyle.American, OptionRight.Call, 200, new DateTime(2020, 04, 10));
+            var monthlysymbol = Symbol.CreateOption("SPY", Market.USA, OptionStyle.American, OptionRight.Call, 200, new DateTime(2020, 04, 17));
+
+            Assert.True(OptionSymbol.IsWeekly(weeklySymbol));
+            Assert.False(OptionSymbol.IsWeekly(monthlysymbol));
+
+            Assert.AreEqual(new DateTime(2020, 04, 17)/*Friday*/, OptionSymbol.GetLastDayOfTrading(monthlysymbol));
+            //Good Friday on 10th so should be 9th
+            Assert.AreEqual(new DateTime(2020, 04, 09)/*Thursday*/, OptionSymbol.GetLastDayOfTrading(weeklySymbol));
         }
 
         [Test]
@@ -512,6 +554,101 @@ namespace QuantConnect.Tests.Common
             var thursdayBeforeGoodFriday = saturdayAfterGoodFriday.AddDays(-2);
             var symbol = Symbol.CreateOption("SPY", Market.USA, OptionStyle.American, OptionRight.Call, 200, saturdayAfterGoodFriday);
             Assert.AreEqual(thursdayBeforeGoodFriday, OptionSymbol.GetLastDayOfTrading(symbol));
+        }
+
+        [TestCase("ES", "ES")]
+        [TestCase("GC", "OG")]
+        [TestCase("ZT", "OZT")]
+        public void FutureOptionsWithDifferentUnderlyingGlobexTickersAreMapped(string futureTicker, string expectedFutureOptionTicker)
+        {
+            var future = Symbol.CreateFuture(futureTicker, Market.CME, DateTime.UtcNow.Date);
+            var canonicalFutureOption = Symbol.CreateOption(
+                future,
+                Market.CME,
+                default(OptionStyle),
+                default(OptionRight),
+                default(decimal),
+                SecurityIdentifier.DefaultDate);
+
+            var nonCanonicalFutureOption = Symbol.CreateOption(
+                future,
+                Market.CME,
+                default(OptionStyle),
+                default(OptionRight),
+                default(decimal),
+                new DateTime(2020, 12, 18));
+
+            Assert.AreEqual(canonicalFutureOption.Underlying.ID.Symbol, futureTicker);
+            Assert.AreEqual(canonicalFutureOption.ID.Symbol, expectedFutureOptionTicker);
+            Assert.IsTrue(canonicalFutureOption.Value.StartsWith("?" + futureTicker));
+
+            Assert.AreEqual(nonCanonicalFutureOption.Underlying.ID.Symbol, futureTicker);
+            Assert.AreEqual(nonCanonicalFutureOption.ID.Symbol, expectedFutureOptionTicker);
+            Assert.IsTrue(nonCanonicalFutureOption.Value.StartsWith(expectedFutureOptionTicker));
+        }
+
+        [Test]
+        public void SymbolWithSidContainingUnderlyingCreatedWithoutNullUnderlying()
+        {
+            var future = Symbol.CreateFuture("ES", Market.CME, new DateTime(2020, 6, 19));
+            var optionSid = SecurityIdentifier.GenerateOption(
+                future.ID.Date,
+                future.ID,
+                future.ID.Market,
+                3500m,
+                OptionRight.Call,
+                OptionStyle.American);
+
+            var option = new Symbol(optionSid, "ES");
+            Assert.IsNotNull(option.Underlying);
+            Assert.AreEqual(future, option.Underlying);
+        }
+
+        [TestCase("CL XKJAZ588SI4H", "CL", "CL21F21")] // Future
+        [TestCase("CL JL", "CL", "/CL")] // Canonical Future
+        [TestCase("ES 1S4 | ES XLDTU1KH5XC1", "CL", "?ES21F21")] // Future Option Canonical
+        [TestCase("ES XKGCMV4QK9VO | ES XLDTU1KH5XC1", "ES", "ES21F21  201218C00000000")] // Future Option
+        [TestCase("SPY 2U | SPY R735QTJ8XC9X", "SPY", "?SPY")] // Option Canonical
+        [TestCase("GOOCV 305RBQ2BZBZT2 | GOOCV VP83T1ZUHROL", "GOOCV", "GOOCV 151224P00750000")] // Option
+        [TestCase("SPY R735QTJ8XC9X", "SPY", "SPY")] // Equity
+        [TestCase("EURGBP 8G", "EURGBP", "EURGBP")] // Forex
+        [TestCase("BTCUSD XJ", "BTCUSD", "BTCUSD")] // Crypto
+        public void SymbolAlias(string identifier, string ticker, string expectedValue)
+        {
+            var symbol = new Symbol(SecurityIdentifier.Parse(identifier), ticker);
+            Assert.AreEqual(expectedValue, symbol.Value);
+        }
+
+        [TestCase("CL XKJAZ588SI4H", "CL", "CL21F21")] // Future
+        [TestCase("CL JL", "CL", "/CL")] // Canonical Future
+        [TestCase("ES 1S4 | ES XLDTU1KH5XC1", "ES", "?ES21F21")] // Future Option Canonical
+        [TestCase("ES XKGCMV4QK9VO | ES XLDTU1KH5XC1", "ES", "ES21F21  201218C00000000")] // Future Option
+        [TestCase("SPY 2U | SPY R735QTJ8XC9X", "SPY", "?SPY")] // Option Canonical
+        [TestCase("GOOCV 305RBQ2BZBZT2 | GOOCV VP83T1ZUHROL", "GOOCV", "GOOCV 151224P00750000")] // Option
+        [TestCase("SPY R735QTJ8XC9X", "SPY", null)] // Equity
+        [TestCase("EURGBP 8G", "EURGBP", null)] // Forex
+        [TestCase("BTCUSD XJ", "BTCUSD", null)] // Crypto
+        public void SymbolCanonical(string identifier, string ticker, string expectedValue)
+        {
+            var symbol = new Symbol(SecurityIdentifier.Parse(identifier), ticker);
+            if (expectedValue != null)
+            {
+                var result = symbol.Canonical;
+
+                Assert.IsNotNull(result);
+                Assert.AreSame(result, symbol.Canonical);
+                Assert.IsTrue(result.IsCanonical());
+                Assert.IsTrue(result.Value.Contains(ticker));
+                Assert.AreEqual(symbol.SecurityType, result.SecurityType);
+                Assert.AreEqual(symbol.ID.Market, result.ID.Market);
+            }
+            else
+            {
+                Assert.Throws<InvalidOperationException>(() =>
+                {
+                    var canonical = symbol.Canonical;
+                });
+            }
         }
 
         class OldSymbol

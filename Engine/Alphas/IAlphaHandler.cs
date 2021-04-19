@@ -16,6 +16,7 @@
 
 using System.ComponentModel.Composition;
 using QuantConnect.Interfaces;
+using QuantConnect.Lean.Engine.TransactionHandlers;
 using QuantConnect.Packets;
 
 namespace QuantConnect.Lean.Engine.Alpha
@@ -43,7 +44,8 @@ namespace QuantConnect.Lean.Engine.Alpha
         /// <param name="algorithm">The algorithm instance</param>
         /// <param name="messagingHandler">Handler used for sending insights</param>
         /// <param name="api">Api instance</param>
-        void Initialize(AlgorithmNodePacket job, IAlgorithm algorithm, IMessagingHandler messagingHandler, IApi api);
+        /// <param name="transactionHandler">Algorithms transaction handler</param>
+        void Initialize(AlgorithmNodePacket job, IAlgorithm algorithm, IMessagingHandler messagingHandler, IApi api, ITransactionHandler transactionHandler);
 
         /// <summary>
         /// Invoked after the algorithm's Initialize method was called allowing the alpha handler to check
@@ -58,12 +60,7 @@ namespace QuantConnect.Lean.Engine.Alpha
         void ProcessSynchronousEvents();
 
         /// <summary>
-        /// Thread entry point for asynchronous processing
-        /// </summary>
-        void Run();
-
-        /// <summary>
-        /// Stops processing in the <see cref="Run"/> method
+        /// Stops processing in the <see cref="Engine.Run"/> method
         /// </summary>
         void Exit();
     }

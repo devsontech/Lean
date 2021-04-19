@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -99,7 +99,7 @@ namespace QuantConnect.Algorithm.CSharp
 
         private void UpdateExpectedOrderQuantity(decimal target)
         {
-            _expectedOrderQuantity = (Portfolio.TotalPortfolioValue * target * (1 - Settings.FreePortfolioValuePercentage) - _spy.Holdings.HoldingsValue)
+            _expectedOrderQuantity = ((Portfolio.TotalPortfolioValue - Settings.FreePortfolioValue) * target - _spy.Holdings.HoldingsValue)
                 / (_spy.Price * _spy.QuoteCurrency.ConversionRate);
             _expectedOrderQuantity--; // minus 1 per fees
             _expectedOrderQuantity -= _expectedOrderQuantity % _spy.SymbolProperties.LotSize;
@@ -116,8 +116,8 @@ namespace QuantConnect.Algorithm.CSharp
                 - Portfolio.CashBook.Convert(Portfolio.TotalFees, "EUR", "USD");
             var amount = Portfolio.CashBook["USD"].Amount;
             // there could be a small difference due to conversion rates
-            // leave 0.5% for error
-            if (Math.Abs(expectedAmount - amount) > Math.Abs(expectedAmount) * 0.005m)
+            // leave 1% for error
+            if (Math.Abs(expectedAmount - amount) > Math.Abs(expectedAmount) * 0.01m)
             {
                 throw new Exception($"Unexpected USD ending cash amount: {amount}. Expected {expectedAmount}");
             }
@@ -129,7 +129,7 @@ namespace QuantConnect.Algorithm.CSharp
             {
                 Log($"OnOrderEvent(): New filled order event: {orderEvent}");
                 // leave 1 unit as error in expected value
-                if (Math.Abs(orderEvent.FillQuantity - _expectedOrderQuantity) > 1)
+                if (Math.Abs(orderEvent.FillQuantity - _expectedOrderQuantity) > 2)
                 {
                     throw new Exception($"Unexpected order event fill quantity: {orderEvent.FillQuantity}. " +
                         $"Expected {_expectedOrderQuantity}");
@@ -196,23 +196,45 @@ namespace QuantConnect.Algorithm.CSharp
         {
             {"Total Trades", "6"},
             {"Average Win", "0.41%"},
-            {"Average Loss", "-0.86%"},
-            {"Compounding Annual Return", "-16.861%"},
-            {"Drawdown", "1.100%"},
-            {"Expectancy", "-0.262"},
-            {"Net Profit", "-0.456%"},
-            {"Sharpe Ratio", "-1.529"},
+            {"Average Loss", "-0.85%"},
+            {"Compounding Annual Return", "-15.350%"},
+            {"Drawdown", "1.200%"},
+            {"Expectancy", "-0.260"},
+            {"Net Profit", "-0.448%"},
+            {"Sharpe Ratio", "-1.368"},
+            {"Probabilistic Sharpe Ratio", "33.743%"},
             {"Loss Rate", "50%"},
             {"Win Rate", "50%"},
             {"Profit-Loss Ratio", "0.48"},
-            {"Alpha", "-0.242"},
-            {"Beta", "0.333"},
-            {"Annual Standard Deviation", "0.082"},
+            {"Alpha", "-0.194"},
+            {"Beta", "0.124"},
+            {"Annual Standard Deviation", "0.084"},
             {"Annual Variance", "0.007"},
-            {"Information Ratio", "-4.105"},
-            {"Tracking Error", "0.116"},
-            {"Treynor Ratio", "-0.376"},
-            {"Total Fees", "$12.97"}
+            {"Information Ratio", "-4.228"},
+            {"Tracking Error", "0.178"},
+            {"Treynor Ratio", "-0.932"},
+            {"Total Fees", "$13.73"},
+            {"Estimated Strategy Capacity", "$270000000.00"},
+            {"Fitness Score", "0.034"},
+            {"Kelly Criterion Estimate", "0"},
+            {"Kelly Criterion Probability Value", "0"},
+            {"Sortino Ratio", "-3.241"},
+            {"Return Over Maximum Drawdown", "-13.301"},
+            {"Portfolio Turnover", "0.445"},
+            {"Total Insights Generated", "0"},
+            {"Total Insights Closed", "0"},
+            {"Total Insights Analysis Completed", "0"},
+            {"Long Insight Count", "0"},
+            {"Short Insight Count", "0"},
+            {"Long/Short Ratio", "100%"},
+            {"Estimated Monthly Alpha Value", "€0"},
+            {"Total Accumulated Estimated Alpha Value", "€0"},
+            {"Mean Population Estimated Insight Value", "€0"},
+            {"Mean Population Direction", "0%"},
+            {"Mean Population Magnitude", "0%"},
+            {"Rolling Averaged Population Direction", "0%"},
+            {"Rolling Averaged Population Magnitude", "0%"},
+            {"OrderListHash", "5230b859fdb16443fb80362669327a56"}
         };
     }
 }

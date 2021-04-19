@@ -81,7 +81,7 @@ namespace QuantConnect.Algorithm.CSharp
                 DefaultOrderProperties.TimeInForce = TimeInForce.Day;
 
                 // this order will not be filled before market close and will be canceled
-                _dayOrderTicket1 = LimitOrder(_symbol, 10, 150m);
+                _dayOrderTicket1 = LimitOrder(_symbol, 10, 140m);
                 _expectedOrderStatuses.Add(_dayOrderTicket1.OrderId, OrderStatus.Canceled);
 
                 // this order will be filled before market close
@@ -153,22 +153,44 @@ namespace QuantConnect.Algorithm.CSharp
             {"Total Trades", "3"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
-            {"Compounding Annual Return", "5.509%"},
+            {"Compounding Annual Return", "5.681%"},
             {"Drawdown", "0.100%"},
             {"Expectancy", "0"},
-            {"Net Profit", "0.073%"},
-            {"Sharpe Ratio", "3.883"},
+            {"Net Profit", "0.071%"},
+            {"Sharpe Ratio", "5.022"},
+            {"Probabilistic Sharpe Ratio", "67.468%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "0.029"},
-            {"Beta", "0.016"},
-            {"Annual Standard Deviation", "0.008"},
+            {"Alpha", "-0.037"},
+            {"Beta", "0.043"},
+            {"Annual Standard Deviation", "0.01"},
             {"Annual Variance", "0"},
-            {"Information Ratio", "-0.318"},
-            {"Tracking Error", "0.182"},
-            {"Treynor Ratio", "1.909"},
-            {"Total Fees", "$3.00"}
+            {"Information Ratio", "-9.086"},
+            {"Tracking Error", "0.213"},
+            {"Treynor Ratio", "1.118"},
+            {"Total Fees", "$3.00"},
+            {"Estimated Strategy Capacity", "$38000000.00"},
+            {"Fitness Score", "0.01"},
+            {"Kelly Criterion Estimate", "0"},
+            {"Kelly Criterion Probability Value", "0"},
+            {"Sortino Ratio", "5.66"},
+            {"Return Over Maximum Drawdown", "58.275"},
+            {"Portfolio Turnover", "0.01"},
+            {"Total Insights Generated", "0"},
+            {"Total Insights Closed", "0"},
+            {"Total Insights Analysis Completed", "0"},
+            {"Long Insight Count", "0"},
+            {"Short Insight Count", "0"},
+            {"Long/Short Ratio", "100%"},
+            {"Estimated Monthly Alpha Value", "$0"},
+            {"Total Accumulated Estimated Alpha Value", "$0"},
+            {"Mean Population Estimated Insight Value", "$0"},
+            {"Mean Population Direction", "0%"},
+            {"Mean Population Magnitude", "0%"},
+            {"Rolling Averaged Population Direction", "0%"},
+            {"Rolling Averaged Population Magnitude", "0%"},
+            {"OrderListHash", "227d30f1f25eae2d0655d503cbf17428"}
         };
     }
 }

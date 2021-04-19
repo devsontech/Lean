@@ -93,15 +93,12 @@ namespace QuantConnect.Algorithm.Framework.Execution
                     // check order entry conditions
                     if (data.STD.IsReady && PriceIsFavorable(data, unorderedQuantity))
                     {
-                        // get the maximum order size based on total order value
-                        var maxOrderSize = OrderSizing.Value(data.Security, MaximumOrderValue);
-                        var orderSize = Math.Min(maxOrderSize, Math.Abs(unorderedQuantity));
+                        // Adjust order size to respect the maximum total order value
+                        var orderSize = OrderSizing.GetOrderSizeForMaximumValue(data.Security, MaximumOrderValue, unorderedQuantity);
 
-                        // round down to even lot size
-                        orderSize -= orderSize % data.Security.SymbolProperties.LotSize;
                         if (orderSize != 0)
                         {
-                            algorithm.MarketOrder(symbol, Math.Sign(unorderedQuantity) * orderSize);
+                            algorithm.MarketOrder(symbol, orderSize);
                         }
                     }
                 }
@@ -162,13 +159,38 @@ namespace QuantConnect.Algorithm.Framework.Execution
             return !algorithm.UniverseManager.Any(kvp => kvp.Value.ContainsMember(symbol));
         }
 
+        /// <summary>
+        /// Symbol Data for this Execution Model
+        /// </summary>
         protected class SymbolData
         {
+            /// <summary>
+            /// Security
+            /// </summary>
             public Security Security { get; }
+
+            /// <summary>
+            /// Standard Deviation
+            /// </summary>
             public StandardDeviation STD { get; }
+            
+            /// <summary>
+            /// Simple Moving Average
+            /// </summary>
             public SimpleMovingAverage SMA { get; }
+
+            /// <summary>
+            /// Data Consolidator
+            /// </summary>
             public IDataConsolidator Consolidator { get; }
 
+            /// <summary>
+            /// Initialize an instance of <see cref="SymbolData"/>
+            /// </summary>
+            /// <param name="algorithm">Algorithm for this security</param>
+            /// <param name="security">The security we are using</param>
+            /// <param name="period">Period of the SMA and STD</param>
+            /// <param name="resolution">Resolution for this symbol</param>
             public SymbolData(QCAlgorithm algorithm, Security security, int period, Resolution resolution)
             {
                 Security = security;

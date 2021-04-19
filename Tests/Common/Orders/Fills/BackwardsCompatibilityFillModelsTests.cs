@@ -219,14 +219,14 @@ namespace QuantConnect.Tests.Common.Orders.Fills
             var model = new TestFillModelInheritBaseClass();
             var result = model.Fill(
                 new FillModelParameters(_security,
-                    new StopLimitOrder(_security.Symbol, 1, 1, 1, orderDateTime),
+                    new StopLimitOrder(_security.Symbol, 1, 12344, 12346, orderDateTime),
                     new MockSubscriptionDataConfigProvider(_config),
                     Time.OneHour));
 
             Assert.True(model.StopLimitFillWasCalled);
             Assert.IsNotNull(result);
             Assert.True(model.GetPricesWasCalled);
-            Assert.AreEqual(1, result.OrderEvent.FillPrice);
+            Assert.AreEqual(12345, result.OrderEvent.FillPrice);
         }
 
         [Test]
@@ -249,7 +249,7 @@ namespace QuantConnect.Tests.Common.Orders.Fills
         public void OldBaseFillModel_MarketOnOpenFill()
         {
             var model = new TestFillModelInheritBaseClass();
-            _security.SetMarketPrice(new Tick(orderDateTime, _security.Symbol, 88, 88));
+            _security.SetMarketPrice(new Tick(orderDateTime, _security.Symbol, 88, 88) {TickType = TickType.Trade});
 
             var result = model.Fill(
                 new FillModelParameters(_security,
@@ -591,6 +591,7 @@ namespace QuantConnect.Tests.Common.Orders.Fills
             public bool MarketFillWasCalled;
             public bool StopMarketFillWasCalled;
             public bool StopLimitFillWasCalled;
+            public bool LimitIfTouchFillWasCalled;
             public bool LimitFillWasCalled;
             public bool MarketOnOpenFillWasCalled;
             public bool MarketOnCloseFillWasCalled;
@@ -612,6 +613,11 @@ namespace QuantConnect.Tests.Common.Orders.Fills
             {
                 StopLimitFillWasCalled = true;
                 return base.StopLimitFill(asset, order);
+            }
+            public override OrderEvent LimitIfTouchedFill(Security asset, LimitIfTouchedOrder order)
+            {
+                LimitIfTouchFillWasCalled = true;
+                return base.LimitIfTouchedFill(asset, order);
             }
 
             public override OrderEvent LimitFill(Security asset, LimitOrder order)

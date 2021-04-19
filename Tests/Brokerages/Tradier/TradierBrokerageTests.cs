@@ -15,74 +15,56 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Threading;
-using Newtonsoft.Json;
 using NUnit.Framework;
 using QuantConnect.Brokerages.Tradier;
 using QuantConnect.Interfaces;
+using QuantConnect.Lean.Engine.DataFeeds;
 using QuantConnect.Orders;
 using QuantConnect.Securities;
 
 namespace QuantConnect.Tests.Brokerages.Tradier
 {
-    [TestFixture, Ignore("This test requires a configured and active Tradier account")]
+    [TestFixture, Explicit("This test requires a configured and active Tradier account")]
     public class TradierBrokerageTests : BrokerageTests
     {
+        /// <summary>
+        /// Provides the data required to test each order type in various cases
+        /// </summary>
+        private static TestCaseData[] OrderParameters()
+        {
+            return new[]
+            {
+                new TestCaseData(new MarketOrderTestParameters(Symbols.AAPL)).SetName("MarketOrder"),
+                new TestCaseData(new LimitOrderTestParameters(Symbols.AAPL, 1000m, 0.01m)).SetName("LimitOrder"),
+                new TestCaseData(new StopMarketOrderTestParameters(Symbols.AAPL, 1000m, 0.01m)).SetName("StopMarketOrder"),
+                new TestCaseData(new StopLimitOrderTestParameters(Symbols.AAPL, 1000m, 0.01m)).SetName("StopLimitOrder")
+            };
+        }
+
         /// <summary>
         /// Creates the brokerage under test
         /// </summary>
         /// <returns>A connected brokerage instance</returns>
         protected override IBrokerage CreateBrokerage(IOrderProvider orderProvider, ISecurityProvider securityProvider)
         {
-            var accountID = TradierBrokerageFactory.Configuration.AccountID;
-            var tradier = new TradierBrokerage(orderProvider, securityProvider, accountID);
+            var useSandbox = TradierBrokerageFactory.Configuration.UseSandbox;
+            var accountId = TradierBrokerageFactory.Configuration.AccountId;
+            var accessToken = TradierBrokerageFactory.Configuration.AccessToken;
 
-            var qcUserID = TradierBrokerageFactory.Configuration.QuantConnectUserID;
-            var tokens = TradierBrokerageFactory.GetTokens();
-            tradier.SetTokens(qcUserID, tokens.AccessToken, tokens.RefreshToken, tokens.IssuedAt, TimeSpan.FromSeconds(tokens.ExpiresIn));
-
-            // keep the tokens up to date in the event of a refresh
-            tradier.SessionRefreshed += (sender, args) =>
-            {
-                File.WriteAllText(TradierBrokerageFactory.TokensFile, JsonConvert.SerializeObject(args, Formatting.Indented));
-            };
-
-            return tradier;
+            return new TradierBrokerage(null, orderProvider, securityProvider, new AggregationManager(), useSandbox, accountId, accessToken);
         }
 
         /// <summary>
         /// Gets the symbol to be traded, must be shortable
         /// </summary>
-        protected override Symbol Symbol
-        {
-            get { return Symbols.AAPL; }
-        }
+        protected override Symbol Symbol => Symbols.AAPL;
 
         /// <summary>
         /// Gets the security type associated with the <see cref="BrokerageTests.Symbol"/>
         /// </summary>
-        protected override SecurityType SecurityType
-        {
-            get { return SecurityType.Equity; }
-        }
-
-        /// <summary>
-        /// Gets a high price for the specified symbol so a limit sell won't fill
-        /// </summary>
-        protected override decimal HighPrice
-        {
-            get { return 1000m; }
-        }
-
-        /// <summary>
-        /// Gets a low price for the specified symbol so a limit buy won't fill
-        /// </summary>
-        protected override decimal LowPrice
-        {
-            get { return 0.01m; }
-        }
+        protected override SecurityType SecurityType => SecurityType.Equity;
 
         /// <summary>
         /// Returns wether or not the brokers order methods implementation are async
@@ -99,10 +81,10 @@ namespace QuantConnect.Tests.Brokerages.Tradier
         {
             var tradier = (TradierBrokerage) Brokerage;
             var quotes = tradier.GetQuotes(new List<string> {symbol.Value});
-            return quotes.Single().Ask;
+            return quotes.Single().Ask ?? 0;
         }
 
-        [Test, TestCaseSource("OrderParameters")]
+        [Test, TestCaseSource(nameof(OrderParameters))]
         public void AllowsOneActiveOrderPerSymbol(OrderTestParameters parameters)
         {
             // tradier's api gets special with zero holdings crossing in that they need to fill the order
@@ -131,13 +113,56 @@ namespace QuantConnect.Tests.Brokerages.Tradier
             Assert.IsTrue(orderFilledOrCanceled);
         }
 
-        [Test, Ignore("This test exists to manually verify how rejected orders are handled when we don't receive an order ID back from Tradier.")]
-        public void ShortZnga()
+        [Test, Explicit("This test exists to manually verify how rejected orders are handled when we don't receive an order ID back from Tradier.")]
+        public void ShortInvalidSymbol()
         {
-            PlaceOrderWaitForStatus(new MarketOrder(Symbols.ZNGA, -1, DateTime.Now), OrderStatus.Invalid, allowFailedSubmission: true);
+            var symbol = Symbol.Create("XYZ", SecurityType.Equity, Market.USA);
+            PlaceOrderWaitForStatus(new MarketOrder(symbol, -1, DateTime.Now), OrderStatus.Invalid, allowFailedSubmission: true);
 
             // wait for output to be generated
             Thread.Sleep(20*1000);
+        }
+
+        [Test, TestCaseSource(nameof(OrderParameters))]
+        public override void CancelOrders(OrderTestParameters parameters)
+        {
+            base.CancelOrders(parameters);
+        }
+
+        [Test, TestCaseSource(nameof(OrderParameters))]
+        public override void LongFromZero(OrderTestParameters parameters)
+        {
+            base.LongFromZero(parameters);
+        }
+
+        [Test, TestCaseSource(nameof(OrderParameters))]
+        public override void CloseFromLong(OrderTestParameters parameters)
+        {
+            base.CloseFromLong(parameters);
+        }
+
+        [Test, TestCaseSource(nameof(OrderParameters))]
+        public override void ShortFromZero(OrderTestParameters parameters)
+        {
+            base.ShortFromZero(parameters);
+        }
+
+        [Test, TestCaseSource(nameof(OrderParameters))]
+        public override void CloseFromShort(OrderTestParameters parameters)
+        {
+            base.CloseFromShort(parameters);
+        }
+
+        [Test, TestCaseSource(nameof(OrderParameters))]
+        public override void ShortFromLong(OrderTestParameters parameters)
+        {
+            base.ShortFromLong(parameters);
+        }
+
+        [Test, TestCaseSource(nameof(OrderParameters))]
+        public override void LongFromShort(OrderTestParameters parameters)
+        {
+            base.LongFromShort(parameters);
         }
     }
 }

@@ -80,7 +80,7 @@ namespace QuantConnect.Tests.Common.Securities.Equity
         private Security GetSecurity(Symbol symbol, DataNormalizationMode mode)
         {
             var symbolProperties = SymbolPropertiesDatabase.FromDataFolder()
-                .GetSymbolProperties(symbol.ID.Market, symbol.Value, symbol.ID.SecurityType, Currencies.USD);
+                .GetSymbolProperties(symbol.ID.Market, symbol, symbol.ID.SecurityType, Currencies.USD);
 
             Security security;
             if (symbol.ID.SecurityType == SecurityType.Equity)
@@ -99,7 +99,8 @@ namespace QuantConnect.Tests.Common.Securities.Equity
                     ),
                     new Cash(Currencies.USD, 0, 1m),
                     symbolProperties,
-                    ErrorCurrencyConverter.Instance
+                    ErrorCurrencyConverter.Instance,
+                    RegisteredSecurityDataTypesProvider.Null
                 );
             }
             else
@@ -118,7 +119,8 @@ namespace QuantConnect.Tests.Common.Securities.Equity
                         false
                     ),
                     symbolProperties,
-                    ErrorCurrencyConverter.Instance
+                    ErrorCurrencyConverter.Instance,
+                    RegisteredSecurityDataTypesProvider.Null
                 );
             }
 

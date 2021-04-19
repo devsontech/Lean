@@ -55,6 +55,19 @@ namespace QuantConnect
             Tuple.Create(HitBTC, 19),
             Tuple.Create(OkCoin, 20),
             Tuple.Create(Bitstamp, 21),
+            
+            Tuple.Create(COMEX, 22),
+            Tuple.Create(CME, 23),
+            Tuple.Create(SGX, 24),
+            Tuple.Create(HKFE, 25),
+
+            Tuple.Create(NFO, 26),
+            Tuple.Create(CDS, 27),
+            Tuple.Create(NCDEX, 28),
+            Tuple.Create(BSE, 29),
+            Tuple.Create(BCD, 30),
+            Tuple.Create(MCX, 31),
+            Tuple.Create(BFO, 32),
         };
 
         static Market()
@@ -120,9 +133,65 @@ namespace QuantConnect
         public const string CBOE = "cboe";
 
         /// <summary>
-        /// NSE
+        /// NSE - National Stock Exchange
         /// </summary>
         public const string NSE = "nse";
+
+        /// <summary>
+        /// NSE - National Stock Exchange Commodity Derivatives
+        /// </summary>
+        public const string CDS = "cds";
+
+        /// <summary>
+        /// NSE - National Stock Exchange Futures and Options
+        /// </summary>
+        public const string NFO = "nfo";
+
+        /// <summary>
+        /// BSE - Bombay Stock Exchange
+        /// </summary>
+        public const string BSE = "bse";
+
+        /// <summary>
+        /// BSE Futures and Options
+        /// </summary>
+        public const string BFO = "bfo";
+
+        /// <summary>
+        /// BSE Currency Derivatives
+        /// </summary>
+        public const string BCD = "bcd";
+
+        /// <summary>
+        /// MCX - Multi Commodity Exchange
+        /// </summary>
+        public const string MCX = "mcx";
+
+        /// <summary>
+        /// NCDEX
+        /// </summary>
+        public const string NCDEX = "ncdex";
+
+        
+        /// <summary>
+        /// Comex
+        /// </summary>
+        public const string COMEX = "comex";
+        
+        /// <summary>
+        /// CME
+        /// </summary>
+        public const string CME = "cme";
+
+        /// <summary>
+        /// Singapore Exchange
+        /// </summary>
+        public const string SGX = "sgx";
+
+        /// <summary>
+        /// Hong Kong Exchange
+        /// </summary>
+        public const string HKFE = "hkfe";
 
         /// <summary>
         /// GDAX

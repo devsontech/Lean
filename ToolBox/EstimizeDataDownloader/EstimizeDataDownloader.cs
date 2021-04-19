@@ -35,11 +35,21 @@ namespace QuantConnect.ToolBox.EstimizeDataDownloader
     {
         private readonly string _clientKey;
         private readonly int _maxRetries = 5;
+        private static readonly List<char> _defunctDelimiters = new List<char>
+        {
+            '-',
+            '_'
+        };
 
         /// <summary>
         /// Control the rate of download per unit of time.
         /// </summary>
         public RateGate IndexGate { get; }
+
+        protected readonly JsonSerializerSettings JsonSerializerSettings = new JsonSerializerSettings
+        {
+            DateTimeZoneHandling = DateTimeZoneHandling.Utc
+        };
 
         protected EstimizeDataDownloader()
         {
@@ -152,6 +162,54 @@ namespace QuantConnect.ToolBox.EstimizeDataDownloader
                 .ToList();
 
             File.WriteAllLines(finalPath, finalLines);
+        }
+
+        /// <summary>
+        /// Tries to normalize a potentially defunct ticker into a normal ticker.
+        /// </summary>
+        /// <param name="ticker">Ticker as received from Estimize</param>
+        /// <param name="nonDefunctTicker">Set as the non-defunct ticker</param>
+        /// <returns>true for success, false for failure</returns>
+        public static bool TryNormalizeDefunctTicker(string ticker, out string nonDefunctTicker)
+        {
+            // The "defunct" indicator can be in any capitalization/case
+            if (ticker.IndexOf("defunct", StringComparison.OrdinalIgnoreCase) > 0)
+            {
+                foreach (var delimChar in _defunctDelimiters)
+                {
+                    var length = ticker.IndexOf(delimChar);
+
+                    // Continue until we exhaust all delimiters
+                    if (length == -1)
+                    {
+                        continue;
+                    }
+
+                    nonDefunctTicker = ticker.Substring(0, length).Trim();
+                    return true;
+                }
+
+                nonDefunctTicker = string.Empty;
+                return false;
+            }
+
+            nonDefunctTicker = ticker;
+            return true;
+        }
+
+        /// <summary>
+        /// Normalizes Estimize tickers to a format usable by the <see cref="Data.Auxiliary.MapFileResolver"/>
+        /// </summary>
+        /// <param name="ticker">Ticker to normalize</param>
+        /// <returns>Normalized ticker</returns>
+        public static string NormalizeTicker(string ticker)
+        {
+            return ticker.ToLowerInvariant()
+                .Replace("- defunct", string.Empty)
+                .Replace("-defunct", string.Empty)
+                .Replace(" ", string.Empty)
+                .Replace("|", string.Empty)
+                .Replace("-", ".");
         }
 
         public class Company

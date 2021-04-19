@@ -92,7 +92,7 @@ namespace QuantConnect.Tests.Common
             string format
             )
         {
-            var formattable = (IFormattable) Convert.ChangeType(value, typeCode, null);
+            var formattable = (IFormattable) Convert.ChangeType(value, typeCode, CultureInfo.InvariantCulture);
             var formatted = formattable.ToStringInvariant(format);
             var expected = formattable.ToString(format, CultureInfo.InvariantCulture);
             Assert.AreEqual(expected, formatted, $"Failed on type code: {typeCode}");
@@ -198,6 +198,34 @@ namespace QuantConnect.Tests.Common
             var defaultValue = -42;
             var actual = "42".IfNotNullOrEmpty(defaultValue, int.Parse);
             Assert.AreEqual(42, actual);
+        }
+
+        [Test]
+        [TestCase(null, 0, 9)]
+        [TestCase("Test Data", 0, 9)]
+        [TestCase("Test Data", 0, 5)]
+        [TestCase("Test Data", 5, 4)]
+        [TestCase("Test Data", 8, 0)]
+        public void SafeSubstring_ReturnsProperSubstring(string sourceString, int startIndex,  int length)
+        {
+            Assert.AreEqual(sourceString?.Substring(startIndex, length), sourceString.SafeSubstring(startIndex, length));
+        }
+
+        [Test]
+        [TestCase(null, 0, 9, null)]
+        [TestCase("Test Data", 0, 15, "Test Data")]
+        [TestCase("Test Data", 5, 15, "Data")]
+        [TestCase("Test Data", 9, 15, "")]
+        public void SafeSubstring_ReturnsSubstring_WhenSubstringThrowException(string sourceString, int startIndex, int length, string expected)
+        {
+            if (sourceString != null)
+            {
+                Assert.Throws<ArgumentOutOfRangeException>(() =>
+                {
+                    sourceString.Substring(startIndex, length);
+                });
+            }
+            Assert.AreEqual(expected, sourceString.SafeSubstring(startIndex, length));
         }
     }
 }

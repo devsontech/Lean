@@ -1,11 +1,11 @@
 /*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
- * 
- * Licensed under the Apache License, Version 2.0 (the "License"); 
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -15,7 +15,9 @@
 */
 
 using System;
+using System.Runtime.CompilerServices;
 using QuantConnect.Data.Market;
+using Python.Runtime;
 
 namespace QuantConnect.Data.Consolidators
 {
@@ -29,6 +31,9 @@ namespace QuantConnect.Data.Consolidators
         where T : IBaseData
         where TConsolidated : BaseData
     {
+        // The SecurityIdentifier that we are consolidating for.
+        private SecurityIdentifier _securityIdentifier;
+        private bool _securityIdentifierIsSet;
         //The number of data updates between creating new bars.
         private readonly int? _maxCount;
         //
@@ -45,6 +50,7 @@ namespace QuantConnect.Data.Consolidators
         private PeriodCountConsolidatorBase(IPeriodSpecification periodSpecification)
         {
             _periodSpecification = periodSpecification;
+            _period = _periodSpecification.Period;
         }
 
         /// <summary>
@@ -90,6 +96,15 @@ namespace QuantConnect.Data.Consolidators
         }
 
         /// <summary>
+        /// Creates a consolidator to produce a new <typeparamref name="TConsolidated"/> instance representing the last count pieces of data or the period, whichever comes first
+        /// </summary>
+        /// <param name="pyObject">Python object that defines either a function object that defines the start time of a consolidated data or a timespan</param>
+        protected PeriodCountConsolidatorBase(PyObject pyObject)
+            : this(GetPeriodSpecificationFromPyObject(pyObject))
+        {
+        }
+
+        /// <summary>
         /// Gets the type produced by this consolidator
         /// </summary>
         public override Type OutputType => typeof(TConsolidated);
@@ -112,9 +127,20 @@ namespace QuantConnect.Data.Consolidators
         /// For example, if time span is 1 minute, we have [10:00, 10:01): so data at 10:01 is not 
         /// included in the bar starting at 10:00.
         /// </summary>
+        /// <exception cref="InvalidOperationException">Thrown when multiple symbols are being consolidated.</exception>
         /// <param name="data">The new data for the consolidator</param>
         public override void Update(T data)
         {
+            if (!_securityIdentifierIsSet)
+            {
+                _securityIdentifierIsSet = true;
+                _securityIdentifier = data.Symbol.ID;
+            }
+            else if (!data.Symbol.ID.Equals(_securityIdentifier))
+            {
+                throw new InvalidOperationException($"Consolidators can only be used with a single symbol. The previous consolidated SecurityIdentifier ({_securityIdentifier}) is not the same as in the current data ({data.Symbol.ID}).");
+            }
+
             if (!ShouldProcess(data))
             {
                 // first allow the base class a chance to filter out data it doesn't want
@@ -188,9 +214,9 @@ namespace QuantConnect.Data.Consolidators
                     }
                 }
 
+                // Set _lastEmit first because OnDataConsolidated will set _workingBar to null
+                _lastEmit = IsTimeBased && _workingBar != null ? _workingBar.EndTime : data.Time;
                 OnDataConsolidated(_workingBar);
-                _lastEmit = IsTimeBased && _workingBar != null ? _workingBar.Time.Add(Period ?? TimeSpan.Zero) : data.Time;
-                _workingBar = null;
             }
 
             if (!aggregateBeforeFire)
@@ -208,16 +234,11 @@ namespace QuantConnect.Data.Consolidators
         /// <param name="currentLocalTime">The current time in the local time zone (same as <see cref="BaseData.Time"/>)</param>
         public override void Scan(DateTime currentLocalTime)
         {
-            if (_period.HasValue && _workingBar != null)
+            if (_workingBar != null && _period.HasValue && _period.Value != TimeSpan.Zero
+                && currentLocalTime - _workingBar.Time >= _period.Value && GetRoundedBarTime(currentLocalTime) > _lastEmit)
             {
-                currentLocalTime = GetRoundedBarTime(currentLocalTime);
-
-                if (_period.Value != TimeSpan.Zero && currentLocalTime - _workingBar.Time >= _period.Value && currentLocalTime > _lastEmit)
-                {
-                    OnDataConsolidated(_workingBar);
-                    _lastEmit = currentLocalTime;
-                    _workingBar = null;
-                }
+                _lastEmit = _workingBar.EndTime;
+                OnDataConsolidated(_workingBar);
             }
         }
 
@@ -232,7 +253,7 @@ namespace QuantConnect.Data.Consolidators
         protected TimeSpan? Period => _period;
 
         /// <summary>
-        /// Determines whether or not the specified data should be processd
+        /// Determines whether or not the specified data should be processed
         /// </summary>
         /// <param name="data">The data to check</param>
         /// <returns>True if the consolidator should process this data, false otherwise</returns>
@@ -251,6 +272,7 @@ namespace QuantConnect.Data.Consolidators
         /// </summary>
         /// <param name="time">The bar time to be rounded down</param>
         /// <returns>The rounded bar time</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         protected DateTime GetRoundedBarTime(DateTime time)
         {
             var barTime = _periodSpecification.GetRoundedBarTime(time);
@@ -272,6 +294,27 @@ namespace QuantConnect.Data.Consolidators
         {
             base.OnDataConsolidated(e);
             DataConsolidated?.Invoke(this, e);
+
+            _workingBar = null;
+        }
+
+        /// <summary>
+        /// Gets the period specification from the PyObject that can either represent a function object that defines the start time of a consolidated data or a timespan.
+        /// </summary>
+        /// <param name="pyObject">Python object that defines either a function object that defines the start time of a consolidated data or a timespan</param>
+        /// <returns>IPeriodSpecification that represents the PyObject</returns>
+        private static IPeriodSpecification GetPeriodSpecificationFromPyObject(PyObject pyObject)
+        {
+            Func<DateTime, CalendarInfo> expiryFunc;
+            if (pyObject.TryConvertToDelegate(out expiryFunc))
+            {
+                return new FuncPeriodSpecification(expiryFunc);
+            }
+
+            using (Py.GIL())
+            {
+                return new TimeSpanPeriodSpecification(pyObject.As<TimeSpan>());
+            }
         }
 
         /// <summary>
@@ -320,11 +363,14 @@ namespace QuantConnect.Data.Consolidators
                 Period = period;
             }
 
-            public DateTime GetRoundedBarTime(DateTime time) => time.RoundDown(Period.Value);
+            public DateTime GetRoundedBarTime(DateTime time) =>
+                Period.Value > Time.OneDay
+                    ? time // #4915 For periods larger than a day, don't use a rounding schedule.
+                    : time.RoundDown(Period.Value);
         }
 
         /// <summary>
-        /// Special case for bars which open time is defined by a function
+        /// Special case for bars where the open time is defined by a function
         /// </summary>
         private class FuncPeriodSpecification : IPeriodSpecification
         {

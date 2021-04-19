@@ -14,6 +14,7 @@
 */
 
 using System;
+using QuantConnect.Securities;
 
 namespace QuantConnect.Interfaces
 {
@@ -23,10 +24,20 @@ namespace QuantConnect.Interfaces
     public interface IAlgorithmSettings
     {
         /// <summary>
+        /// True if should rebalance portfolio on security changes. True by default
+        /// </summary>
+        bool? RebalancePortfolioOnSecurityChanges { get; set; }
+
+        /// <summary>
+        /// True if should rebalance portfolio on new insights or expiration of insights. True by default
+        /// </summary>
+        bool? RebalancePortfolioOnInsightChanges { get; set; }
+
+        /// <summary>
         /// The absolute maximum valid total portfolio value target percentage
         /// </summary>
         /// <remarks>This setting is currently being used to filter out undesired target percent values,
-        /// caused by the <see cref="IPortfolioConstructionModel"/> implementation being used.
+        /// caused by the IPortfolioConstructionModel implementation being used.
         /// For example rounding errors, math operations</remarks>
         decimal MaxAbsolutePortfolioTargetPercentage { get; set; }
 
@@ -34,13 +45,20 @@ namespace QuantConnect.Interfaces
         /// The absolute minimum valid total portfolio value target percentage
         /// </summary>
         /// <remarks>This setting is currently being used to filter out undesired target percent values,
-        /// caused by the <see cref="IPortfolioConstructionModel"/> implementation being used.
+        /// caused by the IPortfolioConstructionModel implementation being used.
         /// For example rounding errors, math operations</remarks>
         decimal MinAbsolutePortfolioTargetPercentage { get; set; }
 
         /// <summary>
         /// Gets/sets the SetHoldings buffers value.
         /// The buffer is used for orders not to be rejected due to volatility when using SetHoldings and CalculateOrderQuantity
+        /// </summary>
+        decimal FreePortfolioValue { get; set; }
+
+        /// <summary>
+        /// Gets/sets the SetHoldings buffers value percentage.
+        /// This percentage will be used to set the <see cref="FreePortfolioValue"/>
+        /// based on the <see cref="SecurityPortfolioManager.TotalPortfolioValue"/>
         /// </summary>
         decimal FreePortfolioValuePercentage { get; set; }
 

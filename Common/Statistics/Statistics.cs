@@ -19,6 +19,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
+using MathNet.Numerics.Distributions;
 using MathNet.Numerics.Statistics;
 using QuantConnect.Logging;
 
@@ -441,7 +442,14 @@ namespace QuantConnect.Statistics
         /// <returns>Decimal fraction for annual compounding performance</returns>
         public static decimal CompoundingAnnualPerformance(decimal startingCapital, decimal finalCapital, decimal years)
         {
-            return (years == 0 ? 0d : Math.Pow((double)finalCapital / (double)startingCapital, 1 / (double)years) - 1).SafeDecimalCast();
+            if (years == 0 || startingCapital == 0)
+            {
+                return 0;
+            }
+            var power = 1 / (double)years;
+            var baseNumber = (double)finalCapital / (double)startingCapital;
+            var result = Math.Pow(baseNumber, power) - 1;
+            return result.IsNaNOrInfinity() ? 0 : result.SafeDecimalCast();
         }
 
         /// <summary>
@@ -453,7 +461,7 @@ namespace QuantConnect.Statistics
         /// <returns>Double annual performance percentage</returns>
         public static double AnnualPerformance(List<double> performance, double tradingDaysPerYear = 252)
         {
-            return performance.Average() * tradingDaysPerYear;
+            return Math.Pow((performance.Average() + 1), tradingDaysPerYear) - 1;
         }
 
         /// <summary>
@@ -513,10 +521,23 @@ namespace QuantConnect.Statistics
         /// <remarks>If algo = benchmark, TEV = 0</remarks>
         /// <param name="algoPerformance">Double collection of algorithm daily performance values</param>
         /// <param name="benchmarkPerformance">Double collection of benchmark daily performance values</param>
+        /// <param name="tradingDaysPerYear">Number of trading days per year</param>
         /// <returns>Value for tracking error</returns>
-        public static double TrackingError(List<double> algoPerformance, List<double> benchmarkPerformance)
+        public static double TrackingError(List<double> algoPerformance, List<double> benchmarkPerformance, double tradingDaysPerYear = 252)
         {
-            return Math.Sqrt(AnnualVariance(algoPerformance) - 2 * Correlation.Pearson(algoPerformance, benchmarkPerformance) * AnnualStandardDeviation(algoPerformance) * AnnualStandardDeviation(benchmarkPerformance) + AnnualVariance(benchmarkPerformance));
+            // Un-equal lengths will blow up other statistics, but this will handle the case here
+            if (algoPerformance.Count() != benchmarkPerformance.Count())
+            {
+                return 0.0;
+            }
+
+            var performanceDifference = new List<double>();
+            for (var i = 0; i < algoPerformance.Count(); i++)
+            {
+                performanceDifference.Add(algoPerformance[i] - benchmarkPerformance[i]);
+            }
+
+            return Math.Sqrt(AnnualVariance(performanceDifference, tradingDaysPerYear));
         }
 
 
@@ -557,6 +578,48 @@ namespace QuantConnect.Statistics
             return (AnnualPerformance(algoPerformance) - riskFreeRate) / (Beta(algoPerformance, benchmarkPerformance));
         }
 
+        /// <summary>
+        /// Helper method to calculate the probabilistic sharpe ratio
+        /// </summary>
+        /// <param name="listPerformance">The list of algorithm performance values</param>
+        /// <param name="benchmarkSharpeRatio">The benchmark sharpe ratio to use</param>
+        /// <returns>Probabilistic Sharpe Ratio</returns>
+        public static double ProbabilisticSharpeRatio(List<double> listPerformance,
+             double benchmarkSharpeRatio)
+        {
+            var observedSharpeRatio = ObservedSharpeRatio(listPerformance);
+
+            var skewness = listPerformance.Skewness();
+            var kurtosis = listPerformance.Kurtosis();
+
+            var operandA = skewness * observedSharpeRatio;
+            var operandB = ((kurtosis - 1) / 4) * (Math.Pow(observedSharpeRatio, 2));
+
+            // Calculated standard deviation of point estimate
+            var estimateStandardDeviation = Math.Pow((1 - operandA + operandB) / (listPerformance.Count - 1), 0.5);
+
+            if (double.IsNaN(estimateStandardDeviation))
+            {
+                return 0;
+            }
+
+            // Calculate PSR(benchmark)
+            var value = estimateStandardDeviation.IsNaNOrZero() ? 0 : (observedSharpeRatio - benchmarkSharpeRatio) / estimateStandardDeviation;
+            return (new Normal()).CumulativeDistribution(value);
+        }
+
+        /// <summary>
+        /// Calculates the observed sharpe ratio
+        /// </summary>
+        /// <param name="listPerformance">The performance samples to use</param>
+        /// <returns>The observed sharpe ratio</returns>
+        public static double ObservedSharpeRatio(List<double> listPerformance)
+        {
+            var performanceAverage = listPerformance.Average();
+            var standardDeviation = listPerformance.StandardDeviation();
+            // we don't annualize it
+            return standardDeviation.IsNaNOrZero() ? 0 : performanceAverage / standardDeviation;
+        }
     } // End of Statistics
 
 } // End of Namespace

@@ -16,6 +16,7 @@
 
 using System;
 using System.IO;
+using QuantConnect.Configuration;
 using QuantConnect.Data;
 using QuantConnect.Interfaces;
 using QuantConnect.Logging;
@@ -27,6 +28,8 @@ namespace QuantConnect.Lean.Engine.DataFeeds
     /// </summary>
     public static class SubscriptionDataSourceReader
     {
+        private static readonly bool ShowMissingDataLogs = Config.GetBool("show-missing-data-logs", false);
+
         /// <summary>
         /// Creates a new <see cref="ISubscriptionDataSourceReader"/> capable of handling the specified <paramref name="source"/>
         /// </summary>
@@ -35,8 +38,9 @@ namespace QuantConnect.Lean.Engine.DataFeeds
         /// <param name="config">The configuration of the subscription</param>
         /// <param name="date">The date to be processed</param>
         /// <param name="isLiveMode">True for live mode, false otherwise</param>
+        /// <param name="factory">The base data instance factory</param>
         /// <returns>A new <see cref="ISubscriptionDataSourceReader"/> that can read the specified <paramref name="source"/></returns>
-        public static ISubscriptionDataSourceReader ForSource(SubscriptionDataSource source, IDataCacheProvider dataCacheProvider, SubscriptionDataConfig config, DateTime date, bool isLiveMode)
+        public static ISubscriptionDataSourceReader ForSource(SubscriptionDataSource source, IDataCacheProvider dataCacheProvider, SubscriptionDataConfig config, DateTime date, bool isLiveMode, BaseData factory)
         {
             ISubscriptionDataSourceReader reader;
             TextSubscriptionDataSourceReader textReader = null;
@@ -54,14 +58,16 @@ namespace QuantConnect.Lean.Engine.DataFeeds
                     reader = new ZipEntryNameSubscriptionDataSourceReader(config, date, isLiveMode);
                     break;
 
+                case FileFormat.Index:
+                    return new IndexSubscriptionDataSourceReader(dataCacheProvider, config, date, isLiveMode);
+
                 default:
                     throw new NotImplementedException("SubscriptionFactory.ForSource(" + source + ") has not been implemented yet.");
             }
 
             // wire up event handlers for logging missing files
-            if (source.TransportMedium == SubscriptionTransportMedium.LocalFile)
+            if (ShowMissingDataLogs && source.TransportMedium == SubscriptionTransportMedium.LocalFile)
             {
-                var factory = config.GetBaseDataInstance();
                 if (!factory.IsSparseData())
                 {
                     reader.InvalidSource += (sender, args) => Log.Error($"SubscriptionDataSourceReader.InvalidSource(): File not found: {args.Source.Source}");
@@ -83,10 +89,11 @@ namespace QuantConnect.Lean.Engine.DataFeeds
             // create cache directory if not existing
             if (!Directory.Exists(Globals.Cache)) Directory.CreateDirectory(Globals.Cache);
 
+            var frontierToDelete = DateTime.Now.AddHours(-24);
             // clean old files out of the cache
             foreach (var file in Directory.EnumerateFiles(Globals.Cache))
             {
-                if (File.GetCreationTime(file) < DateTime.Now.AddHours(-24)) File.Delete(file);
+                if (File.GetCreationTime(file) < frontierToDelete) File.Delete(file);
             }
         }
     }

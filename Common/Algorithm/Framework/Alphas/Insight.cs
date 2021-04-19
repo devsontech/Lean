@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -38,12 +38,12 @@ namespace QuantConnect.Algorithm.Framework.Alphas
         /// <summary>
         /// Gets the unique identifier for this insight
         /// </summary>
-        public Guid Id { get; private set; }
+        public Guid Id { get; protected set; }
 
         /// <summary>
         /// Gets the group id this insight belongs to, null if not in a group
         /// </summary>
-        public Guid? GroupId { get; private set; }
+        public Guid? GroupId { get; protected set; }
 
         /// <summary>
         /// Gets an identifier for the source model that generated this insight.
@@ -115,12 +115,12 @@ namespace QuantConnect.Algorithm.Framework.Alphas
         /// <summary>
         /// Gets the most recent scores for this insight
         /// </summary>
-        public InsightScore Score { get; private set; }
+        public InsightScore Score { get; protected set; }
 
         /// <summary>
         /// Gets the estimated value of this insight in the account currency
         /// </summary>
-        public decimal EstimatedValue { get; internal set; }
+        public decimal EstimatedValue { get; protected internal set; }
 
         /// <summary>
         /// Determines whether or not this insight is considered expired at the specified <paramref name="utcTime"/>
@@ -206,8 +206,9 @@ namespace QuantConnect.Algorithm.Framework.Alphas
         /// <param name="magnitude">The predicted magnitude as a percentage change</param>
         /// <param name="confidence">The confidence in this insight</param>
         /// <param name="sourceModel">An identifier defining the model that generated this insight</param>
-        public Insight(Symbol symbol, Func<DateTime, DateTime> expiryFunc, InsightType type, InsightDirection direction, double? magnitude, double? confidence, string sourceModel = null)
-            : this(symbol, new FuncPeriodSpecification(expiryFunc), type, direction, magnitude, confidence)
+        /// <param name="weight">The portfolio weight of this insight</param>
+        public Insight(Symbol symbol, Func<DateTime, DateTime> expiryFunc, InsightType type, InsightDirection direction, double? magnitude, double? confidence, string sourceModel = null, double? weight = null)
+            : this(symbol, new FuncPeriodSpecification(expiryFunc), type, direction, magnitude, confidence, sourceModel, weight)
         {
         }
 
@@ -287,7 +288,7 @@ namespace QuantConnect.Algorithm.Framework.Alphas
         /// Creates a deep clone of this insight instance
         /// </summary>
         /// <returns>A new insight with identical values, but new instances</returns>
-        public Insight Clone()
+        public virtual Insight Clone()
         {
             return new Insight(Symbol, Period, Type, Direction, Magnitude, Confidence, weight:Weight)
             {
@@ -376,10 +377,11 @@ namespace QuantConnect.Algorithm.Framework.Alphas
         /// <param name="magnitude">The predicted magnitude as a percent change</param>
         /// <param name="confidence">The confidence in this insight</param>
         /// <param name="sourceModel">The model generating this insight</param>
+        /// <param name="weight">The portfolio weight of this insight</param>
         /// <returns>A new insight object for the specified parameters</returns>
-        public static Insight Price(Symbol symbol, Func<DateTime, DateTime> expiryFunc, InsightDirection direction, double? magnitude = null, double? confidence = null, string sourceModel = null)
+        public static Insight Price(Symbol symbol, Func<DateTime, DateTime> expiryFunc, InsightDirection direction, double? magnitude = null, double? confidence = null, string sourceModel = null, double? weight = null)
         {
-            return new Insight(symbol, expiryFunc, InsightType.Price, direction, magnitude, confidence, sourceModel);
+            return new Insight(symbol, expiryFunc, InsightType.Price, direction, magnitude, confidence, sourceModel, weight);
         }
 
         /// <summary>
@@ -420,7 +422,7 @@ namespace QuantConnect.Algorithm.Framework.Alphas
         public static Insight FromSerializedInsight(SerializedInsight serializedInsight)
         {
             var insight = new Insight(
-                Time.UnixTimeStampToDateTime(serializedInsight.GeneratedTime),
+                Time.UnixTimeStampToDateTime(serializedInsight.CreatedTime),
                 new Symbol(SecurityIdentifier.Parse(serializedInsight.Symbol), serializedInsight.Ticker),
                 TimeSpan.FromSeconds(serializedInsight.Period),
                 serializedInsight.Type,
@@ -620,6 +622,31 @@ namespace QuantConnect.Algorithm.Framework.Alphas
         }
 
         /// <summary>
+        /// Returns a short string that represents the current object.
+        /// </summary>
+        /// <returns>A string that represents the current object.</returns>
+        public string ShortToString()
+        {
+            var str = Invariant($"{Symbol.Value} {Type} {Direction} {Period}");
+
+            if (Magnitude.HasValue)
+            {
+                str += Invariant($" M:{Magnitude.Value}%");
+            }
+            if (Confidence.HasValue)
+            {
+                str += Invariant($" C:{Math.Round(100 * Confidence.Value, 1)}%");
+            }
+            if (Weight.HasValue)
+            {
+                str += Invariant($" W:{Math.Round(100 * Weight.Value, 1)}%");
+            }
+
+            return str;
+        }
+
+
+        /// <summary>
         /// Distinguishes between the different ways an insight's period/close times can be specified
         /// This was really only required since we can't properly acces certain data from within a static
         /// context (such as Insight.Price) or from within a constructor w/out requiring the users to properly
@@ -744,7 +771,6 @@ namespace QuantConnect.Algorithm.Framework.Alphas
         /// Special case for insights where we do not know whats the
         /// <see cref="Period"/> or <see cref="CloseTimeUtc"/>.
         /// </summary>
-        /// <remarks><see cref="OrderBasedInsightGenerator"/></remarks>
         private class EndOfTimeCloseTimePeriodSpecification : IPeriodSpecification
         {
             public void SetPeriodAndCloseTime(Insight insight, SecurityExchangeHours exchangeHours)

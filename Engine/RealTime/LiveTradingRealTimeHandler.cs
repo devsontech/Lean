@@ -25,6 +25,7 @@ using QuantConnect.Scheduling;
 using QuantConnect.Securities;
 using System.Collections.Generic;
 using QuantConnect.Configuration;
+using QuantConnect.Util;
 
 namespace QuantConnect.Lean.Engine.RealTime
 {
@@ -33,8 +34,12 @@ namespace QuantConnect.Lean.Engine.RealTime
     /// </summary>
     public class LiveTradingRealTimeHandler : BaseRealTimeHandler, IRealTimeHandler
     {
-        private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
+        private Thread _realTimeThread;
+        private TimeMonitor _timeMonitor;
         private static MarketHoursDatabase _marketHoursDatabase;
+
+        private IIsolatorLimitResultProvider _isolatorLimitProvider;
+        private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
 
         /// <summary>
         /// Boolean flag indicating thread state.
@@ -44,11 +49,12 @@ namespace QuantConnect.Lean.Engine.RealTime
         /// <summary>
         /// Initializes the real time handler for the specified algorithm and job
         /// </summary>
-        public void Setup(IAlgorithm algorithm, AlgorithmNodePacket job, IResultHandler resultHandler, IApi api)
+        public void Setup(IAlgorithm algorithm, AlgorithmNodePacket job, IResultHandler resultHandler, IApi api, IIsolatorLimitResultProvider isolatorLimitProvider)
         {
             //Initialize:
             Algorithm = algorithm;
             ResultHandler = resultHandler;
+            _isolatorLimitProvider = isolatorLimitProvider;
             _cancellationTokenSource = new CancellationTokenSource();
             _marketHoursDatabase = MarketHoursDatabase.FromDataFolder();
 
@@ -68,7 +74,7 @@ namespace QuantConnect.Lean.Engine.RealTime
                 RefreshMarketHoursToday(triggerTime.ConvertFromUtc(Algorithm.TimeZone).Date);
             }));
 
-            base.Setup(todayInAlgorithmTimeZone, Time.EndOfTime, DateTime.UtcNow);
+            base.Setup(todayInAlgorithmTimeZone, Time.EndOfTime, job.Language, DateTime.UtcNow);
 
             foreach (var scheduledEvent in ScheduledEvents)
             {
@@ -77,20 +83,24 @@ namespace QuantConnect.Lean.Engine.RealTime
                 // set logging accordingly
                 scheduledEvent.Key.IsLoggingEnabled = Log.DebuggingEnabled;
             }
+
+            _timeMonitor = new TimeMonitor();
+
+            _realTimeThread = new Thread(Run) { IsBackground = true, Name = "RealTime Thread" };
+            _realTimeThread.Start(); // RealTime scan time for time based events
         }
 
         /// <summary>
         /// Execute the live realtime event thread montioring.
         /// It scans every second monitoring for an event trigger.
         /// </summary>
-        public void Run()
+        private void Run()
         {
             IsActive = true;
 
             // continue thread until cancellation is requested
             while (!_cancellationTokenSource.IsCancellationRequested)
             {
-
                 var time = DateTime.UtcNow;
 
                 // pause until the next second
@@ -99,15 +109,17 @@ namespace QuantConnect.Lean.Engine.RealTime
                 Thread.Sleep(delay < 0 ? 1 : delay);
 
                 // poke each event to see if it should fire, we order by unique id to be deterministic
-                foreach (var scheduledEvent in ScheduledEvents.OrderBy(pair => pair.Value))
+                foreach (var kvp in ScheduledEvents.OrderBy(pair => pair.Value))
                 {
+                    var scheduledEvent = kvp.Key;
                     try
                     {
-                        scheduledEvent.Key.Scan(time);
+                        _isolatorLimitProvider.Consume(scheduledEvent, time, _timeMonitor);
                     }
                     catch (ScheduledEventException scheduledEventException)
                     {
-                        var errorMessage = $"LiveTradingRealTimeHandler.Run(): There was an error in a scheduled event {scheduledEvent.Key}. The error was {scheduledEventException.Message}";
+                        var errorMessage = "LiveTradingRealTimeHandler.Run(): There was an error in a scheduled " +
+                                           $"event {scheduledEvent.Name}. The error was {scheduledEventException.Message}";
 
                         Log.Error(scheduledEventException, errorMessage);
 
@@ -192,7 +204,12 @@ namespace QuantConnect.Lean.Engine.RealTime
         /// </summary>
         public void Exit()
         {
-            _cancellationTokenSource.Cancel();
+            _realTimeThread.StopSafely(TimeSpan.FromMinutes(5), _cancellationTokenSource);
+            _realTimeThread = null;
+            _timeMonitor.DisposeSafely();
+            _timeMonitor = null;
+            _cancellationTokenSource.DisposeSafely();
+            _cancellationTokenSource = null;
         }
 
         /// <summary>

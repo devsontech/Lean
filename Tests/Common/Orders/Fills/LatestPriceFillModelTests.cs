@@ -34,7 +34,7 @@ namespace QuantConnect.Tests.Common.Orders.Fills
         private TradeBar _trade;
         private TestableLatestFillModel _fillModel;
 
-        [TestFixtureSetUp]
+        [OneTimeSetUp]
         public void Setup()
         {
             var time = new DateTime(2017, 1, 3, 0, 0, 0);
@@ -127,7 +127,9 @@ namespace QuantConnect.Tests.Common.Orders.Fills
                 ),
                 new Cash(Currencies.USD, 0, 1m),
                 SymbolProperties.GetDefault(Currencies.USD),
-                ErrorCurrencyConverter.Instance
+                ErrorCurrencyConverter.Instance,
+                RegisteredSecurityDataTypesProvider.Null,
+                new SecurityCache()
             );
         }
 

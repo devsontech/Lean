@@ -18,7 +18,6 @@ using System.Collections;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
-using System.Threading;
 
 namespace QuantConnect.Logging
 {
@@ -50,6 +49,12 @@ namespace QuantConnect.Logging
             get { return _debuggingEnabled; }
             set { _debuggingEnabled = value; }
         }
+
+        /// <summary>
+        /// Global flag to specify file based log path
+        /// </summary>
+        /// <remarks>Only valid for file based loggers</remarks>
+        public static string FilePath { get; set; } = "log.txt";
 
         /// <summary>
         /// Set the minimum message level:
@@ -138,18 +143,16 @@ namespace QuantConnect.Logging
         }
 
         /// <summary>
-        /// Output to the console, and sleep the thread for a little period to monitor the results.
+        /// Output to the console
         /// </summary>
-        /// <param name="text"></param>
+        /// <param name="text">The message to show</param>
         /// <param name="level">debug level</param>
-        /// <param name="delay"></param>
-        public static void Debug(string text, int level = 1, int delay = 0)
+        public static void Debug(string text, int level = 1)
         {
             try
             {
                 if (!_debuggingEnabled || level < _level) return;
                 _logHandler.Debug(text);
-                Thread.Sleep(delay);
             }
             catch (Exception err)
             {
@@ -201,7 +204,7 @@ namespace QuantConnect.Logging
                             if (value is string) displayValue = String.Concat('"', displayValue, '"');
 
                             // Add property name and value to return string
-                            result.AppendFormat("{0}{1} = {2}\n", indent, property.Name, displayValue);
+                            result.AppendFormat(CultureInfo.InvariantCulture, "{0}{1} = {2}\n", indent, property.Name, displayValue);
 
                             try
                             {
@@ -224,7 +227,7 @@ namespace QuantConnect.Logging
                                         indent = new StringBuilder(trail).Insert(0, spaces, recursion).ToString();
 
                                         // Display the collection element name and type
-                                        result.AppendFormat("{0}{1} = {2}\n", indent, elementName, element.ToString());
+                                        result.AppendFormat(CultureInfo.InvariantCulture, "{0}{1} = {2}\n", indent, elementName, element.ToString());
 
                                         // Display the child properties
                                         result.Append(VarDump(element, recursion + 2));
@@ -238,7 +241,7 @@ namespace QuantConnect.Logging
                         else
                         {
                             // Add empty (null) property to return string
-                            result.AppendFormat("{0}{1} = {2}\n", indent, property.Name, "null");
+                            result.AppendFormat(CultureInfo.InvariantCulture, "{0}{1} = {2}\n", indent, property.Name, "null");
                         }
                     }
                     catch

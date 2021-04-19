@@ -98,7 +98,7 @@ namespace QuantConnect.Lean.Engine.Setup
 
             // don't force load times to be fast here since we're running locally, this allows us to debug
             // and step through some code that may take us longer than the default 10 seconds
-            var loader = new Loader(debugging, algorithmNodePacket.Language, TimeSpan.FromHours(1), names => names.SingleOrDefault(name => MatchTypeName(name, algorithmName)), WorkerThread);
+            var loader = new Loader(debugging, algorithmNodePacket.Language, BaseSetupHandler.AlgorithmCreationTimeout, names => names.SingleOrDefault(name => MatchTypeName(name, algorithmName)), WorkerThread);
             var complete = loader.TryCreateAlgorithmInstanceWithIsolator(assemblyPath, algorithmNodePacket.RamAllocation, out algorithm, out error);
             if (!complete) throw new AlgorithmSetupException($"During the algorithm initialization, the following exception has occurred: {error}");
 
@@ -158,15 +158,42 @@ namespace QuantConnect.Lean.Engine.Setup
                     // set the future chain provider
                     algorithm.SetFutureChainProvider(new CachingFutureChainProvider(new BacktestingFutureChainProvider()));
 
+                    // set the object store
+                    algorithm.SetObjectStore(parameters.ObjectStore);
+
+                    // before we call initialize
+                    BaseSetupHandler.LoadBacktestJobAccountCurrency(algorithm, backtestJob);
+
                     var isolator = new Isolator();
                     isolator.ExecuteWithTimeLimit(TimeSpan.FromMinutes(5),
                         () =>
                         {
-                            //Setup Base Algorithm:
-                            algorithm.Initialize();
+                            try
+                            {
+                                //Setup Base Algorithm:
+                                algorithm.Initialize();
+                            }
+                            catch (Exception err)
+                            {
+                                Log.Error(err);
+                                Errors.Add(new AlgorithmSetupException("During the algorithm initialization, the following exception has occurred: ", err));
+                            }
                         }, baseJob.Controls.RamAllocation,
-                        sleepIntervalMillis: 50,
+                        sleepIntervalMillis: 100,
                         workerThread: WorkerThread);
+
+                    // set start and end date if present in the job
+                    if (backtestJob.PeriodStart.HasValue)
+                    {
+                        algorithm.SetStartDate(backtestJob.PeriodStart.Value);
+                    }
+                    if (backtestJob.PeriodFinish.HasValue)
+                    {
+                        algorithm.SetEndDate(backtestJob.PeriodFinish.Value);
+                    }
+
+                    // after we call initialize
+                    BaseSetupHandler.LoadBacktestJobCashAmount(algorithm, backtestJob);
 
                     //Finalize Initialization
                     algorithm.PostInitialize();
@@ -174,15 +201,15 @@ namespace QuantConnect.Lean.Engine.Setup
                     //Set the time frontier of the algorithm
                     algorithm.SetDateTime(algorithm.StartDate.ConvertToUtc(algorithm.TimeZone));
 
-                    //Construct the backtest job packet:
-                    backtestJob.PeriodStart = algorithm.StartDate;
-                    backtestJob.PeriodFinish = algorithm.EndDate;
-
                     //Backtest Specific Parameters:
-                    StartingDate = backtestJob.PeriodStart;
+                    StartingDate = algorithm.StartDate;
 
                     BaseSetupHandler.SetupCurrencyConversions(algorithm, parameters.UniverseSelection);
                     StartingPortfolioValue = algorithm.Portfolio.Cash;
+
+                    // we set the free portfolio value based on the initial total value and the free percentage value
+                    algorithm.Settings.FreePortfolioValue =
+                        algorithm.Portfolio.TotalPortfolioValue * algorithm.Settings.FreePortfolioValuePercentage;
                 }
                 else
                 {

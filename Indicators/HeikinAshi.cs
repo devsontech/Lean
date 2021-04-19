@@ -54,11 +54,6 @@ namespace QuantConnect.Indicators
         public IndicatorBase<IndicatorDataPoint> Volume { get; }
 
         /// <summary>
-        /// Gets the Heikin-Ashi current TradeBar
-        /// </summary>
-        public TradeBar CurrentBar => new TradeBar(Open.Current.Time, Symbol.Empty, Open, High, Low, Close, Volume);
-
-        /// <summary>
         /// Initializes a new instance of the <see cref="HeikinAshi"/> class using the specified name.
         /// </summary> 
         /// <param name="name">The name of this indicator</param>
@@ -106,13 +101,24 @@ namespace QuantConnect.Indicators
             }
             else
             {
-                Open.Update(input.Time, (Open + Close) / 2);
+                Open.Update(input.Time, (Open.Current.Value + Close.Current.Value) / 2);
                 Close.Update(input.Time, (input.Open + input.High + input.Low + input.Close) / 4);
-                High.Update(input.Time, Math.Max(input.High, Math.Max(Open, Close)));
-                Low.Update(input.Time, Math.Min(input.Low, Math.Min(Open, Close)));
+                High.Update(input.Time, Math.Max(input.High, Math.Max(Open.Current.Value, Close.Current.Value)));
+                Low.Update(input.Time, Math.Min(input.Low, Math.Min(Open.Current.Value, Close.Current.Value)));
             }
-            
-            return Close;
+
+            var volume = 0.0m;
+            if (input is TradeBar)
+            {
+                volume = ((TradeBar) input).Volume;
+            }
+            else if (input is RenkoBar)
+            {
+                volume = ((RenkoBar) input).Volume;
+            }
+            Volume.Update(input.Time, volume);
+
+            return Close.Current.Value;
         }
 
         /// <summary>

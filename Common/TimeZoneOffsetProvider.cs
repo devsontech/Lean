@@ -16,6 +16,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using NodaTime;
 using NodaTime.TimeZones;
 
@@ -47,8 +48,10 @@ namespace QuantConnect
         /// Initializes a new instance of the <see cref="TimeZoneOffsetProvider"/> class
         /// </summary>
         /// <param name="timeZone">The time zone to provide offsets for</param>
-        /// <param name="utcStartTime">The start of the range of offsets</param>
-        /// <param name="utcEndTime">The en of the range of offsets</param>
+        /// <param name="utcStartTime">The start of the range of offsets.
+        /// Careful here, it will determine the current discontinuity offset value. When requested to convert a date we only look forward for new discontinuities
+        /// but we suppose the current offset is correct for the requested date if in the past.</param>
+        /// <param name="utcEndTime">The end of the range of offsets</param>
         public TimeZoneOffsetProvider(DateTimeZone timeZone, DateTime utcStartTime, DateTime utcEndTime)
         {
             _timeZone = timeZone;
@@ -60,8 +63,9 @@ namespace QuantConnect
             var end = DateTimeZone.Utc.AtLeniently(LocalDateTime.FromDateTime(utcEndTime));
             var zoneIntervals = _timeZone.GetZoneIntervals(start.ToInstant(), end.ToInstant()).ToList();
 
+            // In NodaTime v3.0.5, ZoneInterval throws if `ZoneInterval.HasStart` is false and `ZoneInterval.Start` is called.
             // short circuit time zones with no discontinuities
-            if (zoneIntervals.Count == 1 && zoneIntervals[0].Start == Instant.MinValue && zoneIntervals[0].End == Instant.MaxValue)
+            if (zoneIntervals.Count == 1 && zoneIntervals[0].HasStart && zoneIntervals[0].Start == Instant.MinValue && zoneIntervals[0].End == Instant.MaxValue)
             {
                 // end of discontinuities
                 _discontinuities = new Queue<long>();
@@ -82,6 +86,7 @@ namespace QuantConnect
         /// </summary>
         /// <param name="utcTime">The time in UTC to get an offset to local</param>
         /// <returns>The offset in ticks between UTC and the local time zone</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public long GetOffsetTicks(DateTime utcTime)
         {
             // keep advancing our discontinuity until the requested time, don't recompute if already at max value
@@ -105,6 +110,7 @@ namespace QuantConnect
         /// </summary>
         /// <param name="localTime">The local time to be converted to UTC</param>
         /// <returns>The specified time in UTC</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public DateTime ConvertToUtc(DateTime localTime)
         {
             // it's important to walk forward to the next time zone discontinuity
@@ -140,6 +146,7 @@ namespace QuantConnect
         /// </summary>
         /// <param name="utcTime">The time to convert from utc</param>
         /// <returns>The same instant in time represented in the <see cref="TimeZone"/></returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public virtual DateTime ConvertFromUtc(DateTime utcTime)
         {
             return new DateTime(utcTime.Ticks + GetOffsetTicks(utcTime));
@@ -153,10 +160,11 @@ namespace QuantConnect
             // can't convert these values directly to date times, so just shortcut these here
             // we set the min value to one since the logic in the ctor will decrement this value to
             // determine the last instant BEFORE the discontinuity
-            if (zoneInterval.Start == Instant.MinValue) return 1;
-            if (zoneInterval.Start == Instant.MaxValue) return DateTime.MaxValue.Ticks;
+            if (!zoneInterval.HasStart || zoneInterval.Start == Instant.MinValue) return 1;
+            if (zoneInterval.HasStart && zoneInterval.Start == Instant.MaxValue) return DateTime.MaxValue.Ticks;
+            if (zoneInterval.HasStart) return zoneInterval.Start.ToDateTimeUtc().Ticks;
 
-            return zoneInterval.Start.ToDateTimeUtc().Ticks;
+            return 1;
         }
     }
 }

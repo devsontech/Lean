@@ -18,7 +18,6 @@ using System;
 using NUnit.Framework;
 using QuantConnect.Data;
 using QuantConnect.Data.Market;
-using QuantConnect.Lean.Engine.DataFeeds;
 using QuantConnect.Lean.Engine.DataFeeds.Enumerators;
 
 namespace QuantConnect.Tests.Engine.DataFeeds.Enumerators
@@ -49,13 +48,15 @@ namespace QuantConnect.Tests.Engine.DataFeeds.Enumerators
             var eventProvider = new DelistingEventProvider();
             eventProvider.Initialize(_config,
                 null,
-                null);
+                null,
+                DateTime.UtcNow);
 
             var enumerator = eventProvider.GetEvents(
                 new NewTradableDateEventArgs(
                     DateTime.UtcNow,
                     new Tick(DateTime.UtcNow, _config.Symbol, 10, 5),
-                    _config.Symbol
+                    _config.Symbol,
+                    null
                 )
             ).GetEnumerator();
 
@@ -84,15 +85,16 @@ namespace QuantConnect.Tests.Engine.DataFeeds.Enumerators
             var eventProvider = new DelistingEventProvider();
             eventProvider.Initialize(_config,
                 null,
-                null);
-
+                null,
+                DateTime.UtcNow);
 
             // should NOT emit
             var enumerator = eventProvider.GetEvents(
                 new NewTradableDateEventArgs(
                     _config.Symbol.ID.Date.Subtract(TimeSpan.FromMinutes(1)),
                     new Tick(DateTime.UtcNow, _config.Symbol, 10, 5),
-                    _config.Symbol
+                    _config.Symbol,
+                    null
                 )
             ).GetEnumerator();
 
@@ -103,7 +105,8 @@ namespace QuantConnect.Tests.Engine.DataFeeds.Enumerators
                 new NewTradableDateEventArgs(
                     _config.Symbol.ID.Date,
                     new Tick(DateTime.UtcNow, _config.Symbol, 10, 5),
-                    _config.Symbol
+                    _config.Symbol,
+                    null
                 )
             ).GetEnumerator();
 
@@ -125,14 +128,16 @@ namespace QuantConnect.Tests.Engine.DataFeeds.Enumerators
             var eventProvider = new DelistingEventProvider();
             eventProvider.Initialize(_config,
                 null,
-                null);
+                null,
+                DateTime.UtcNow);
 
             // should emit warning
             var enumerator = eventProvider.GetEvents(
                 new NewTradableDateEventArgs(
                     _config.Symbol.ID.Date,
                     new Tick(DateTime.UtcNow, _config.Symbol, 10, 5),
-                    _config.Symbol
+                    _config.Symbol,
+                    null
                 )
             ).GetEnumerator();
 
@@ -145,7 +150,8 @@ namespace QuantConnect.Tests.Engine.DataFeeds.Enumerators
                 new NewTradableDateEventArgs(
                     _config.Symbol.ID.Date,
                     new Tick(DateTime.UtcNow, _config.Symbol, 10, 5),
-                    _config.Symbol
+                    _config.Symbol,
+                    null
                 )
             ).GetEnumerator();
             Assert.IsFalse(enumerator.MoveNext());
@@ -155,7 +161,8 @@ namespace QuantConnect.Tests.Engine.DataFeeds.Enumerators
                 new NewTradableDateEventArgs(
                     _config.Symbol.ID.Date.AddMinutes(1),
                     new Tick(DateTime.UtcNow, _config.Symbol, 10, 5),
-                    _config.Symbol
+                    _config.Symbol,
+                    null
                 )
             ).GetEnumerator();
 

@@ -16,6 +16,8 @@
 using Newtonsoft.Json;
 using System;
 using System.IO;
+using NodaTime;
+using ProtoBuf;
 using static QuantConnect.StringExtensions;
 
 namespace QuantConnect.Data.Custom.Estimize
@@ -23,37 +25,47 @@ namespace QuantConnect.Data.Custom.Estimize
     /// <summary>
     /// Financial estimates for the specified company
     /// </summary>
+    [ProtoContract(SkipConstructor = true)]
     public class EstimizeEstimate : BaseData
     {
         /// <summary>
         /// The unique identifier for the estimate
         /// </summary>
+        [ProtoMember(10)]
         [JsonProperty(PropertyName = "id")]
         public string Id { get; set; }
 
         /// <summary>
         /// The ticker of the company being estimated
         /// </summary>
+        [ProtoMember(11)]
         [JsonProperty(PropertyName = "ticker")]
         public string Ticker { get; set; }
 
         /// <summary>
         /// The fiscal year of the quarter being estimated
         /// </summary>
+        [ProtoMember(12)]
         [JsonProperty(PropertyName = "fiscal_year")]
         public int FiscalYear { get; set; }
 
         /// <summary>
         /// The fiscal quarter of the quarter being estimated
         /// </summary>
+        [ProtoMember(13)]
         [JsonProperty(PropertyName = "fiscal_quarter")]
         public int FiscalQuarter { get; set; }
 
         /// <summary>
         /// The time that the estimate was created (UTC)
         /// </summary>
+        [ProtoMember(14)]
         [JsonProperty(PropertyName = "created_at")]
-        public DateTime CreatedAt { get; set; }
+        public DateTime CreatedAt
+        {
+            get { return Time; }
+            set { Time = value; }
+        }
 
         /// <summary>
         /// The time that the estimate was created (UTC)
@@ -63,6 +75,7 @@ namespace QuantConnect.Data.Custom.Estimize
         /// <summary>
         /// The estimated earnings per share for the company in the specified fiscal quarter
         /// </summary>
+        [ProtoMember(15)]
         [JsonProperty(PropertyName = "eps")]
         public decimal? Eps { get; set; }
 
@@ -74,18 +87,21 @@ namespace QuantConnect.Data.Custom.Estimize
         /// <summary>
         /// The estimated revenue for the company in the specified fiscal quarter
         /// </summary>
+        [ProtoMember(16)]
         [JsonProperty(PropertyName = "revenue")]
         public decimal? Revenue { get; set; }
 
         /// <summary>
         /// The unique identifier for the author of the estimate
         /// </summary>
+        [ProtoMember(17)]
         [JsonProperty(PropertyName = "username")]
         public string UserName { get; set; }
 
         /// <summary>
         /// The author of the estimate
         /// </summary>
+        [ProtoMember(18)]
         [JsonProperty(PropertyName = "analyst_id")]
         public string AnalystId { get; set; }
 
@@ -93,6 +109,7 @@ namespace QuantConnect.Data.Custom.Estimize
         /// A boolean value which indicates whether we have flagged this estimate internally as erroneous
         /// (spam, wrong accounting standard, etc)
         /// </summary>
+        [ProtoMember(19)]
         [JsonProperty(PropertyName = "flagged")]
         public bool Flagged { get; set; }
 
@@ -179,6 +196,15 @@ namespace QuantConnect.Data.Custom.Estimize
         public override bool RequiresMapping()
         {
             return true;
+        }
+
+        /// <summary>
+        /// Specifies the data time zone for this data type. This is useful for custom data types
+        /// </summary>
+        /// <returns>The <see cref="DateTimeZone"/> of this data type</returns>
+        public override DateTimeZone DataTimeZone()
+        {
+            return TimeZones.Utc;
         }
     }
 }

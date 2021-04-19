@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -21,7 +21,6 @@ using System.Net;
 using Newtonsoft.Json;
 using QuantConnect.Brokerages;
 using QuantConnect.Configuration;
-using QuantConnect.Logging;
 
 namespace QuantConnect.ToolBox.CoinApi
 {
@@ -53,15 +52,48 @@ namespace QuantConnect.ToolBox.CoinApi
                     Market.Bitfinex,
                     new Dictionary<string, string>
                     {
-                        { "ANIO", "NIO" },
-                        { "BCHSV", "BSV" },
-                        { "DASH", "DSH" },
-                        { "IOTA", "IOT" },
-                        { "MANA", "MNA" },
-                        { "PKGO", "GOT" },
-                        { "QTUM", "QTM" },
-                        { "USDT", "UST" },
-                        { "YOYOW", "YYW" }
+                        { "ABS", "ABYSS"},
+                        { "AIO", "AION"},
+                        { "ALG", "ALGO"},
+                        { "AMP", "AMPL"},
+                        { "ATO", "ATOM"},
+                        { "BCHABC", "BCH"},
+                        { "BCHSV", "BSV"},
+                        { "CSX", "CS"},
+                        { "CTX", "CTXC"},
+                        { "DOG", "MDOGE"},
+                        { "DRN", "DRGN"},
+                        { "DTX", "DT"},
+                        { "EDO", "PNT"},
+                        { "EUS", "EURS"},
+                        { "EUT", "EURT"},
+                        { "GSD", "GUSD"},
+                        { "HOPL", "HOT"},
+                        { "IOS", "IOST"},
+                        { "IOT", "IOTA"},
+                        { "LOO", "LOOM"},
+                        { "MIT", "MITH"},
+                        { "NCA", "NCASH"},
+                        { "OMN", "OMNI"},
+                        { "ORS", "ORST"},
+                        { "PAS", "PASS"},
+                        { "PKGO", "GOT"},
+                        { "POY", "POLY"},
+                        { "QSH", "QASH"},
+                        { "REP", "REP2"},
+                        { "SCR", "XD"},
+                        { "SNG", "SNGLS"},
+                        { "SPK", "SPANK"},
+                        { "STJ", "STORJ"},
+                        { "TSD", "TUSD"},
+                        { "UDC", "USDC"},
+                        { "ULTRA", "UOS"},
+                        { "USK", "USDK"},
+                        { "UTN", "UTNP"},
+                        { "VSY", "VSYS"},
+                        { "WBT", "WBTC"},
+                        { "XCH", "XCHF"},
+                        { "YGG", "YEED"}
                     }
                 }
             };
@@ -169,7 +201,10 @@ namespace QuantConnect.ToolBox.CoinApi
             // <Exchange>_SPOT_<BaseCurrency>_<QuoteCurrency>_<ExtraSuffix>
             // Those cases should be ignored for SPOT prices.
             _symbolMap = result
-                .Where(x => x.SymbolType == "SPOT" && x.SymbolId.Split('_').Length == 4)
+                .Where(x => x.SymbolType == "SPOT" &&
+                    x.SymbolId.Split('_').Length == 4 &&
+                    // exclude Bitfinex BCH pre-2018-fork as for now we don't have historical mapping data
+                    (x.ExchangeId != "BITFINEX" || x.AssetIdBase != "BCH" && x.AssetIdQuote != "BCH"))
                 .ToDictionary(
                     x =>
                     {

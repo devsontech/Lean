@@ -13,15 +13,16 @@
  * limitations under the License.
 */
 
+using Newtonsoft.Json;
 using System;
 using System.Globalization;
 using System.IO;
+using QuantConnect.Logging;
 
 namespace QuantConnect.Data.Custom.SmartInsider
 {
     /// <summary>
-    /// Smart Insider Transaction - Contains information
-    /// about insider trading transactions
+    /// Smart Insider Transaction - Execution of a stock buyback and details about the event occurred
     /// </summary>
     public class SmartInsiderTransaction : SmartInsiderEvent
     {
@@ -33,17 +34,17 @@ namespace QuantConnect.Data.Custom.SmartInsider
         /// <summary>
         /// Describes how transaction was executed
         /// </summary>
-        public string BuybackVia { get; set; }
+        public SmartInsiderExecution? Execution { get; set; }
 
         /// <summary>
         /// Describes which entity carried out the transaction
         /// </summary>
-        public string BuybackBy { get; set; }
+        public SmartInsiderExecutionEntity? ExecutionEntity { get; set; }
 
         /// <summary>
         /// Describes what will be done with those shares following repurchase
         /// </summary>
-        public string HoldingType { get; set; }
+        public SmartInsiderExecutionHolding? ExecutionHolding { get; set; }
 
         /// <summary>
         /// Currency of transation (ISO Code)
@@ -53,12 +54,12 @@ namespace QuantConnect.Data.Custom.SmartInsider
         /// <summary>
         /// Denominated in Currency of Transaction
         /// </summary>
-        public new decimal? Price { get; set; }
+        public decimal? ExecutionPrice { get; set; }
 
         /// <summary>
         /// Number of shares traded
         /// </summary>
-        public decimal? TransactionAmount { get; set; }
+        public decimal? Amount { get; set; }
 
         /// <summary>
         /// Currency conversion rates are updated daily and values are calculated at rate prevailing on the trade date
@@ -118,20 +119,21 @@ namespace QuantConnect.Data.Custom.SmartInsider
         }
 
         /// <summary>
-        /// Creates an instance of the object by taking a formatted CSV line
+        /// Creates an instance of the object by taking a formatted TSV line
         /// </summary>
-        /// <param name="line">Line of formatted CSV</param>
+        /// <param name="line">Line of formatted TSV</param>
         public SmartInsiderTransaction(string line) : base(line)
         {
             var tsv = line.Split('\t');
 
             BuybackDate = string.IsNullOrWhiteSpace(tsv[26]) ? (DateTime?)null : DateTime.ParseExact(tsv[26], "yyyyMMdd", CultureInfo.InvariantCulture);
-            BuybackVia = string.IsNullOrWhiteSpace(tsv[27]) ? null : tsv[27];
-            BuybackBy = string.IsNullOrWhiteSpace(tsv[28]) ? null : tsv[28];
-            HoldingType = string.IsNullOrWhiteSpace(tsv[29]) ? null : tsv[29];
+            Execution = string.IsNullOrWhiteSpace(tsv[27]) ? (SmartInsiderExecution?)null : JsonConvert.DeserializeObject<SmartInsiderExecution>($"\"{tsv[27]}\"");
+            ExecutionEntity = string.IsNullOrWhiteSpace(tsv[28]) ? (SmartInsiderExecutionEntity?)null : JsonConvert.DeserializeObject<SmartInsiderExecutionEntity>($"\"{tsv[28]}\"");
+            ExecutionHolding = string.IsNullOrWhiteSpace(tsv[29]) ? (SmartInsiderExecutionHolding?)null : JsonConvert.DeserializeObject<SmartInsiderExecutionHolding>($"\"{tsv[29]}\"");
+            ExecutionHolding = ExecutionHolding == SmartInsiderExecutionHolding.Error ? SmartInsiderExecutionHolding.SatisfyStockVesting : ExecutionHolding;
             Currency = string.IsNullOrWhiteSpace(tsv[30]) ? null : tsv[30];
-            Price = string.IsNullOrWhiteSpace(tsv[31]) ? (decimal?)null : Convert.ToDecimal(tsv[31], CultureInfo.InvariantCulture);
-            TransactionAmount = string.IsNullOrWhiteSpace(tsv[32]) ? (decimal?)null : Convert.ToDecimal(tsv[32], CultureInfo.InvariantCulture);
+            ExecutionPrice = string.IsNullOrWhiteSpace(tsv[31]) ? (decimal?)null : Convert.ToDecimal(tsv[31], CultureInfo.InvariantCulture);
+            Amount = string.IsNullOrWhiteSpace(tsv[32]) ? (decimal?)null : Convert.ToDecimal(tsv[32], CultureInfo.InvariantCulture);
             GBPValue = string.IsNullOrWhiteSpace(tsv[33]) ? (decimal?)null : Convert.ToDecimal(tsv[33], CultureInfo.InvariantCulture);
             EURValue = string.IsNullOrWhiteSpace(tsv[34]) ? (decimal?)null : Convert.ToDecimal(tsv[34], CultureInfo.InvariantCulture);
             USDValue = string.IsNullOrWhiteSpace(tsv[35]) ? (decimal?)null : Convert.ToDecimal(tsv[35], CultureInfo.InvariantCulture);
@@ -145,15 +147,26 @@ namespace QuantConnect.Data.Custom.SmartInsider
         }
 
         /// <summary>
-        /// Creates an instance of the object by taking a formatted CSV line
+        /// Creates an instance of the object by taking a formatted TSV line
         /// </summary>
-        /// <param name="line">Line of formatted CSV</param>
+        /// <param name="line">Line of formatted TSV</param>
         public override void FromRawData(string line)
         {
             var tsv = line.Split('\t');
 
             TransactionID = string.IsNullOrWhiteSpace(tsv[0]) ? null : tsv[0];
-            BuybackType = string.IsNullOrWhiteSpace(tsv[1]) ? null : tsv[1];
+            EventType = SmartInsiderEventType.NotSpecified;
+            if (!string.IsNullOrWhiteSpace(tsv[1]))
+            {
+                try
+                {
+                    EventType = JsonConvert.DeserializeObject<SmartInsiderEventType>($"\"{tsv[1]}\"");
+                }
+                catch (JsonSerializationException)
+                {
+                    Log.Error($"SmartInsiderTransaction.FromRawData(): New unexpected entry found for EventType: {tsv[1]}. Parsed as NotSpecified.");
+                }
+            }
             LastUpdate = DateTime.ParseExact(tsv[2], "yyyy-MM-dd", CultureInfo.InvariantCulture);
             LastIDsUpdate = string.IsNullOrWhiteSpace(tsv[3]) ? (DateTime?)null : DateTime.ParseExact(tsv[3], "yyyy-MM-dd", CultureInfo.InvariantCulture);
             ISIN = string.IsNullOrWhiteSpace(tsv[4]) ? null : tsv[4];
@@ -174,12 +187,57 @@ namespace QuantConnect.Data.Custom.SmartInsider
             TickerSymbol = string.IsNullOrWhiteSpace(tsv[19]) ? null : tsv[19];
 
             BuybackDate = string.IsNullOrWhiteSpace(tsv[20]) ? (DateTime?)null : DateTime.ParseExact(tsv[20], "yyyy-MM-dd", CultureInfo.InvariantCulture);
-            BuybackVia = string.IsNullOrWhiteSpace(tsv[21]) ? null : tsv[21];
-            BuybackBy = string.IsNullOrWhiteSpace(tsv[22]) ? null : tsv[22];
-            HoldingType = string.IsNullOrWhiteSpace(tsv[23]) ? null : tsv[23];
+
+            Execution = null;
+            if (!string.IsNullOrWhiteSpace(tsv[21]))
+            {
+                try
+                {
+                    Execution = JsonConvert.DeserializeObject<SmartInsiderExecution>($"\"{tsv[21]}\"");
+                }
+                catch (JsonSerializationException)
+                {
+                    Log.Error($"SmartInsiderTransaction.FromRawData(): New unexpected entry found for Execution: {tsv[21]}. Parsed as Error.");
+                    Execution = SmartInsiderExecution.Error;
+                }
+            }
+
+            ExecutionEntity = null;
+            if (!string.IsNullOrWhiteSpace(tsv[22]))
+            {
+                try
+                {
+                    ExecutionEntity = JsonConvert.DeserializeObject<SmartInsiderExecutionEntity>($"\"{tsv[22]}\"");
+                }
+                catch (JsonSerializationException)
+                {
+                    Log.Error($"SmartInsiderTransaction.FromRawData(): New unexpected entry found for ExecutionEntity: {tsv[22]}. Parsed as Error.");
+                    ExecutionEntity = SmartInsiderExecutionEntity.Error;
+                }
+            }
+
+            ExecutionHolding = null;
+            if (!string.IsNullOrWhiteSpace(tsv[23]))
+            {
+                try
+                {
+                    ExecutionHolding = JsonConvert.DeserializeObject<SmartInsiderExecutionHolding>($"\"{tsv[23]}\"");
+                    if (ExecutionHolding == SmartInsiderExecutionHolding.Error)
+                    {
+                        // This error in particular represents a SatisfyStockVesting field.
+                        ExecutionHolding = SmartInsiderExecutionHolding.SatisfyStockVesting;
+                    }
+                }
+                catch (JsonSerializationException)
+                {
+                    Log.Error($"SmartInsiderTransaction.FromRawData(): New unexpected entry found for ExecutionHolding: {tsv[23]}. Parsed as Error.");
+                    ExecutionHolding = SmartInsiderExecutionHolding.Error;
+                }
+            }
+
             Currency = string.IsNullOrWhiteSpace(tsv[24]) ? null : tsv[24];
-            Price = string.IsNullOrWhiteSpace(tsv[25]) ? (decimal?)null : Convert.ToDecimal(tsv[25], CultureInfo.InvariantCulture);
-            TransactionAmount = string.IsNullOrWhiteSpace(tsv[26]) ? (decimal?)null : Convert.ToDecimal(tsv[26], CultureInfo.InvariantCulture);
+            ExecutionPrice = string.IsNullOrWhiteSpace(tsv[25]) ? (decimal?)null : Convert.ToDecimal(tsv[25], CultureInfo.InvariantCulture);
+            Amount = string.IsNullOrWhiteSpace(tsv[26]) ? (decimal?)null : Convert.ToDecimal(tsv[26], CultureInfo.InvariantCulture);
             GBPValue = string.IsNullOrWhiteSpace(tsv[27]) ? (decimal?)null : Convert.ToDecimal(tsv[27], CultureInfo.InvariantCulture);
             EURValue = string.IsNullOrWhiteSpace(tsv[28]) ? (decimal?)null : Convert.ToDecimal(tsv[28], CultureInfo.InvariantCulture);
             USDValue = string.IsNullOrWhiteSpace(tsv[29]) ? (decimal?)null : Convert.ToDecimal(tsv[29], CultureInfo.InvariantCulture);
@@ -192,10 +250,10 @@ namespace QuantConnect.Data.Custom.SmartInsider
             TreasuryHolding = string.IsNullOrWhiteSpace(tsv[36]) ? (int?)null : Convert.ToInt32(tsv[36], CultureInfo.InvariantCulture);
 
             AnnouncementDate = string.IsNullOrWhiteSpace(tsv[37]) ? (DateTime?)null : DateTime.ParseExact(tsv[37], "yyyy-MM-dd", CultureInfo.InvariantCulture);
-            TimeReleased = string.IsNullOrWhiteSpace(tsv[38]) ? (DateTime?)null : DateTime.ParseExact(tsv[38].Replace(" ", "").Trim(), "dd/MM/yyyyHH:mm:ss", CultureInfo.InvariantCulture);
-            TimeProcessed = string.IsNullOrWhiteSpace(tsv[39]) ? (DateTime?)null : DateTime.ParseExact(tsv[39].Replace(" ", "").Trim(), "dd/MM/yyyyHH:mm:ss", CultureInfo.InvariantCulture);
-            TimeReleasedUtc = string.IsNullOrWhiteSpace(tsv[40]) ? (DateTime?)null : DateTime.ParseExact(tsv[40].Replace(" ", "").Trim(), "dd/MM/yyyyHH:mm:ss", CultureInfo.InvariantCulture);
-            TimeProcessedUtc = string.IsNullOrWhiteSpace(tsv[41]) ? (DateTime?)null : DateTime.ParseExact(tsv[41].Replace(" ", "").Trim(), "yyyy-MM-ddHH:mm:ss", CultureInfo.InvariantCulture);
+            TimeReleased = string.IsNullOrWhiteSpace(tsv[38]) ? (DateTime?)null : ParseDate(tsv[38]);
+            TimeProcessed = string.IsNullOrWhiteSpace(tsv[39]) ? (DateTime?)null : ParseDate(tsv[39]);
+            TimeReleasedUtc = string.IsNullOrWhiteSpace(tsv[40]) ? (DateTime?)null : ParseDate(tsv[40]);
+            TimeProcessedUtc = string.IsNullOrWhiteSpace(tsv[41]) ? (DateTime?)null : ParseDate(tsv[41]);
             AnnouncedIn = string.IsNullOrWhiteSpace(tsv[42]) ? null : tsv[42];
         }
 
@@ -225,20 +283,16 @@ namespace QuantConnect.Data.Custom.SmartInsider
         /// Reads the data into LEAN for use in algorithms
         /// </summary>
         /// <param name="config">Subscription configuration</param>
-        /// <param name="line">Line of CSV</param>
+        /// <param name="line">Line of TSV</param>
         /// <param name="date">Algorithm date</param>
         /// <param name="isLiveMode">Is live mode</param>
         /// <returns>Instance of the object</returns>
         public override BaseData Reader(SubscriptionDataConfig config, string line, DateTime date, bool isLiveMode)
         {
-            var transaction = new SmartInsiderTransaction(line)
+            return new SmartInsiderTransaction(line)
             {
                 Symbol = config.Symbol
             };
-            // Files are made available at the earliest @ 17:00 U.K. time
-            transaction.Time = transaction.Time.AddHours(17).ConvertTo(TimeZones.London, config.DataTimeZone);
-
-            return transaction;
         }
 
         /// <summary>
@@ -253,7 +307,7 @@ namespace QuantConnect.Data.Custom.SmartInsider
             return new SmartInsiderTransaction
             {
                 TransactionID = TransactionID,
-                BuybackType = BuybackType,
+                EventType = EventType,
                 LastUpdate = LastUpdate,
                 LastIDsUpdate = LastIDsUpdate,
                 ISIN = ISIN,
@@ -280,12 +334,12 @@ namespace QuantConnect.Data.Custom.SmartInsider
                 AnnouncedIn = AnnouncedIn,
 
                 BuybackDate = BuybackDate,
-                BuybackVia = BuybackVia,
-                BuybackBy = BuybackBy,
-                HoldingType = HoldingType,
+                Execution = Execution,
+                ExecutionEntity = ExecutionEntity,
+                ExecutionHolding = ExecutionHolding,
                 Currency = Currency,
-                Price = Price,
-                TransactionAmount = TransactionAmount,
+                ExecutionPrice = ExecutionPrice,
+                Amount = Amount,
                 GBPValue = GBPValue,
                 EURValue = EURValue,
                 USDValue = USDValue,
@@ -304,15 +358,16 @@ namespace QuantConnect.Data.Custom.SmartInsider
         }
 
         /// <summary>
-        /// Converts the data to CSV
+        /// Converts the data to TSV
         /// </summary>
-        /// <returns>String of CSV</returns>
-        /// <remarks>Parsable by the constructor should you need to recreate the object from CSV</remarks>
+        /// <returns>String of TSV</returns>
+        /// <remarks>Parsable by the constructor should you need to recreate the object from TSV</remarks>
         public override string ToLine()
         {
             return string.Join("\t",
+                TimeProcessedUtc?.ToStringInvariant("yyyyMMdd HH:mm:ss"),
                 TransactionID,
-                BuybackType,
+                EventType == null ? null : JsonConvert.SerializeObject(EventType).Replace("\"", ""),
                 LastUpdate.ToStringInvariant("yyyyMMdd"),
                 LastIDsUpdate?.ToStringInvariant("yyyyMMdd"),
                 ISIN,
@@ -335,15 +390,14 @@ namespace QuantConnect.Data.Custom.SmartInsider
                 TimeReleased?.ToStringInvariant("yyyyMMdd HH:mm:ss"),
                 TimeProcessed?.ToStringInvariant("yyyyMMdd HH:mm:ss"),
                 TimeReleasedUtc?.ToStringInvariant("yyyyMMdd HH:mm:ss"),
-                TimeProcessedUtc?.ToStringInvariant("yyyyMMdd HH:mm:ss"),
                 AnnouncedIn,
                 BuybackDate?.ToStringInvariant("yyyyMMdd"),
-                BuybackVia,
-                BuybackBy,
-                HoldingType,
+                Execution == null ? null : JsonConvert.SerializeObject(Execution).Replace("\"", ""),
+                ExecutionEntity == null ? null : JsonConvert.SerializeObject(ExecutionEntity).Replace("\"", ""),
+                ExecutionHolding == null ? null : JsonConvert.SerializeObject(ExecutionHolding).Replace("\"", ""),
                 Currency,
-                Price,
-                TransactionAmount,
+                ExecutionPrice,
+                Amount,
                 GBPValue,
                 EURValue,
                 USDValue,

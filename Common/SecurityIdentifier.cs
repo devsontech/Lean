@@ -19,9 +19,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Newtonsoft.Json;
+using ProtoBuf;
 using QuantConnect.Configuration;
+using QuantConnect.Data.UniverseSelection;
 using QuantConnect.Interfaces;
 using QuantConnect.Logging;
+using QuantConnect.Securities.Future;
 using QuantConnect.Util;
 using static QuantConnect.StringExtensions;
 
@@ -36,7 +39,8 @@ namespace QuantConnect
     /// The symbol is limited to 12 characters
     /// </remarks>
     [JsonConverter(typeof(SecurityIdentifierJsonConverter))]
-    public struct SecurityIdentifier : IEquatable<SecurityIdentifier>
+    [ProtoContract(SkipConstructor = true)]
+    public class SecurityIdentifier : IEquatable<SecurityIdentifier>
     {
         #region Empty, DefaultDate Fields
 
@@ -52,6 +56,11 @@ namespace QuantConnect
         /// Gets an instance of <see cref="SecurityIdentifier"/> that is empty, that is, one with no symbol specified
         /// </summary>
         public static readonly SecurityIdentifier Empty = new SecurityIdentifier(string.Empty, 0);
+
+        /// <summary>
+        /// Gets an instance of <see cref="SecurityIdentifier"/> that is explicitly no symbol
+        /// </summary>
+        public static readonly SecurityIdentifier None = new SecurityIdentifier("NONE", 0);
 
         /// <summary>
         /// Gets the date to be used when it does not apply.
@@ -99,11 +108,20 @@ namespace QuantConnect
 
         #region Member variables
 
-        private readonly string _symbol;
-        private readonly ulong _properties;
-        private readonly SidBox _underlying;
-        private readonly int _hashCode;
-        private decimal _strikePrice;
+        [ProtoMember(1)]
+        private string _symbol;
+        [ProtoMember(2)]
+        private ulong _properties;
+        [ProtoMember(3)]
+        private SecurityIdentifier _underlying;
+        private bool _hashCodeSet;
+        private int _hashCode;
+        private decimal? _strikePrice;
+        private OptionStyle? _optionStyle;
+        private OptionRight? _optionRight;
+        private DateTime? _date;
+        private string _stringRep;
+        private string _market;
 
         #endregion
 
@@ -130,7 +148,7 @@ namespace QuantConnect
                 {
                     throw new InvalidOperationException("No underlying specified for this identifier. Check that HasUnderlying is true before accessing the Underlying property.");
                 }
-                return _underlying.SecurityIdentifier;
+                return _underlying;
             }
         }
 
@@ -138,25 +156,35 @@ namespace QuantConnect
         /// Gets the date component of this identifier. For equities this
         /// is the first date the security traded. Technically speaking,
         /// in LEAN, this is the first date mentioned in the map_files.
-        /// For options this is the expiry date. For futures this is the
-        /// settlement date. For forex and cfds this property will throw an
+        /// For futures and options this is the expiry date of the contract.
+        /// For other asset classes, this property will throw an
         /// exception as the field is not specified.
         /// </summary>
         public DateTime Date
         {
             get
             {
-                var stype = SecurityType;
-                switch (stype)
+                try
                 {
-                    case SecurityType.Base:
-                    case SecurityType.Equity:
-                    case SecurityType.Option:
-                    case SecurityType.Future:
-                        var oadate = ExtractFromProperties(DaysOffset, DaysWidth);
-                        return DateTime.FromOADate(oadate);
-                    default:
-                        throw new InvalidOperationException("Date is only defined for SecurityType.Equity, SecurityType.Option, SecurityType.Future, and SecurityType.Base");
+                    return _date.Value;
+                }
+                catch (InvalidOperationException)
+                {
+                    switch (SecurityType)
+                    {
+                        case SecurityType.Base:
+                        case SecurityType.Equity:
+                        case SecurityType.Option:
+                        case SecurityType.Future:
+                        case SecurityType.Index:
+                        case SecurityType.FutureOption:
+                        case SecurityType.IndexOption:
+                            var oadate = ExtractFromProperties(DaysOffset, DaysWidth);
+                            _date = DateTime.FromOADate(oadate);
+                            return _date.Value;
+                        default:
+                            throw new InvalidOperationException("Date is only defined for SecurityType.Equity, SecurityType.Option, SecurityType.Future, SecurityType.FutureOption, SecurityType.IndexOption, and SecurityType.Base");
+                    }
                 }
             }
         }
@@ -180,17 +208,21 @@ namespace QuantConnect
         {
             get
             {
-                var marketCode = ExtractFromProperties(MarketOffset, MarketWidth);
-                var market = QuantConnect.Market.Decode((int)marketCode);
-
-                // if we couldn't find it, send back the numeric representation
-                return market ?? marketCode.ToStringInvariant();
+                if (_market == null)
+                {
+                    var marketCode = ExtractFromProperties(MarketOffset, MarketWidth);
+                    var market = QuantConnect.Market.Decode((int)marketCode);
+                    // if we couldn't find it, send back the numeric representation
+                    _market = market ?? marketCode.ToStringInvariant();
+                }
+                return _market;
             }
         }
 
         /// <summary>
         /// Gets the security type component of this security identifier.
         /// </summary>
+        [ProtoMember(4)]
         public SecurityType SecurityType { get; }
 
         /// <summary>
@@ -201,20 +233,35 @@ namespace QuantConnect
         {
             get
             {
-                if (SecurityType != SecurityType.Option)
+                try
                 {
-                    throw new InvalidOperationException("OptionType is only defined for SecurityType.Option");
+                    // will throw 'InvalidOperationException' if not set
+                    return _strikePrice.Value;
                 }
-
-                // performance: lets calculate strike price once
-                if (_strikePrice == -1)
+                catch (InvalidOperationException)
                 {
+                    if (!SecurityType.IsOption())
+                    {
+                        throw new InvalidOperationException("StrikePrice is only defined for SecurityType.Option, SecurityType.FutureOption, and SecurityType.IndexOption");
+                    }
+
+                    // performance: lets calculate strike price once
                     var scale = ExtractFromProperties(StrikeScaleOffset, StrikeScaleWidth);
                     var unscaled = ExtractFromProperties(StrikeOffset, StrikeWidth);
                     var pow = Math.Pow(10, (int)scale - StrikeDefaultScale);
-                    _strikePrice = unscaled * (decimal)pow;
+                    // If the 20th bit is set to 1, we have a negative strike price.
+                    // Let's normalize the strike and explicitly make it negative
+                    if (((unscaled >> 19) & 1) == 1)
+                    {
+                        _strikePrice = -((unscaled ^ 1 << 19) * (decimal)pow);
+                    }
+                    else
+                    {
+                        _strikePrice = unscaled * (decimal)pow;
+                    }
+
+                    return _strikePrice.Value;
                 }
-                return _strikePrice;
             }
         }
 
@@ -227,11 +274,20 @@ namespace QuantConnect
         {
             get
             {
-                if (SecurityType != SecurityType.Option)
+                try
                 {
-                    throw new InvalidOperationException("OptionRight is only defined for SecurityType.Option");
+                    // will throw 'InvalidOperationException' if not set
+                    return _optionRight.Value;
                 }
-                return (OptionRight)ExtractFromProperties(PutCallOffset, PutCallWidth);
+                catch (InvalidOperationException)
+                {
+                    if (!SecurityType.IsOption())
+                    {
+                        throw new InvalidOperationException("OptionRight is only defined for SecurityType.Option, SecurityType.FutureOption, and SecurityType.IndexOption");
+                    }
+                    _optionRight = (OptionRight)ExtractFromProperties(PutCallOffset, PutCallWidth);
+                    return _optionRight.Value;
+                }
             }
         }
 
@@ -244,11 +300,21 @@ namespace QuantConnect
         {
             get
             {
-                if (SecurityType != SecurityType.Option)
+                try
                 {
-                    throw new InvalidOperationException("OptionStyle is only defined for SecurityType.Option");
+                    // will throw 'InvalidOperationException' if not set
+                    return _optionStyle.Value;
                 }
-                return (OptionStyle)(ExtractFromProperties(OptionStyleOffset, OptionStyleWidth));
+                catch (InvalidOperationException)
+                {
+                    if (!SecurityType.IsOption())
+                    {
+                        throw new InvalidOperationException("OptionStyle is only defined for SecurityType.Option, SecurityType.FutureOption, and SecurityType.IndexOption");
+                    }
+
+                    _optionStyle = (OptionStyle)(ExtractFromProperties(OptionStyleOffset, OptionStyleWidth));
+                    return _optionStyle.Value;
+                }
             }
         }
 
@@ -275,13 +341,17 @@ namespace QuantConnect
             _symbol = symbol;
             _properties = properties;
             _underlying = null;
-            _strikePrice = -1;
+            _strikePrice = null;
+            _optionStyle = null;
+            _optionRight = null;
+            _date = null;
             SecurityType = (SecurityType)ExtractFromProperties(SecurityTypeOffset, SecurityTypeWidth, properties);
-            if (!Enum.IsDefined(typeof(SecurityType), SecurityType))
+            if (!SecurityType.IsValid())
             {
                 throw new ArgumentException($"The provided properties do not match with a valid {nameof(SecurityType)}", "properties");
             }
             _hashCode = unchecked (symbol.GetHashCode() * 397) ^ properties.GetHashCode();
+            _hashCodeSet = true;
         }
 
         /// <summary>
@@ -303,7 +373,7 @@ namespace QuantConnect
             // performance: directly call Equals(SecurityIdentifier other), shortcuts Equals(object other)
             if (!underlying.Equals(Empty))
             {
-                _underlying = new SidBox(underlying);
+                _underlying = underlying;
             }
         }
 
@@ -328,7 +398,7 @@ namespace QuantConnect
             OptionRight optionRight,
             OptionStyle optionStyle)
         {
-            return Generate(expiry, underlying.Symbol, SecurityType.Option, market, strike, optionRight, optionStyle, underlying);
+            return Generate(expiry, underlying.Symbol, QuantConnect.Symbol.GetOptionTypeFromUnderlying(underlying.SecurityType), market, strike, optionRight, optionStyle, underlying);
         }
 
         /// <summary>
@@ -353,13 +423,14 @@ namespace QuantConnect
         /// <param name="market">The market</param>
         /// <param name="mapSymbol">Specifies if symbol should be mapped using map file provider</param>
         /// <param name="mapFileProvider">Specifies the IMapFileProvider to use for resolving symbols, specify null to load from Composer</param>
+        /// <param name="mappingResolveDate">The date to use to resolve the map file. Default value is <see cref="DateTime.Today"/></param>
         /// <returns>A new <see cref="SecurityIdentifier"/> representing the specified symbol today</returns>
-        public static SecurityIdentifier GenerateEquity(string symbol, string market, bool mapSymbol = true, IMapFileProvider mapFileProvider = null)
+        public static SecurityIdentifier GenerateEquity(string symbol, string market, bool mapSymbol = true, IMapFileProvider mapFileProvider = null, DateTime? mappingResolveDate = null)
         {
             var firstDate = DefaultDate;
             if (mapSymbol)
             {
-                var firstTickerDate = GetFirstTickerAndDate(mapFileProvider ?? MapFileProvider.Value, symbol, market);
+                var firstTickerDate = GetFirstTickerAndDate(mapFileProvider ?? MapFileProvider.Value, symbol, market, mappingResolveDate: mappingResolveDate);
                 firstDate = firstTickerDate.Item2;
                 symbol = firstTickerDate.Item1;
             }
@@ -377,6 +448,22 @@ namespace QuantConnect
         public static SecurityIdentifier GenerateEquity(DateTime date, string symbol, string market)
         {
             return Generate(date, symbol, SecurityType.Equity, market);
+        }
+
+        /// <summary>
+        /// Generates a new <see cref="SecurityIdentifier"/> for a <see cref="ConstituentsUniverseData"/>.
+        /// Note that the symbol ticker is case sensitive here.
+        /// </summary>
+        /// <param name="symbol">The ticker to use for this constituent identifier</param>
+        /// <param name="securityType">The security type of this constituent universe</param>
+        /// <param name="market">The security's market</param>
+        /// <remarks>This method is special in the sense that it does not force the Symbol to be upper
+        /// which is required to determine the source file of the constituent
+        /// <see cref="ConstituentsUniverseData.GetSource(Data.SubscriptionDataConfig,DateTime,bool)"/></remarks>
+        /// <returns>A new <see cref="SecurityIdentifier"/> representing the specified constituent universe</returns>
+        public static SecurityIdentifier GenerateConstituentIdentifier(string symbol, SecurityType securityType, string market)
+        {
+            return Generate(DefaultDate, symbol, securityType, market, forceSymbolToUpper: false);
         }
 
         /// <summary>
@@ -458,6 +545,17 @@ namespace QuantConnect
         }
 
         /// <summary>
+        /// Generates a new <see cref="SecurityIdentifier"/> for a INDEX security
+        /// </summary>
+        /// <param name="symbol">The Index contract symbol</param>
+        /// <param name="market">The security's market</param>
+        /// <returns>A new <see cref="SecurityIdentifier"/> representing the specified INDEX security</returns>
+        public static SecurityIdentifier GenerateIndex(string symbol, string market)
+        {
+            return Generate(DefaultDate, symbol, SecurityType.Index, market);
+        }
+
+        /// <summary>
         /// Generic generate method. This method should be used carefully as some parameters are not required and
         /// some parameters mean different things for different security types
         /// </summary>
@@ -468,7 +566,7 @@ namespace QuantConnect
             decimal strike = 0,
             OptionRight optionRight = 0,
             OptionStyle optionStyle = 0,
-            SecurityIdentifier? underlying = null,
+            SecurityIdentifier underlying = null,
             bool forceSymbolToUpper = true)
         {
             if ((ulong)securityType >= SecurityTypeWidth || securityType < 0)
@@ -483,6 +581,13 @@ namespace QuantConnect
             // normalize input strings
             market = market.ToLowerInvariant();
             symbol = forceSymbolToUpper ? symbol.LazyToUpper() : symbol;
+
+            if (securityType == SecurityType.FutureOption)
+            {
+                // Futures options tickers might not match, so we need
+                // to map the provided future Symbol to the actual future option Symbol.
+                symbol = FuturesOptionsSymbolMappings.Map(symbol);
+            }
 
             var marketIdentifier = QuantConnect.Market.Encode(market);
             if (!marketIdentifier.HasValue)
@@ -503,7 +608,25 @@ namespace QuantConnect
 
             var otherData = putcall + days + style + strk + strikeScale + marketCode + (ulong)securityType;
 
-            return new SecurityIdentifier(symbol, otherData, underlying ?? Empty);
+            var result = new SecurityIdentifier(symbol, otherData, underlying ?? Empty);
+
+            // we already have these so lets set them
+            switch (securityType)
+            {
+                case SecurityType.Base:
+                case SecurityType.Equity:
+                case SecurityType.Future:
+                    result._date = date;
+                    break;
+                case SecurityType.Option:
+                case SecurityType.FutureOption:
+                    result._date = date;
+                    result._strikePrice = strike;
+                    result._optionRight = optionRight;
+                    result._optionStyle = optionStyle;
+                    break;
+            }
+            return result;
         }
 
         /// <summary>
@@ -512,11 +635,12 @@ namespace QuantConnect
         /// <param name="mapFileProvider">The IMapFileProvider instance used for resolving map files</param>
         /// <param name="tickerToday">The security's ticker as it trades today</param>
         /// <param name="market">The market the security exists in</param>
+        /// <param name="mappingResolveDate">The date to use to resolve the map file. Default value is <see cref="DateTime.Today"/></param>
         /// <returns>The security's first ticker/date if mapping data available, otherwise, the provided ticker and DefaultDate are returned</returns>
-        private static Tuple<string, DateTime> GetFirstTickerAndDate(IMapFileProvider mapFileProvider, string tickerToday, string market)
+        private static Tuple<string, DateTime> GetFirstTickerAndDate(IMapFileProvider mapFileProvider, string tickerToday, string market, DateTime? mappingResolveDate = null)
         {
             var resolver = mapFileProvider.Get(market);
-            var mapFile = resolver.ResolveMapFile(tickerToday, DateTime.Today);
+            var mapFile = resolver.ResolveMapFile(tickerToday, mappingResolveDate ?? DateTime.Today);
 
             // if we have mapping data, use the first ticker/date from there, otherwise use provided ticker and DefaultDate
             return mapFile.Any()
@@ -552,7 +676,7 @@ namespace QuantConnect
         /// </summary>
         private static string EncodeBase36(ulong data)
         {
-            var stack = new Stack<char>();
+            var stack = new Stack<char>(15);
             while (data != 0)
             {
                 var value = data % 36;
@@ -590,12 +714,35 @@ namespace QuantConnect
                 scale++;
             }
 
-            if (strike >= 1000000)
+            // Since our max precision was previously capped at 999999 and it had 20 bits set,
+            // we sacrifice a single bit from the strike price to allow for negative strike prices.
+            // 475711 is the maximum value that can be represented when setting the negative bit because
+            // any number greater than that will cause an overflow in the strike price width and increase
+            // its width to 7 digits.
+            // The idea behind this formula is to determine what number the overflow would happen at.
+            // We get the max number representable in 19 bits, subtract the width to normalize the value,
+            // and then get the difference between the 20 bit mask and the 19 bit normalized value to get
+            // the max strike price + 1. Subtract 1 to normalize the value, and we have established an exclusive
+            // upper bound.
+            const ulong negativeMask = 1 << 19;
+            const ulong maxStrikePrice = negativeMask - ((negativeMask ^ (negativeMask - 1)) - StrikeWidth) - 1;
+
+            if (strike >= maxStrikePrice || strike <= -(long)maxStrikePrice)
             {
                 throw new ArgumentException(Invariant($"The specified strike price\'s precision is too high: {str}"));
             }
 
-            return (ulong)strike;
+            var encodedStrike = (long)strike;
+            if (strike < 0)
+            {
+                // Flip the sign
+                encodedStrike = -encodedStrike;
+
+                // Sets the 20th bit equal to 1
+                encodedStrike |= 1 << 19;
+            }
+
+            return (ulong)encodedStrike;
         }
 
         /// <summary>
@@ -671,7 +818,7 @@ namespace QuantConnect
         {
             exception = null;
 
-            if (string.IsNullOrWhiteSpace(value))
+            if (string.IsNullOrWhiteSpace(value) || value == " 0")
             {
                 identifier = Empty;
                 return true;
@@ -728,7 +875,7 @@ namespace QuantConnect
         /// <summary>
         /// Extracts the embedded value from _otherData
         /// </summary>
-        /// <remarks>Static so it can be used in <see cref="_lazySecurityType"/> initialization</remarks>
+        /// <remarks>Static so it can be used in <see cref="SecurityIdentifier"/> initialization</remarks>
         private static ulong ExtractFromProperties(ulong offset, ulong width, ulong properties)
         {
             return (properties / offset) % width;
@@ -747,7 +894,7 @@ namespace QuantConnect
         /// <param name="other">An object to compare with this object.</param>
         public bool Equals(SecurityIdentifier other)
         {
-            return _properties == other._properties
+            return ReferenceEquals(this, other) || _properties == other._properties
                 && _symbol == other._symbol
                 && _underlying == other._underlying;
         }
@@ -773,7 +920,15 @@ namespace QuantConnect
         /// A hash code for the current <see cref="T:System.Object"/>.
         /// </returns>
         /// <filterpriority>2</filterpriority>
-        public override int GetHashCode() => _hashCode;
+        public override int GetHashCode()
+        {
+            if (!_hashCodeSet)
+            {
+                _hashCode = unchecked(_symbol.GetHashCode() * 397) ^ _properties.GetHashCode();
+                _hashCodeSet = true;
+            }
+            return _hashCode;
+        }
 
         /// <summary>
         /// Override equals operator
@@ -800,51 +955,15 @@ namespace QuantConnect
         /// <filterpriority>2</filterpriority>
         public override string ToString()
         {
-            var props = EncodeBase36(_properties);
-            if (HasUnderlying)
+            if (_stringRep == null)
             {
-                return _symbol + ' ' + props + '|' + _underlying.SecurityIdentifier;
+                var props = EncodeBase36(_properties);
+                props = props.Length == 0 ? "0" : props;
+                _stringRep = HasUnderlying ? $"{_symbol} {props}|{_underlying}" : $"{_symbol} {props}";
             }
-            return _symbol + ' ' + props;
+            return _stringRep;
         }
 
         #endregion
-
-        /// <summary>
-        /// Provides a reference type container for a security identifier instance.
-        /// This is used to maintain a reference to an underlying
-        /// </summary>
-        private sealed class SidBox : IEquatable<SidBox>
-        {
-            public readonly SecurityIdentifier SecurityIdentifier;
-            public SidBox(SecurityIdentifier securityIdentifier)
-            {
-                SecurityIdentifier = securityIdentifier;
-            }
-            public bool Equals(SidBox other)
-            {
-                if (ReferenceEquals(null, other)) return false;
-                if (ReferenceEquals(this, other)) return true;
-                return SecurityIdentifier.Equals(other.SecurityIdentifier);
-            }
-            public override bool Equals(object obj)
-            {
-                if (ReferenceEquals(null, obj)) return false;
-                if (ReferenceEquals(this, obj)) return true;
-                return obj is SidBox && Equals((SidBox)obj);
-            }
-            public override int GetHashCode()
-            {
-                return SecurityIdentifier.GetHashCode();
-            }
-            public static bool operator ==(SidBox left, SidBox right)
-            {
-                return Equals(left, right);
-            }
-            public static bool operator !=(SidBox left, SidBox right)
-            {
-                return !Equals(left, right);
-            }
-        }
     }
 }

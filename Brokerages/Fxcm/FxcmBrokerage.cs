@@ -43,6 +43,7 @@ namespace QuantConnect.Brokerages.Fxcm
     {
         private readonly IOrderProvider _orderProvider;
         private readonly ISecurityProvider _securityProvider;
+        private readonly IDataAggregator _aggregator;
         private readonly string _server;
         private readonly string _terminal;
         private readonly string _userName;
@@ -56,9 +57,12 @@ namespace QuantConnect.Brokerages.Fxcm
         private DateTime _lastReadyMessageTime;
         private volatile bool _connectionLost;
 
+        // tracks requested order updates, so we can flag Submitted order events as updates
+        private readonly ConcurrentDictionary<int, int> _orderUpdates = new ConcurrentDictionary<int, int>();
         private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
         private readonly ConcurrentQueue<OrderEvent> _orderEventQueue = new ConcurrentQueue<OrderEvent>();
         private readonly FxcmSymbolMapper _symbolMapper = new FxcmSymbolMapper();
+        private readonly EventBasedDataQueueHandlerSubscriptionManager _subscriptionManager;
 
         private readonly IList<BaseData> _lastHistoryChunk = new List<BaseData>();
 
@@ -94,21 +98,27 @@ namespace QuantConnect.Brokerages.Fxcm
         /// </summary>
         /// <param name="orderProvider">The order provider</param>
         /// <param name="securityProvider">The holdings provider</param>
+        /// <param name="aggregator">Consolidate ticks</param>
         /// <param name="server">The url of the server</param>
         /// <param name="terminal">The terminal name</param>
         /// <param name="userName">The user name (login id)</param>
         /// <param name="password">The user password</param>
         /// <param name="accountId">The account id</param>
-        public FxcmBrokerage(IOrderProvider orderProvider, ISecurityProvider securityProvider, string server, string terminal, string userName, string password, string accountId)
+        public FxcmBrokerage(IOrderProvider orderProvider, ISecurityProvider securityProvider, IDataAggregator aggregator, string server, string terminal, string userName, string password, string accountId)
             : base("FXCM Brokerage")
         {
             _orderProvider = orderProvider;
             _securityProvider = securityProvider;
+            _aggregator = aggregator;
             _server = server;
             _terminal = terminal;
             _userName = userName;
             _password = password;
             _accountId = accountId;
+
+            _subscriptionManager = new EventBasedDataQueueHandlerSubscriptionManager();
+            _subscriptionManager.SubscribeImpl += (s, t) => Subscribe(s);
+            _subscriptionManager.UnsubscribeImpl += (s, t) => Unsubscribe(s);
 
             HistoryResponseTimeout = 5000;
             MaximumHistoryRetryAttempts = 1;
@@ -189,7 +199,12 @@ namespace QuantConnect.Brokerages.Fxcm
             {
                 var message =
                     err.Message.Contains("ORA-20101") ? "Incorrect login credentials" :
-                    err.Message.Contains("ORA-20003") ? "API connections are not available on Mini accounts. If you have a standard account contact api@fxcm.com to enable API access" :
+                    err.Message.Contains("ORA-20003") ? "Contact api@fxcm.com to enable API access, below is a template email. " + Environment.NewLine +
+                        "Email: api@fxcm.com " + Environment.NewLine +
+                        "Template: " + Environment.NewLine +
+                        "Hello FXCM staff, " + Environment.NewLine +
+                        "Please enable Java API for all accounts which are associated with this email address. " + Environment.NewLine +
+                        "Also, please respond to this email address once Java API has been enabled, letting me know that the change was done successfully." :
                     err.Message;
 
                 _cancellationTokenSource.Cancel();
@@ -416,7 +431,7 @@ namespace QuantConnect.Brokerages.Fxcm
 
             //Adds the account currency to the cashbook.
             cashBook.Add(new CashAmount(Convert.ToDecimal(_accounts[_accountId].getCashOutstanding()),
-                _fxcmAccountCurrency));
+                AccountBaseCurrency));
 
             // include cash balances from currency swaps for open Forex positions
             foreach (var trade in _openPositions.Values)
@@ -582,6 +597,7 @@ namespace QuantConnect.Brokerages.Fxcm
             AutoResetEvent autoResetEvent;
             lock (_locker)
             {
+                _orderUpdates[order.Id] = order.Id;
                 _currentRequest = _gateway.sendMessage(orderReplaceRequest);
                 autoResetEvent = new AutoResetEvent(false);
                 _mapRequestsToAutoResetEvents[_currentRequest] = autoResetEvent;

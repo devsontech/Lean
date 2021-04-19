@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -112,22 +112,44 @@ namespace QuantConnect.Algorithm.CSharp
             {"Total Trades", "15"},
             {"Average Win", "0.68%"},
             {"Average Loss", "-0.14%"},
-            {"Compounding Annual Return", "36.195%"},
+            {"Compounding Annual Return", "35.512%"},
             {"Drawdown", "1.000%"},
-            {"Expectancy", "3.303"},
-            {"Net Profit", "2.572%"},
-            {"Sharpe Ratio", "3.185"},
+            {"Expectancy", "3.194"},
+            {"Net Profit", "2.529%"},
+            {"Sharpe Ratio", "3.546"},
+            {"Probabilistic Sharpe Ratio", "76.145%"},
             {"Loss Rate", "29%"},
             {"Win Rate", "71%"},
-            {"Profit-Loss Ratio", "5.02"},
-            {"Alpha", "0.021"},
-            {"Beta", "0.433"},
-            {"Annual Standard Deviation", "0.075"},
+            {"Profit-Loss Ratio", "4.87"},
+            {"Alpha", "0.256"},
+            {"Beta", "0.045"},
+            {"Annual Standard Deviation", "0.078"},
             {"Annual Variance", "0.006"},
-            {"Information Ratio", "-3.093"},
-            {"Tracking Error", "0.086"},
-            {"Treynor Ratio", "0.554"},
-            {"Total Fees", "$48.51"}
+            {"Information Ratio", "-1.536"},
+            {"Tracking Error", "0.134"},
+            {"Treynor Ratio", "6.151"},
+            {"Total Fees", "$51.26"},
+            {"Estimated Strategy Capacity", "$690000000.00"},
+            {"Fitness Score", "0.561"},
+            {"Kelly Criterion Estimate", "0"},
+            {"Kelly Criterion Probability Value", "0"},
+            {"Sortino Ratio", "7.574"},
+            {"Return Over Maximum Drawdown", "34.889"},
+            {"Portfolio Turnover", "0.573"},
+            {"Total Insights Generated", "0"},
+            {"Total Insights Closed", "0"},
+            {"Total Insights Analysis Completed", "0"},
+            {"Long Insight Count", "0"},
+            {"Short Insight Count", "0"},
+            {"Long/Short Ratio", "100%"},
+            {"Estimated Monthly Alpha Value", "$0"},
+            {"Total Accumulated Estimated Alpha Value", "$0"},
+            {"Mean Population Estimated Insight Value", "$0"},
+            {"Mean Population Direction", "0%"},
+            {"Mean Population Magnitude", "0%"},
+            {"Rolling Averaged Population Direction", "0%"},
+            {"Rolling Averaged Population Magnitude", "0%"},
+            {"OrderListHash", "4405cd2e94eb8a9b42190145eb23eb1b"}
         };
     }
 }

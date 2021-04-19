@@ -18,7 +18,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using NodaTime;
-using QuantConnect.Data.UniverseSelection;
 using QuantConnect.Interfaces;
 using QuantConnect.Logging;
 using QuantConnect.Util;
@@ -28,7 +27,7 @@ namespace QuantConnect.Lean.Engine.DataFeeds
     /// <summary>
     /// Implementation of the <see cref="ISynchronizer"/> interface which provides the mechanism to stream data to the algorithm
     /// </summary>
-    public class Synchronizer : ISynchronizer, IDataFeedTimeProvider
+    public class Synchronizer : ISynchronizer, IDataFeedTimeProvider, IDisposable
     {
         private DateTimeZone _dateTimeZone;
 
@@ -53,9 +52,9 @@ namespace QuantConnect.Lean.Engine.DataFeeds
         protected TimeSliceFactory TimeSliceFactory;
 
         /// <summary>
-        /// Continuous UTC time provider
+        /// Continuous UTC time provider, only valid for live trading see <see cref="LiveSynchronizer"/>
         /// </summary>
-        public ITimeProvider TimeProvider { get; protected set; }
+        public virtual ITimeProvider TimeProvider => null;
 
         /// <summary>
         /// Time provider which returns current UTC frontier time
@@ -84,8 +83,7 @@ namespace QuantConnect.Lean.Engine.DataFeeds
 
             // GetTimeProvider() will call GetInitialFrontierTime() which
             // will consume added subscriptions so we need to do this after initialization
-            TimeProvider = GetTimeProvider();
-            SubscriptionSynchronizer.SetTimeProvider(TimeProvider);
+            SubscriptionSynchronizer.SetTimeProvider(GetTimeProvider());
 
             var previousEmitTime = DateTime.MaxValue;
 
@@ -119,8 +117,15 @@ namespace QuantConnect.Lean.Engine.DataFeeds
                 // check for cancellation
                 if (timeSlice == null || cancellationToken.IsCancellationRequested) break;
 
+                if (timeSlice.IsTimePulse && Algorithm.UtcTime == timeSlice.Time)
+                {
+                    previousWasTimePulse = timeSlice.IsTimePulse;
+                    // skip time pulse when algorithms already at that time
+                    continue;
+                }
+
                 // SubscriptionFrontierTimeProvider will return twice the same time if there are no more subscriptions or if Subscription.Current is null
-                if (timeSlice.Time != previousEmitTime || previousWasTimePulse)
+                if (timeSlice.Time != previousEmitTime || previousWasTimePulse || timeSlice.UniverseData.Count != 0)
                 {
                     previousEmitTime = timeSlice.Time;
                     previousWasTimePulse = timeSlice.IsTimePulse;
@@ -128,7 +133,7 @@ namespace QuantConnect.Lean.Engine.DataFeeds
                     retried = false;
                     yield return timeSlice;
                 }
-                else if (timeSlice.SecurityChanges == SecurityChanges.None)
+                else
                 {
                     // if the slice has data lets retry just once more... this could happen
                     // with subscriptions added after initialize using algorithm.AddSecurity() API,
@@ -154,8 +159,11 @@ namespace QuantConnect.Lean.Engine.DataFeeds
             SubscriptionSynchronizer.SubscriptionFinished += (sender, subscription) =>
             {
                 SubscriptionManager.RemoveSubscription(subscription.Configuration);
-                Log.Debug("Synchronizer.SubscriptionFinished(): Finished subscription:" +
-                    $"{subscription.Configuration} at {FrontierTimeProvider.GetUtcNow()} UTC");
+                if (Log.DebuggingEnabled)
+                {
+                    Log.Debug("Synchronizer.SubscriptionFinished(): Finished subscription:" +
+                              $"{subscription.Configuration} at {FrontierTimeProvider.GetUtcNow()} UTC");
+                }
             };
 
             // this is set after the algorithm initializes
@@ -203,6 +211,13 @@ namespace QuantConnect.Lean.Engine.DataFeeds
                 frontier = Algorithm.StartDate.ConvertToUtc(_dateTimeZone);
             }
             return frontier;
+        }
+
+        /// <summary>
+        /// Free resources
+        /// </summary>
+        public virtual void Dispose()
+        {
         }
     }
 }

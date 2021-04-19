@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using Microsoft.Extensions.CommandLineUtils;
+using McMaster.Extensions.CommandLineUtils;
 
 namespace QuantConnect.Configuration
 {
@@ -52,24 +52,26 @@ namespace QuantConnect.Configuration
             {
                 foreach (var commandOption in listOfOptions.Where(option => option.HasValue()))
                 {
+#pragma warning disable CS0618 // Type or member is obsolete; Works fine, will use until replacement is required
                     var optionKey = commandOption.Template.Replace("--", "");
+#pragma warning restore CS0618
                     var matchingOption = options.Find(o => o.Name == optionKey);
                     switch (matchingOption.Type)
                     {
                         // Booleans, string and numbers
                         case CommandOptionType.NoValue:
                         case CommandOptionType.SingleValue:
-                            optionsObject[optionKey] = ParseTypedArgument(commandOption.Value());
+                            optionsObject[optionKey] = commandOption.Value();
                             break;
 
                         // Parsing nested objects
                         case CommandOptionType.MultipleValue:
                             var keyValuePairs = commandOption.Value().Split(',');
-                            var subDictionary = new Dictionary<string, object>();
+                            var subDictionary = new Dictionary<string, string>();
                             foreach (var keyValuePair in keyValuePairs)
                             {
                                 var subKeys = keyValuePair.Split(':');
-                                subDictionary[subKeys[0]] = ParseTypedArgument(subKeys.Length > 1 ? subKeys[1] : "");
+                                subDictionary[subKeys[0]] = subKeys.Length > 1 ? subKeys[1] : "";
                             }
 
                             optionsObject[optionKey] = subDictionary;
@@ -88,22 +90,6 @@ namespace QuantConnect.Configuration
                 application.ShowHelp();
             }
             return optionsObject;
-        }
-
-        private static object ParseTypedArgument(string value)
-        {
-            if (value == "true" || value == "false")
-            {
-                return value == "true";
-            }
-
-            double numericValue;
-            if (double.TryParse(value, out numericValue))
-            {
-                return numericValue;
-            }
-
-            return value;
         }
     }
 }

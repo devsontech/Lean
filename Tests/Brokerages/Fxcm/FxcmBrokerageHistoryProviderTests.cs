@@ -30,7 +30,7 @@ namespace QuantConnect.Tests.Brokerages.Fxcm
     [TestFixture]
     public partial class FxcmBrokerageTests
     {
-        public TestCaseData[] TestParameters
+        private static TestCaseData[] TestParameters
         {
             get
             {
@@ -55,7 +55,7 @@ namespace QuantConnect.Tests.Brokerages.Fxcm
             }
         }
 
-        [Test, TestCaseSource("TestParameters")]
+        [Test, TestCaseSource(nameof(TestParameters))]
         public void GetsHistory(Symbol symbol, Resolution resolution, TimeSpan period, bool throwsException)
         {
             TestDelegate test = () =>
@@ -64,7 +64,7 @@ namespace QuantConnect.Tests.Brokerages.Fxcm
 
                 var historyProvider = new BrokerageHistoryProvider();
                 historyProvider.SetBrokerage(brokerage);
-                historyProvider.Initialize(new HistoryProviderInitializeParameters(null, null, null, null, null, null, null));
+                historyProvider.Initialize(new HistoryProviderInitializeParameters(null, null, null, null, null, null, null, false, null));
 
                 var now = DateTime.UtcNow;
 
@@ -129,7 +129,7 @@ namespace QuantConnect.Tests.Brokerages.Fxcm
 
             var historyProvider = new BrokerageHistoryProvider();
             historyProvider.SetBrokerage(brokerage);
-            historyProvider.Initialize(new HistoryProviderInitializeParameters(null, null, null, null, null, null, null));
+            historyProvider.Initialize(new HistoryProviderInitializeParameters(null, null, null, null, null, null, null, false, null));
 
             var stopwatch = Stopwatch.StartNew();
 

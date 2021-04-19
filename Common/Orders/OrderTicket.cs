@@ -241,6 +241,10 @@ namespace QuantConnect.Orders
                     {
                         return AccessOrder<StopLimitOrder>(this, field, o => o.LimitPrice, r => r.LimitPrice);
                     }
+                    if (_submitRequest.OrderType == OrderType.LimitIfTouched)
+                    {
+                        return AccessOrder<LimitIfTouchedOrder>(this, field, o => o.LimitPrice, r => r.LimitPrice);
+                    }
                     break;
 
                 case OrderField.StopPrice:
@@ -253,6 +257,9 @@ namespace QuantConnect.Orders
                         return AccessOrder<StopMarketOrder>(this, field, o => o.StopPrice, r => r.StopPrice);
                     }
                     break;
+                
+                case OrderField.TriggerPrice:
+                    return AccessOrder<LimitIfTouchedOrder>(this, field, o => o.TriggerPrice, r => r.TriggerPrice);
 
                 default:
                     throw new ArgumentOutOfRangeException(nameof(field), field, null);
@@ -271,6 +278,72 @@ namespace QuantConnect.Orders
         {
             _transactionManager.UpdateOrder(new UpdateOrderRequest(_transactionManager.UtcTime, SubmitRequest.OrderId, fields));
             return _updateRequests.Last().Response;
+        }
+
+        /// <summary>
+        /// Submits an <see cref="UpdateOrderRequest"/> with the <see cref="SecurityTransactionManager"/> to update
+        /// the ticket with tag specified in <paramref name="tag"/>
+        /// </summary>
+        /// <param name="tag"></param>
+        /// <returns><see cref="OrderResponse"/> from updating the order</returns>
+        public OrderResponse UpdateTag(string tag)
+        {
+            var fields = new UpdateOrderFields()
+            {
+                Tag = tag
+            };
+            return Update(fields);
+        }
+
+        /// <summary>
+        /// Submits an <see cref="UpdateOrderRequest"/> with the <see cref="SecurityTransactionManager"/> to update
+        /// the ticket with quantity specified in <paramref name="quantity"/> and with tag specified in <paramref name="quantity"/>
+        /// </summary>
+        /// <param name="quantity"></param>
+        /// <param name="tag"></param>
+        /// <returns><see cref="OrderResponse"/> from updating the order</returns>
+        public OrderResponse UpdateQuantity(decimal quantity, string tag = null)
+        {
+            var fields = new UpdateOrderFields()
+            {
+                Quantity = quantity,
+                Tag = tag
+            };
+            return Update(fields);
+        }
+
+        /// <summary>
+        /// Submits an <see cref="UpdateOrderRequest"/> with the <see cref="SecurityTransactionManager"/> to update
+        /// the ticker with limit price specified in <paramref name="limitPrice"/> and with tag specified in <paramref name="tag"/>
+        /// </summary>
+        /// <param name="limitPrice"></param>
+        /// <param name="tag"></param>
+        /// <returns><see cref="OrderResponse"/> from updating the order</returns>
+        public OrderResponse UpdateLimitPrice(decimal limitPrice, string tag = null)
+        {
+            var fields = new UpdateOrderFields()
+            {
+                LimitPrice = limitPrice,
+                Tag = tag
+            };
+            return Update(fields);
+        }
+
+        /// <summary>
+        /// Submits an <see cref="UpdateOrderRequest"/> with the <see cref="SecurityTransactionManager"/> to update
+        /// the ticker with stop price specified in <paramref name="stopPrice"/> and with tag specified in <paramref name="tag"/>
+        /// </summary>
+        /// <param name="stopPrice"></param>
+        /// <param name="tag"></param>
+        /// <returns><see cref="OrderResponse"/> from updating the order</returns>
+        public OrderResponse UpdateStopPrice(decimal stopPrice, string tag = null)
+        {
+            var fields = new UpdateOrderFields()
+            {
+                StopPrice = stopPrice,
+                Tag = tag
+            };
+            return Update(fields);
         }
 
         /// <summary>
@@ -343,7 +416,10 @@ namespace QuantConnect.Orders
             lock (_orderEventsLock)
             {
                 _orderEvents.Add(orderEvent);
-                if (orderEvent.FillQuantity != 0)
+
+                //Update the ticket and order, if it is a OptionExercise order we must only update it if the fill price is not zero
+                //this fixes issue #2846 where average price is skewed by the removal of the option.
+                if (orderEvent.FillQuantity != 0 && (_order.Type != OrderType.OptionExercise || orderEvent.FillPrice != 0))
                 {
                     // keep running totals of quantity filled and the average fill price so we
                     // don't need to compute these on demand
@@ -351,6 +427,8 @@ namespace QuantConnect.Orders
                     var quantityWeightedFillPrice = _orderEvents.Where(x => x.Status.IsFill())
                         .Aggregate(0m, (d, x) => d + x.AbsoluteFillQuantity*x.FillPrice);
                     _averageFillPrice = quantityWeightedFillPrice/Math.Abs(_quantityFilled);
+
+                    _order.Price = _averageFillPrice;
                 }
             }
 

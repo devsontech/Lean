@@ -17,19 +17,15 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Net;
-using System.Text;
 using System.Threading;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using NodaTime;
 using QuantConnect.Data;
 using QuantConnect.Data.Market;
-using QuantConnect.Logging;
 using QuantConnect.Packets;
 using RestSharp;
-using Timer = System.Timers.Timer;
 
 namespace QuantConnect.Brokerages.Tradier
 {
@@ -40,156 +36,221 @@ namespace QuantConnect.Brokerages.Tradier
     {
         #region IDataQueueHandler implementation
 
-        private bool _disconnect;
-        private volatile bool _refresh = true;
-        private Timer _refreshDelay = new Timer();
-        private readonly ConcurrentDictionary<Symbol, string> _subscriptions = new ConcurrentDictionary<Symbol, string>();
-        private Stream _tradierStream;
+        private const string WebSocketUrl = "wss://ws.tradier.com/v1/markets/events";
+        private const int ConnectionTimeout = 30000;
+
+        private readonly WebSocketClientWrapper _webSocketClient = new WebSocketClientWrapper();
+
+        private bool _isDataQueueHandlerInitialized;
+        private TradierStreamSession _streamSession;
+
+        private readonly ConcurrentDictionary<string, Symbol> _subscribedTickers = new ConcurrentDictionary<string, Symbol>();
 
         /// <summary>
-        /// Get a stream of ticks from the brokerage
+        /// Sets the job we're subscribing for
         /// </summary>
-        /// <returns>IEnumerable of BaseData</returns>
-        public IEnumerable<BaseData> GetNextTicks()
+        /// <param name="job">Job we're subscribing for</param>
+        public void SetJob(LiveNodePacket job)
         {
-            IEnumerator<TradierStreamData> pipe = null;
-            do
-            {
-                if (_subscriptions.IsEmpty)
-                {
-                    Thread.Sleep(10);
-                    continue;
-                }
-
-                //If there's been an update to the subscriptions list; recreate the stream.
-                if (_refresh)
-                {
-                    var stream = Stream(GetTickers());
-                    pipe = stream.GetEnumerator();
-                    pipe.MoveNext();
-                    _refresh = false;
-                }
-
-                if (pipe != null && pipe.Current != null)
-                {
-                    var tsd = pipe.Current;
-                    if (tsd.Type == "trade")
-                    {
-                        var tick = CreateTick(tsd);
-                        if (tick != null)
-                        {
-                            yield return tick;
-                        }
-                    }
-                    pipe.MoveNext();
-                }
-
-            } while (!_disconnect);
         }
 
         /// <summary>
-        /// Subscribe to a specific list of symbols
+        /// Subscribe to the specified configuration
         /// </summary>
-        /// <param name="job">Live job to subscribe with</param>
-        /// <param name="symbols">List of symbols to subscribe to</param>
-        public void Subscribe(LiveNodePacket job, IEnumerable<Symbol> symbols)
+        /// <param name="dataConfig">defines the parameters to subscribe to a data feed</param>
+        /// <param name="newDataAvailableHandler">handler to be fired on new data available</param>
+        /// <returns>The new enumerator for this subscription request</returns>
+        public IEnumerator<BaseData> Subscribe(SubscriptionDataConfig dataConfig, EventHandler newDataAvailableHandler)
         {
-            //Add the symbols to the list if they aren't there already.
-            foreach (var symbol in symbols.Where(x => !x.Value.Contains("-UNIVERSE-")))
+            // streaming is not supported by sandbox
+            if (_useSandbox)
             {
-                if (symbol.ID.SecurityType == SecurityType.Equity || symbol.ID.SecurityType == SecurityType.Option)
+                throw new NotSupportedException(
+                    "TradierBrokerage.DataQueueHandler.Subscribe(): The sandbox does not support data streaming.");
+            }
+
+            // initialize data queue handler on-demand
+            if (!_isDataQueueHandlerInitialized)
+            {
+                _isDataQueueHandlerInitialized = true;
+
+                _streamSession = CreateStreamSession();
+
+                using (var resetEvent = new ManualResetEvent(false))
                 {
-                    if (_subscriptions.TryAdd(symbol, symbol.Value))
+                    EventHandler triggerEvent = (o, args) => resetEvent.Set();
+                    _webSocketClient.Open += triggerEvent;
+
+                    _webSocketClient.Connect();
+
+                    if (!resetEvent.WaitOne(ConnectionTimeout))
                     {
-                        Refresh();
+                        throw new TimeoutException("Websockets connection timeout.");
                     }
+
+                    _webSocketClient.Open -= triggerEvent;
                 }
             }
+
+            if (!CanSubscribe(dataConfig.Symbol))
+            {
+                return Enumerable.Empty<BaseData>().GetEnumerator();
+            }
+
+            var enumerator = _aggregator.Add(dataConfig, newDataAvailableHandler);
+            _subscriptionManager.Subscribe(dataConfig);
+
+            return enumerator;
+        }
+
+        private bool CanSubscribe(Symbol symbol)
+        {
+            return (symbol.ID.SecurityType == SecurityType.Equity || symbol.ID.SecurityType == SecurityType.Option)
+                && !symbol.Value.Contains("-UNIVERSE-");
         }
 
         /// <summary>
-        /// Remove the symbol from the subscription list.
+        /// Removes the specified configuration
         /// </summary>
-        /// <param name="job">Live Job to subscribe with</param>
-        /// <param name="symbols">List of symbols to unsubscribe from</param>
-        public void Unsubscribe(LiveNodePacket job, IEnumerable<Symbol> symbols)
+        /// <param name="dataConfig">Subscription config to be removed</param>
+        public void Unsubscribe(SubscriptionDataConfig dataConfig)
         {
-            //Remove the symbols from the subscription list if there.
+            _subscriptionManager.Unsubscribe(dataConfig);
+            _aggregator.Remove(dataConfig);
+        }
+
+        private bool Subscribe(IEnumerable<Symbol> symbols, TickType tickType)
+        {
+            var symbolsAdded = false;
+
             foreach (var symbol in symbols)
             {
-                string value;
-                if (_subscriptions.TryRemove(symbol, out value))
+                if (!symbol.IsCanonical())
                 {
-                    Refresh();
+                    var ticker = _symbolMapper.GetBrokerageSymbol(symbol);
+                    if (!_subscribedTickers.ContainsKey(ticker))
+                    {
+                        _subscribedTickers.TryAdd(ticker, symbol);
+                        symbolsAdded = true;
+                    }
+                }
+            }
+
+            if (symbolsAdded)
+            {
+                SendSubscribeMessage(_subscribedTickers.Keys.ToList());
+            }
+
+            return true;
+        }
+
+        private bool Unsubscribe(IEnumerable<Symbol> symbols, TickType tickType)
+        {
+            var symbolsRemoved = false;
+
+            foreach (var symbol in symbols)
+            {
+                if (!symbol.IsCanonical())
+                {
+                    var ticker = _symbolMapper.GetBrokerageSymbol(symbol);
+                    if (_subscribedTickers.ContainsKey(ticker))
+                    {
+                        Symbol removedSymbol;
+                        _subscribedTickers.TryRemove(ticker, out removedSymbol);
+                        symbolsRemoved = true;
+                    }
+                }
+            }
+
+            if (symbolsRemoved)
+            {
+                var tickers = _subscribedTickers.Keys.ToList();
+
+                // Tradier expects at least one symbol
+                SendSubscribeMessage(tickers.Count > 0
+                    ? tickers
+                    : new List<string> { "$empty$" });
+            }
+
+            return true;
+        }
+
+        private void SendSubscribeMessage(List<string> tickers)
+        {
+            var obj = new
+            {
+                sessionid = _streamSession.SessionId,
+                symbols = tickers,
+                filter = new[] { "trade", "quote" },
+                linebreak = true
+            };
+
+            var json = JsonConvert.SerializeObject(obj);
+
+            _webSocketClient.Send(json);
+        }
+
+        private void OnMessage(object sender, WebSocketMessage e)
+        {
+            var obj = JObject.Parse(e.Message);
+            JToken error;
+            if (obj.TryGetValue("error", out error))
+            {
+                OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Error, -1, error.Value<string>()));
+                return;
+            }
+
+            var tsd = obj.ToObject<TradierStreamData>();
+
+            if (tsd?.Type == "trade" || tsd?.Type == "quote")
+            {
+                var tick = CreateTick(tsd);
+                if (tick != null)
+                {
+                    _aggregator.Update(tick);
                 }
             }
         }
 
         /// <summary>
-        /// Refresh the subscriptions list.
+        /// Create a tick from the tradier stream data
         /// </summary>
-        private void Refresh()
-        {
-            if (_refreshDelay.Enabled) _refreshDelay.Stop();
-            _refreshDelay = new Timer(5000);
-            _refreshDelay.Elapsed += (sender, args) =>
-            {
-                _refresh = true;
-                Log.Trace("TradierBrokerage.DataQueueHandler.Refresh(): Updating tickers..." + string.Join(",", _subscriptions.Select(x => x.Value)));
-                CloseStream();
-                _refreshDelay.Stop();
-            };
-            _refreshDelay.Start();
-        }
-
-        /// <summary>
-        /// Get a string list of tickers from the symbol dictionary
-        /// </summary>
-        /// <returns>List of string tickers</returns>
-        private List<string> GetTickers()
-        {
-            var values = _subscriptions.Select(x => x.Value).ToList();
-            Log.Trace("TradierBrokerage.DataQueueHandler.GetTickers(): " + string.Join(",", values));
-            return values;
-        }
-
-        /// <summary>
-        /// Create a tick from the tradier stream data:
-        /// </summary>
-        /// <param name="tsd">Tradier stream data obejct</param>
+        /// <param name="tsd">Tradier stream data object</param>
         /// <returns>LEAN Tick object</returns>
         private Tick CreateTick(TradierStreamData tsd)
         {
-            var symbol = _subscriptions.FirstOrDefault(x => x.Value == tsd.Symbol).Key;
+            Symbol symbol;
+            if (!_subscribedTickers.TryGetValue(tsd.Symbol, out symbol))
+            {
+                // Not subscribed to this symbol.
+                return null;
+            }
 
-            // Not subscribed to this symbol.
-            if (symbol == null) return null;
-
-            // Occassionally Tradier sends trades with 0 volume?
-            if (tsd.TradeSize == 0) return null;
+            if (tsd.Type == "trade")
+            {
+                // Occasionally Tradier sends trades with 0 volume?
+                if (tsd.TradeSize == 0) return null;
+            }
 
             // Tradier trades are US NY time only. Convert local server time to NY Time:
-            var unix = tsd.UnixDate.ConvertInvariant<long>() / 1000;
-            var utc = Time.UnixTimeStampToDateTime(unix);
+            var utc = tsd.GetTickTimestamp();
 
-            // Occassionally Tradier sends old ticks every 20sec-ish if no trading?
+            // Occasionally Tradier sends old ticks every 20sec-ish if no trading?
             if (DateTime.UtcNow - utc > TimeSpan.FromSeconds(10)) return null;
 
-            //Convert the to security timezone and pass into algorithm
+            // Convert the timestamp to exchange timezone and pass into algorithm
             var time = utc.ConvertTo(DateTimeZone.Utc, TimeZones.NewYork);
 
-            return new Tick
+            switch (tsd.Type)
             {
-                Exchange = tsd.TradeExchange,
-                TickType = TickType.Trade,
-                Quantity = (int) tsd.TradeSize,
-                Time = time,
-                EndTime = time,
-                Symbol = symbol,
-                DataType = MarketDataType.Tick,
-                Suspicious = false,
-                Value = tsd.TradePrice
-            };
+                case "trade":
+                    return new Tick(time, symbol, "", tsd.TradeExchange, (int) tsd.TradeSize, tsd.TradePrice);
+
+                case "quote":
+                    return new Tick(time, symbol, "", "", tsd.BidSize, tsd.BidPrice, tsd.AskSize, tsd.AskPrice);
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -199,131 +260,6 @@ namespace QuantConnect.Brokerages.Tradier
         {
             var request = new RestRequest("markets/events/session", Method.POST);
             return Execute<TradierStreamSession>(request, TradierApiRequestType.Data, "stream");
-        }
-
-        /// <summary>
-        /// Close the current stream async
-        /// </summary>
-        private void CloseStream()
-        {
-            if (_tradierStream != null)
-            {
-                Log.Trace("TradierBrokerage.DataQueueHandler.CloseStream(): Closing stream socket...");
-                _tradierStream.Close();
-            }
-        }
-
-        /// <summary>
-        /// Connect to tradier API strea:
-        /// </summary>
-        /// <param name="symbols">symbol list</param>
-        /// <returns></returns>
-        private IEnumerable<TradierStreamData> Stream(List<string> symbols)
-        {
-            bool success;
-            var symbolJoined = String.Join(",", symbols);
-            var session = CreateStreamSession();
-
-            if (session == null || session.SessionId == null || session.Url == null)
-            {
-                Log.Error("Tradier.Stream(): Failed to Created Stream Session", true);
-                yield break;
-            }
-            Log.Trace("Tradier.Stream(): Created Stream Session Id: " + session.SessionId + " Url:" + session.Url, true);
-
-
-            HttpWebRequest request;
-            do
-            {
-                //Connect to URL:
-                success = true;
-                request = (HttpWebRequest)WebRequest.Create(session.Url);
-
-                //Authenticate a request:
-                request.Accept = "application/json";
-                request.Headers.Add("Authorization", "Bearer " + AccessToken);
-
-                //Add the desired data:
-                var postData = "symbols=" + symbolJoined + "&filter=trade&sessionid=" + session.SessionId;
-
-                var encodedData = Encoding.ASCII.GetBytes(postData);
-
-                //Set post:
-                request.Method = "POST";
-                request.ContentType = "application/x-www-form-urlencoded";
-                request.ContentLength = encodedData.Length;
-
-                //Send request:
-                try
-                {
-                    using (var postStream = request.GetRequestStream())
-                    {
-                        postStream.Write(encodedData, 0, encodedData.Length);
-                    }
-                }
-                catch (Exception err)
-                {
-                    Log.Error(err, "Failed to write session parameters to URL", true);
-                    success = false;
-                }
-            }
-            while (!success);
-
-            //Get response as a stream:
-            Log.Trace("Tradier.Stream(): Session Created, Reading Stream...", true);
-            var response = (HttpWebResponse)request.GetResponse();
-            _tradierStream = response.GetResponseStream();
-            if (_tradierStream == null)
-            {
-                yield break;
-            }
-
-            using (var sr = new StreamReader(_tradierStream))
-            using (var jsonReader = new JsonTextReader(sr))
-            {
-                var serializer = new JsonSerializer();
-                jsonReader.SupportMultipleContent = true;
-
-                // keep going until we fail to read more from the stream
-                while (true)
-                {
-                    bool successfulRead;
-                    try
-                    {
-                        //Read the jsonSocket in a safe manner: might close and so need handlers, but can't put handlers around a yield.
-                        successfulRead = jsonReader.Read();
-                    }
-                    catch (Exception err)
-                    {
-                        Log.Trace("TradierBrokerage.DataQueueHandler.Stream(): Handled breakout / socket close from jsonRead operation: " + err.Message);
-                        break;
-                    }
-
-                    if (!successfulRead)
-                    {
-                        // if we couldn't get a successful read just end the enumerable
-                        yield break;
-                    }
-
-                    //Have a Tradier JSON Object:
-                    TradierStreamData tsd = null;
-                    try
-                    {
-                        tsd = serializer.Deserialize<TradierStreamData>(jsonReader);
-                    }
-                    catch (Exception err)
-                    {
-                        // Do nothing for now. Can come back later to fix. Errors are from Tradier not properly json encoding values E.g. "NaN" string.
-                        Log.Trace("TradierBrokerage.DataQueueHandler.Stream(): Handled breakout / socket close from jsonRead operation: " + err.Message);
-                    }
-
-                    // don't yield garbage, just wait for the next one
-                    if (tsd != null)
-                    {
-                        yield return tsd;
-                    }
-                }
-            }
         }
 
         #endregion

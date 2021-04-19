@@ -70,30 +70,25 @@ namespace QuantConnect.ToolBox.EstimizeDataDownloader
 
                 foreach (var company in companies)
                 {
-                    var ticker = company.Ticker;
-
                     // Include tickers that are "defunct".
-                    // Remove the tag because it cannot be part of the API endpoint
-                    if (ticker.IndexOf("defunct", StringComparison.OrdinalIgnoreCase) > 0)
+                    // Remove the tag because it cannot be part of the API endpoint.
+                    // This is separate from the NormalizeTicker(...) method since
+                    // we don't convert tickers with `-`s into the format we can successfully
+                    // index mapfiles with.
+                    var estimizeTicker = company.Ticker;
+                    string ticker;
+
+                    if (!TryNormalizeDefunctTicker(estimizeTicker, out ticker))
                     {
-                        var length = ticker.IndexOf('-');
-                        ticker = ticker.Substring(0, length).Trim();
+                        Log.Error($"EstimizeEstimateDataDownloader(): Defunct ticker {estimizeTicker} is unable to be parsed. Continuing...");
+                        continue;
                     }
 
+                    // Begin processing ticker with a normalized value
                     Log.Trace($"EstimizeEstimateDataDownloader.Run(): Processing {ticker}");
 
-                    try
-                    {
-                        // Makes sure we don't overrun Estimize rate limits accidentally
-                        IndexGate.WaitToProceed();
-                    }
-                    // This is super super rare, but it failures in RateGate (RG) can still happen nonetheless. Let's not
-                    // rely on RG operating successfully all the time so that if RG fails, our download process doesn't fail
-                    catch (ArgumentOutOfRangeException e)
-                    {
-                        Log.Error(e, $"EstimizeEstimateDataDownloader.Run(): RateGate failed. Sleeping for 110 milliseconds with Thread.Sleep()");
-                        Thread.Sleep(110);
-                    }
+                    // Makes sure we don't overrun Estimize rate limits accidentally
+                    IndexGate.WaitToProceed();
 
                     tasks.Add(
                         HttpRequester($"/companies/{ticker}/estimates")
@@ -115,16 +110,17 @@ namespace QuantConnect.ToolBox.EstimizeDataDownloader
                                         return;
                                     }
 
-                                    var estimates = JsonConvert.DeserializeObject<List<EstimizeEstimate>>(result)
+                                    var estimates = JsonConvert.DeserializeObject<List<EstimizeEstimate>>(result, JsonSerializerSettings)
                                         .GroupBy(estimate =>
                                         {
-                                            var oldTicker = ticker;
-                                            var newTicker = ticker;
+                                            var normalizedTicker = NormalizeTicker(ticker);
+                                            var oldTicker = normalizedTicker;
+                                            var newTicker = normalizedTicker;
                                             var createdAt = estimate.CreatedAt;
 
                                             try
                                             {
-                                                var mapFile = _mapFileResolver.ResolveMapFile(ticker, createdAt);
+                                                var mapFile = _mapFileResolver.ResolveMapFile(normalizedTicker, createdAt);
 
                                                 // Ensure we're writing to the correct historical ticker
                                                 if (!mapFile.Any())

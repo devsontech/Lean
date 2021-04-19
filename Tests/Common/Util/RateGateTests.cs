@@ -14,13 +14,10 @@
 */
 
 using NUnit.Framework;
-using QuantConnect.Logging;
 using QuantConnect.Util;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace QuantConnect.Tests.Common.Util
@@ -106,6 +103,8 @@ namespace QuantConnect.Tests.Common.Util
             timer.Stop();
 
             Assert.LessOrEqual(timer.Elapsed, TimeSpan.FromSeconds(10));
+
+            gate.Dispose();
         }
     }
 }

@@ -14,8 +14,9 @@
  *
 */
 
-using System.Collections.Generic;
 using Newtonsoft.Json;
+using System.Collections.Generic;
+using QuantConnect.Notifications;
 
 namespace QuantConnect.Packets
 {
@@ -43,16 +44,34 @@ namespace QuantConnect.Packets
         public Dictionary<string, string> BrokerageData = new Dictionary<string, string>();
 
         /// <summary>
-        /// String name of the DataQueueHandler we're running with
+        /// String name of the DataQueueHandler or LiveDataProvider we're running with
         /// </summary>
         [JsonProperty(PropertyName = "sDataQueueHandler")]
         public string DataQueueHandler = "";
+
+        /// <summary>
+        /// String name of the DataChannelProvider we're running with
+        /// </summary>
+        [JsonProperty(PropertyName = "sDataChannelProvider")]
+        public string DataChannelProvider = "";
 
         /// <summary>
         /// Gets flag indicating whether or not the message should be acknowledged and removed from the queue
         /// </summary>
         [JsonProperty(PropertyName = "DisableAcknowledgement")]
         public bool DisableAcknowledgement;
+
+        /// <summary>
+        /// A list of event types to generate notifications for, which will use <see cref="NotificationTargets"/>
+        /// </summary>
+        [JsonProperty(PropertyName = "aNotificationEvents")]
+        public HashSet<string> NotificationEvents;
+
+        /// <summary>
+        /// A list of notification targets to use
+        /// </summary>
+        [JsonProperty(PropertyName = "aNotificationTargets")]
+        public List<Notification> NotificationTargets;
 
         /// <summary>
         /// Default constructor for JSON of the Live Task Packet

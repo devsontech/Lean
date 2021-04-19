@@ -22,12 +22,15 @@ using NUnit.Framework;
 using QuantConnect.Algorithm;
 using QuantConnect.Brokerages.InteractiveBrokers;
 using QuantConnect.Data;
+using QuantConnect.Data.Auxiliary;
 using QuantConnect.Data.Market;
+using QuantConnect.Lean.Engine.DataFeeds;
 using QuantConnect.Logging;
 using QuantConnect.Orders;
 using QuantConnect.Securities;
 using QuantConnect.Tests.Engine;
 using QuantConnect.Tests.Engine.BrokerageTransactionHandlerTests;
+using QuantConnect.Util;
 
 namespace QuantConnect.Tests.Brokerages.InteractiveBrokers
 {
@@ -59,10 +62,17 @@ namespace QuantConnect.Tests.Brokerages.InteractiveBrokers
                 ),
                 new Cash(Currencies.USD, 0, 1m),
                 SymbolProperties.GetDefault(Currencies.USD),
-                ErrorCurrencyConverter.Instance
+                ErrorCurrencyConverter.Instance,
+                RegisteredSecurityDataTypesProvider.Null,
+                new SecurityCache()
             );
 
-            _interactiveBrokersBrokerage = new InteractiveBrokersBrokerage(new QCAlgorithm(), new OrderProvider(_orders), securityProvider);
+            _interactiveBrokersBrokerage = new InteractiveBrokersBrokerage(
+                new QCAlgorithm(), 
+                new OrderProvider(_orders), 
+                securityProvider,
+                new AggregationManager(),
+                new LocalDiskMapFileProvider());
             _interactiveBrokersBrokerage.Connect();
         }
 
@@ -150,16 +160,6 @@ namespace QuantConnect.Tests.Brokerages.InteractiveBrokers
         }
 
         [Test]
-        public void IsConnectedAfterReset()
-        {
-            var ib = _interactiveBrokersBrokerage;
-            Assert.IsTrue(ib.IsConnected);
-
-            ib.ResetGatewayConnection();
-            Assert.IsTrue(ib.IsConnected);
-        }
-
-        [Test]
         public void ConnectDisconnectLoop()
         {
             var ib = _interactiveBrokersBrokerage;
@@ -171,20 +171,6 @@ namespace QuantConnect.Tests.Brokerages.InteractiveBrokers
                 ib.Disconnect();
                 Assert.IsFalse(ib.IsConnected);
                 ib.Connect();
-                Assert.IsTrue(ib.IsConnected);
-            }
-        }
-
-        [Test]
-        public void ResetConnectionLoop()
-        {
-            var ib = _interactiveBrokersBrokerage;
-            Assert.IsTrue(ib.IsConnected);
-
-            const int iterations = 2;
-            for (var i = 0; i < iterations; i++)
-            {
-                ib.ResetGatewayConnection();
                 Assert.IsTrue(ib.IsConnected);
             }
         }
@@ -463,7 +449,7 @@ namespace QuantConnect.Tests.Brokerages.InteractiveBrokers
 
             foreach (var holding in previousHoldings)
             {
-                Console.WriteLine(holding.Value);
+                Log.Trace(holding.Value.ToString());
             }
 
             var hasSymbol = previousHoldings.ContainsKey(Symbols.USDJPY);
@@ -513,7 +499,7 @@ namespace QuantConnect.Tests.Brokerages.InteractiveBrokers
             Assert.IsTrue(cashBalance.Any(x => x.Currency == Currencies.USD));
             foreach (var cash in cashBalance)
             {
-                Console.WriteLine(cash);
+                Log.Trace(cash.ToString());
                 if (cash.Currency == Currencies.USD)
                 {
                     Assert.AreNotEqual(0m, cashBalance.Single(x => x.Currency == Currencies.USD));
@@ -606,7 +592,7 @@ namespace QuantConnect.Tests.Brokerages.InteractiveBrokers
             var executions = ib.GetExecutions(null, null, null, DateTime.UtcNow.AddDays(-1), null);
 
             stopwatch.Stop();
-            Console.WriteLine("Total executions fetched: {0}, elapsed time: {1} ms", executions.Count, stopwatch.ElapsedMilliseconds);
+            Log.Trace("Total executions fetched: {0}, elapsed time: {1} ms", executions.Count, stopwatch.ElapsedMilliseconds);
 
             Assert.IsTrue(executions.Any(x => order.BrokerId.Any(id => executions.Any(e => e.Execution.OrderId == Parse.Int(id)))));
         }
@@ -646,9 +632,9 @@ namespace QuantConnect.Tests.Brokerages.InteractiveBrokers
 
             var tenMinutes = TimeSpan.FromMinutes(10);
 
-            Console.WriteLine("------");
-            Console.WriteLine("Waiting for internet disconnection ");
-            Console.WriteLine("------");
+            Log.Trace("------");
+            Log.Trace("Waiting for internet disconnection ");
+            Log.Trace("------");
 
             // spin while we manually disconnect the internet
             while (ib.IsConnected)
@@ -659,9 +645,9 @@ namespace QuantConnect.Tests.Brokerages.InteractiveBrokers
 
             var stopwatch = Stopwatch.StartNew();
 
-            Console.WriteLine("------");
-            Console.WriteLine("Trying to reconnect ");
-            Console.WriteLine("------");
+            Log.Trace("------");
+            Log.Trace("Trying to reconnect ");
+            Log.Trace("------");
 
             // spin until we're reconnected
             while (!ib.IsConnected && stopwatch.Elapsed < tenMinutes)
@@ -711,12 +697,13 @@ namespace QuantConnect.Tests.Brokerages.InteractiveBrokers
             var algorithm = new QCAlgorithm();
             var marketHoursDatabase = MarketHoursDatabase.FromDataFolder();
             var symbolPropertiesDataBase = SymbolPropertiesDatabase.FromDataFolder();
-            var securityService = new SecurityService(algorithm.Portfolio.CashBook, marketHoursDatabase, symbolPropertiesDataBase, algorithm);
+            var securityService = new SecurityService(algorithm.Portfolio.CashBook, marketHoursDatabase, symbolPropertiesDataBase, algorithm, RegisteredSecurityDataTypesProvider.Null, new SecurityCacheProvider(algorithm.Portfolio));
             algorithm.Securities.SetSecurityService(securityService);
             algorithm.SetLiveMode(true);
 
             var transactionHandler = new BrokerageTransactionHandlerTests.TestBrokerageTransactionHandler();
-            transactionHandler.Initialize(algorithm, ib, new TestResultHandler());
+            var testResultHandler = new TestResultHandler();
+            transactionHandler.Initialize(algorithm, ib, testResultHandler);
 
             // Advance current time UTC so cash sync is performed
             transactionHandler.TestCurrentTimeUtc = transactionHandler.TestCurrentTimeUtc.AddDays(2);
@@ -745,6 +732,7 @@ namespace QuantConnect.Tests.Brokerages.InteractiveBrokers
             // perform clean connect so the test can complete Teardown without exceptions
             ib.Client.ConnectAck -= handler;
             ib.Connect();
+            testResultHandler.Exit();
             Assert.IsTrue(ib.IsConnected);
         }
 

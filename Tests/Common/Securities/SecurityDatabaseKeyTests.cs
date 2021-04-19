@@ -107,18 +107,31 @@ namespace QuantConnect.Tests.Common.Securities
             Assert.AreEqual(key.GetHashCode(), key2.GetHashCode());
         }
 
-        [Test, ExpectedException(typeof(ArgumentException), MatchType = MessageMatch.Contains, ExpectedMessage = "as a SecurityType")]
+        [Test]
         public void ThrowsOnWildcardSecurityType()
         {
             const string input = "[*]-usa-SPY";
-            SecurityDatabaseKey.Parse(input);
+            Assert.Throws<FormatException>(() =>
+            {
+                SecurityDatabaseKey.Parse(input);
+            }, "as a SecurityType");
         }
 
-        [Test, ExpectedException(typeof (FormatException), MatchType = MessageMatch.Contains, ExpectedMessage = "expected format")]
+        [Test]
         public void ThrowsOnInvalidFormat()
         {
             const string input = "Equity-[*]";
-            SecurityDatabaseKey.Parse(input);
+            Assert.Throws<FormatException>(() =>
+            {
+                SecurityDatabaseKey.Parse(input);
+            }, "expected format");
+        }
+
+        [TestCase("Index-usa-SPX")]
+        [TestCase("IndexOption-usa-SPX")]
+        public void DoesNotThrowOnUnknownSecurityType(string key)
+        {
+            Assert.DoesNotThrow(() => SecurityDatabaseKey.Parse(key));
         }
     }
 }

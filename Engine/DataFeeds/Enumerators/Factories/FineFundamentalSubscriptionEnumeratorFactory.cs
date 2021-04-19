@@ -36,6 +36,8 @@ namespace QuantConnect.Lean.Engine.DataFeeds.Enumerators.Factories
     {
         private static readonly ConcurrentDictionary<int, List<DateTime>> FineFilesCache
             = new ConcurrentDictionary<int, List<DateTime>>();
+        // creating a fine fundamental instance is expensive (its massive) so we keep our factory instance
+        private static readonly FineFundamental FineFundamental = new FineFundamental();
 
         private readonly bool _isLiveMode;
         private readonly Func<SubscriptionRequest, IEnumerable<DateTime>> _tradableDaysProvider;
@@ -64,30 +66,34 @@ namespace QuantConnect.Lean.Engine.DataFeeds.Enumerators.Factories
             {
                 var tradableDays = _tradableDaysProvider(request);
 
-                var fineFundamental = new FineFundamental();
                 var fineFundamentalConfiguration = new SubscriptionDataConfig(request.Configuration, typeof(FineFundamental), request.Security.Symbol);
 
                 foreach (var date in tradableDays)
                 {
-                    var fineFundamentalSource = GetSource(fineFundamental, fineFundamentalConfiguration, date);
-                    var fineFundamentalFactory = SubscriptionDataSourceReader.ForSource(fineFundamentalSource, dataCacheProvider, fineFundamentalConfiguration, date, _isLiveMode);
+                    var fineFundamentalSource = GetSource(FineFundamental, fineFundamentalConfiguration, date);
+                    var fineFundamentalFactory = SubscriptionDataSourceReader.ForSource(fineFundamentalSource, dataCacheProvider, fineFundamentalConfiguration, date, _isLiveMode, FineFundamental);
                     var fineFundamentalForDate = (FineFundamental)fineFundamentalFactory.Read(fineFundamentalSource).FirstOrDefault();
 
-                    yield return new FineFundamental
+                    // directly do not emit null points. Null points won't happen when used with Coarse data since we are pre filtering based on Coarse.HasFundamentalData
+                    // but could happen when fine filtering custom universes
+                    if (fineFundamentalForDate != null)
                     {
-                        DataType = MarketDataType.Auxiliary,
-                        Symbol = request.Configuration.Symbol,
-                        Time = date,
-                        CompanyReference = fineFundamentalForDate != null ? fineFundamentalForDate.CompanyReference : new CompanyReference(),
-                        SecurityReference = fineFundamentalForDate != null ? fineFundamentalForDate.SecurityReference : new SecurityReference(),
-                        FinancialStatements = fineFundamentalForDate != null ? fineFundamentalForDate.FinancialStatements : new FinancialStatements(),
-                        EarningReports = fineFundamentalForDate != null ? fineFundamentalForDate.EarningReports : new EarningReports(),
-                        OperationRatios = fineFundamentalForDate != null ? fineFundamentalForDate.OperationRatios : new OperationRatios(),
-                        EarningRatios = fineFundamentalForDate != null ? fineFundamentalForDate.EarningRatios : new EarningRatios(),
-                        ValuationRatios = fineFundamentalForDate != null ? fineFundamentalForDate.ValuationRatios : new ValuationRatios(),
-                        AssetClassification = fineFundamentalForDate != null ? fineFundamentalForDate.AssetClassification : new AssetClassification(),
-                        CompanyProfile = fineFundamentalForDate != null ? fineFundamentalForDate.CompanyProfile : new CompanyProfile()
-                    };
+                        yield return new FineFundamental
+                        {
+                            DataType = MarketDataType.Auxiliary,
+                            Symbol = request.Configuration.Symbol,
+                            Time = date,
+                            CompanyReference = fineFundamentalForDate.CompanyReference,
+                            SecurityReference = fineFundamentalForDate.SecurityReference,
+                            FinancialStatements = fineFundamentalForDate.FinancialStatements,
+                            EarningReports = fineFundamentalForDate.EarningReports,
+                            OperationRatios = fineFundamentalForDate.OperationRatios,
+                            EarningRatios = fineFundamentalForDate.EarningRatios,
+                            ValuationRatios = fineFundamentalForDate.ValuationRatios,
+                            AssetClassification = fineFundamentalForDate.AssetClassification,
+                            CompanyProfile = fineFundamentalForDate.CompanyProfile
+                        };
+                    }
                 }
             }
         }
@@ -103,6 +109,16 @@ namespace QuantConnect.Lean.Engine.DataFeeds.Enumerators.Factories
             if (File.Exists(source.Source))
             {
                 return source;
+            }
+
+            if (_isLiveMode)
+            {
+                var result = DailyBackwardsLoop(fine, config, date, source);
+                // if we didn't fine any file we just fallback into listing the directory
+                if (result != null)
+                {
+                    return result;
+                }
             }
 
             var cacheKey = config.Symbol.Value.ToLowerInvariant().GetHashCode();
@@ -171,6 +187,34 @@ namespace QuantConnect.Lean.Engine.DataFeeds.Enumerators.Factories
             }
 
             return source;
+        }
+
+        private SubscriptionDataSource DailyBackwardsLoop(FineFundamental fine, SubscriptionDataConfig config, DateTime date, SubscriptionDataSource source)
+        {
+            var path = Path.GetDirectoryName(source.Source) ?? string.Empty;
+            if (string.IsNullOrEmpty(path) || !Directory.Exists(path))
+            {
+                // directory does not exist
+                return source;
+            }
+
+            // loop back in time, for 10 days, until we find an existing file
+            var count = 10;
+            do
+            {
+                // get previous date
+                date = date.AddDays(-1);
+
+                // get file name for this date
+                source = fine.GetSource(config, date, _isLiveMode);
+                if (File.Exists(source.Source))
+                {
+                    break;
+                }
+            }
+            while (--count > 0);
+
+            return count == 0 ? null : source;
         }
     }
 }
