@@ -14,11 +14,13 @@
 */
 
 using System;
-using System.Collections.Generic;
 using QuantConnect.Data;
-using QuantConnect.Interfaces;
 using QuantConnect.Orders;
+using QuantConnect.Interfaces;
 using QuantConnect.Securities;
+using System.Collections.Generic;
+using QuantConnect.Securities.Option;
+using Futures = QuantConnect.Securities.Futures;
 
 namespace QuantConnect.Algorithm.CSharp
 {
@@ -36,7 +38,7 @@ namespace QuantConnect.Algorithm.CSharp
 
         private readonly DateTime _expectedExpiryWarningTime = new DateTime(2020, 6, 19);
         private readonly DateTime _expectedExpiryDelistingTime = new DateTime(2020, 6, 20);
-        private readonly DateTime _expectedLiquidationTime = new DateTime(2020, 6, 19, 16, 0, 0);
+        private readonly DateTime _expectedLiquidationTime = new DateTime(2020, 6, 20);
 
         public override void Initialize()
         {
@@ -61,9 +63,9 @@ namespace QuantConnect.Algorithm.CSharp
             _esFutureOption = AddFutureOptionContract(esOption, Resolution.Minute).Symbol;
         }
 
-        public override void OnData(Slice data)
+        public override void OnData(Slice slice)
         {
-            foreach (var delisting in data.Delistings.Values)
+            foreach (var delisting in slice.Delistings.Values)
             {
                 // Two warnings and two delisted events should be received for a grand total of 4 events.
                 _delistingsReceived++;
@@ -71,32 +73,57 @@ namespace QuantConnect.Algorithm.CSharp
                 if (delisting.Type == DelistingType.Warning &&
                     delisting.Time != _expectedExpiryWarningTime)
                 {
-                    throw new Exception($"Expiry warning with time {delisting.Time} but is expected to be {_expectedExpiryWarningTime}");
+                    throw new RegressionTestException($"Expiry warning with time {delisting.Time} but is expected to be {_expectedExpiryWarningTime}");
                 }
                 if (delisting.Type == DelistingType.Warning && delisting.Time != Time.Date)
                 {
-                    throw new Exception($"Delisting warning received at an unexpected date: {Time} - expected {delisting.Time}");
+                    throw new RegressionTestException($"Delisting warning received at an unexpected date: {Time} - expected {delisting.Time}");
                 }
                 if (delisting.Type == DelistingType.Delisted &&
                     delisting.Time != _expectedExpiryDelistingTime)
                 {
-                    throw new Exception($"Delisting occurred at unexpected time: {delisting.Time} - expected: {_expectedExpiryDelistingTime}");
+                    throw new RegressionTestException($"Delisting occurred at unexpected time: {delisting.Time} - expected: {_expectedExpiryDelistingTime}");
                 }
                 if (delisting.Type == DelistingType.Delisted &&
                     delisting.Time != Time.Date)
                 {
-                    throw new Exception($"Delisting notice received at an unexpected date: {Time} - expected {delisting.Time}");
+                    throw new RegressionTestException($"Delisting notice received at an unexpected date: {Time} - expected {delisting.Time}");
                 }
             }
 
             if (!_invested &&
-                (data.Bars.ContainsKey(_esFuture) || data.QuoteBars.ContainsKey(_esFuture)) &&
-                (data.Bars.ContainsKey(_esFutureOption) || data.QuoteBars.ContainsKey(_esFutureOption)))
+                (slice.Bars.ContainsKey(_esFuture) || slice.QuoteBars.ContainsKey(_esFuture)) &&
+                (slice.Bars.ContainsKey(_esFutureOption) || slice.QuoteBars.ContainsKey(_esFutureOption)))
             {
                 _invested = true;
 
                 MarketOrder(_esFuture, 1);
+
+                var optionContract = Securities[_esFutureOption];
+                var marginModel = optionContract.BuyingPowerModel as FuturesOptionsMarginModel;
+                if (marginModel.InitialIntradayMarginRequirement == 0
+                    || marginModel.InitialOvernightMarginRequirement == 0
+                    || marginModel.MaintenanceIntradayMarginRequirement == 0
+                    || marginModel.MaintenanceOvernightMarginRequirement == 0)
+                {
+                    throw new RegressionTestException("Unexpected margin requirements");
+                }
+
+                if (marginModel.GetInitialMarginRequirement(optionContract, 1) == 0)
+                {
+                    throw new RegressionTestException("Unexpected Initial Margin requirement");
+                }
+                if (marginModel.GetMaintenanceMargin(optionContract) != 0)
+                {
+                    throw new RegressionTestException("Unexpected Maintenance Margin requirement");
+                }
+
                 MarketOrder(_esFutureOption, 1);
+
+                if (marginModel.GetMaintenanceMargin(optionContract) == 0)
+                {
+                    throw new RegressionTestException("Unexpected Maintenance Margin requirement");
+                }
             }
         }
 
@@ -114,11 +141,11 @@ namespace QuantConnect.Algorithm.CSharp
             _liquidated++;
             if (orderEvent.Symbol.SecurityType == SecurityType.FutureOption && _expectedLiquidationTime != Time)
             {
-                throw new Exception($"Expected to liquidate option {orderEvent.Symbol} at {_expectedLiquidationTime}, instead liquidated at {Time}");
+                throw new RegressionTestException($"Expected to liquidate option {orderEvent.Symbol} at {_expectedLiquidationTime}, instead liquidated at {Time}");
             }
             if (orderEvent.Symbol.SecurityType == SecurityType.Future && _expectedLiquidationTime.AddMinutes(-1) != Time && _expectedLiquidationTime != Time)
             {
-                throw new Exception($"Expected to liquidate future {orderEvent.Symbol} at {_expectedLiquidationTime} (+1 minute), instead liquidated at {Time}");
+                throw new RegressionTestException($"Expected to liquidate future {orderEvent.Symbol} at {_expectedLiquidationTime} (+1 minute), instead liquidated at {Time}");
             }
         }
 
@@ -126,15 +153,15 @@ namespace QuantConnect.Algorithm.CSharp
         {
             if (!_invested)
             {
-                throw new Exception("Never invested in ES futures and FOPs");
+                throw new RegressionTestException("Never invested in ES futures and FOPs");
             }
             if (_delistingsReceived != 4)
             {
-                throw new Exception($"Expected 4 delisting events received, found: {_delistingsReceived}");
+                throw new RegressionTestException($"Expected 4 delisting events received, found: {_delistingsReceived}");
             }
             if (_liquidated != 2)
             {
-                throw new Exception($"Expected 3 liquidation events, found {_liquidated}");
+                throw new RegressionTestException($"Expected 3 liquidation events, found {_liquidated}");
             }
         }
 
@@ -146,54 +173,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 212944;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "3"},
-            {"Average Win", "10.15%"},
-            {"Average Loss", "-11.34%"},
-            {"Compounding Annual Return", "-2.578%"},
-            {"Drawdown", "2.300%"},
-            {"Expectancy", "-0.053"},
-            {"Net Profit", "-2.345%"},
-            {"Sharpe Ratio", "-0.969"},
-            {"Probabilistic Sharpe Ratio", "0.004%"},
+            {"Total Orders", "3"},
+            {"Average Win", "10.36%"},
+            {"Average Loss", "-10.99%"},
+            {"Compounding Annual Return", "-1.942%"},
+            {"Drawdown", "2.000%"},
+            {"Expectancy", "-0.028"},
+            {"Start Equity", "100000"},
+            {"End Equity", "98233.93"},
+            {"Net Profit", "-1.766%"},
+            {"Sharpe Ratio", "-1.141"},
+            {"Sortino Ratio", "0"},
+            {"Probabilistic Sharpe Ratio", "0.020%"},
             {"Loss Rate", "50%"},
             {"Win Rate", "50%"},
-            {"Profit-Loss Ratio", "0.89"},
-            {"Alpha", "-0.018"},
+            {"Profit-Loss Ratio", "0.94"},
+            {"Alpha", "-0.02"},
             {"Beta", "0.001"},
-            {"Annual Standard Deviation", "0.018"},
+            {"Annual Standard Deviation", "0.017"},
             {"Annual Variance", "0"},
-            {"Information Ratio", "-0.696"},
-            {"Tracking Error", "0.33"},
-            {"Treynor Ratio", "-16.321"},
-            {"Total Fees", "$7.40"},
-            {"Estimated Strategy Capacity", "$71000000.00"},
-            {"Fitness Score", "0.005"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "-0.181"},
-            {"Return Over Maximum Drawdown", "-1.1"},
-            {"Portfolio Turnover", "0.013"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "0128b145984582f5eba7e95881d9b62d"}
+            {"Information Ratio", "-0.602"},
+            {"Tracking Error", "0.291"},
+            {"Treynor Ratio", "-16.65"},
+            {"Total Fees", "$3.57"},
+            {"Estimated Strategy Capacity", "$16000000.00"},
+            {"Lowest Capacity Asset", "ES XFH59UK0MYO1"},
+            {"Portfolio Turnover", "1.04%"},
+            {"Drawdown Recovery", "0"},
+            {"OrderListHash", "6ef08dcc3239de1821ecaa4bbdee41ab"}
         };
     }
 }

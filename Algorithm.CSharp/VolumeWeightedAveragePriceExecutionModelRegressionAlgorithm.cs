@@ -14,6 +14,7 @@
  *
 */
 
+using System.Linq;
 using System.Collections.Generic;
 using QuantConnect.Algorithm.Framework.Alphas;
 using QuantConnect.Algorithm.Framework.Execution;
@@ -51,7 +52,7 @@ namespace QuantConnect.Algorithm.CSharp
             SetPortfolioConstruction(new EqualWeightingPortfolioConstructionModel());
             SetExecution(new VolumeWeightedAveragePriceExecutionModel());
 
-            InsightsGenerated += (algorithm, data) => Log($"{Time}: {string.Join(" | ", data.Insights)}");
+            InsightsGenerated += (algorithm, data) => Log($"{Time}: {string.Join(" | ", data.Insights.Select(insight => insight))}");
         }
 
         public override void OnOrderEvent(OrderEvent orderEvent)
@@ -67,54 +68,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 15643;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 56;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "268"},
-            {"Average Win", "0.04%"},
+            {"Total Orders", "239"},
+            {"Average Win", "0.05%"},
             {"Average Loss", "-0.01%"},
-            {"Compounding Annual Return", "448.023%"},
-            {"Drawdown", "1.200%"},
-            {"Expectancy", "2.224"},
-            {"Net Profit", "2.199%"},
-            {"Sharpe Ratio", "12.239"},
-            {"Probabilistic Sharpe Ratio", "71.742%"},
+            {"Compounding Annual Return", "434.257%"},
+            {"Drawdown", "1.300%"},
+            {"Expectancy", "1.938"},
+            {"Start Equity", "1000000"},
+            {"End Equity", "1021655.71"},
+            {"Net Profit", "2.166%"},
+            {"Sharpe Ratio", "11.638"},
+            {"Sortino Ratio", "0"},
+            {"Probabilistic Sharpe Ratio", "70.318%"},
             {"Loss Rate", "31%"},
             {"Win Rate", "69%"},
-            {"Profit-Loss Ratio", "3.67"},
-            {"Alpha", "0.97"},
-            {"Beta", "1.037"},
-            {"Annual Standard Deviation", "0.247"},
-            {"Annual Variance", "0.061"},
-            {"Information Ratio", "11.699"},
-            {"Tracking Error", "0.089"},
-            {"Treynor Ratio", "2.918"},
-            {"Total Fees", "$404.26"},
-            {"Estimated Strategy Capacity", "$420000.00"},
-            {"Fitness Score", "0.936"},
-            {"Kelly Criterion Estimate", "34.534"},
-            {"Kelly Criterion Probability Value", "0.444"},
-            {"Sortino Ratio", "79228162514264337593543950335"},
-            {"Return Over Maximum Drawdown", "518.289"},
-            {"Portfolio Turnover", "0.936"},
-            {"Total Insights Generated", "5"},
-            {"Total Insights Closed", "3"},
-            {"Total Insights Analysis Completed", "3"},
-            {"Long Insight Count", "3"},
-            {"Short Insight Count", "2"},
-            {"Long/Short Ratio", "150.0%"},
-            {"Estimated Monthly Alpha Value", "$693534.1340"},
-            {"Total Accumulated Estimated Alpha Value", "$111736.0549"},
-            {"Mean Population Estimated Insight Value", "$37245.3516"},
-            {"Mean Population Direction", "100%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "100%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "42e0678c930473ad9197f7ca89aa3fd6"}
+            {"Profit-Loss Ratio", "3.26"},
+            {"Alpha", "0.85"},
+            {"Beta", "1.059"},
+            {"Annual Standard Deviation", "0.253"},
+            {"Annual Variance", "0.064"},
+            {"Information Ratio", "10.466"},
+            {"Tracking Error", "0.092"},
+            {"Treynor Ratio", "2.778"},
+            {"Total Fees", "$399.15"},
+            {"Estimated Strategy Capacity", "$470000.00"},
+            {"Lowest Capacity Asset", "AIG R735QTJ8XC9X"},
+            {"Portfolio Turnover", "130.79%"},
+            {"Drawdown Recovery", "1"},
+            {"OrderListHash", "7a14c40f79d36294f931cd4b1f9e7179"}
         };
     }
 }

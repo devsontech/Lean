@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -18,29 +18,33 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using QuantConnect.Data;
+using QuantConnect.Data.Market;
 using QuantConnect.Indicators;
 
 namespace QuantConnect.Algorithm
 {
     public partial class QCAlgorithm
     {
+        private bool _isEmitWarmupPlotWarningSet;
         private readonly ConcurrentDictionary<string, Chart> _charts = new ConcurrentDictionary<string, Chart>();
 
         private static readonly Dictionary<string, List<string>> ReservedChartSeriesNames = new Dictionary<string, List<string>>
         {
-            { "Strategy Equity", new List<string> { "Equity", "Daily Performance" } },
-            { "Meta", new List<string>() },
-            { "Alpha", new List<string> { "Direction Score", "Magnitude Score" } },
-            { "Alpha Count", new List<string> { "Count" } },
-            { "Alpha Assets", new List<string>() },
-            { "Alpha Asset Breakdown", new List<string>() }
+            { "Strategy Equity", new List<string> { "Equity", "Return" } },
+            { "Capacity", new List<string> { "Strategy Capacity" } },
+            { "Drawdown", new List<string> { "Equity Drawdown" } },
+            { "Benchmark", new List<string>() { "Benchmark" } },
+            { "Assets Sales Volume", new List<string>() },
+            { "Exposure", new List<string>() },
+            { "Portfolio Margin", new List<string>() },
+            { "Portfolio Turnover", new List<string> { "Portfolio Turnover" } }
         };
 
         /// <summary>
         /// Access to the runtime statistics property. User provided statistics.
         /// </summary>
         /// <remarks> RuntimeStatistics are displayed in the head banner in live trading</remarks>
+        [DocumentationAttribute(Charting)]
         public ConcurrentDictionary<string, string> RuntimeStatistics { get; } = new ConcurrentDictionary<string, string>();
 
         /// <summary>
@@ -48,6 +52,7 @@ namespace QuantConnect.Algorithm
         /// </summary>
         /// <param name="chart">Chart object to add to collection.</param>
         /// <seealso cref="Plot(string,string,decimal)"/>
+        [DocumentationAttribute(Charting)]
         public void AddChart(Chart chart)
         {
             _charts.TryAdd(chart.Name, chart);
@@ -59,6 +64,7 @@ namespace QuantConnect.Algorithm
         /// <param name="series">Name of the plot series</param>
         /// <param name="value">Value to plot</param>
         /// <seealso cref="Plot(string,string,decimal)"/>
+        [DocumentationAttribute(Charting)]
         public void Plot(string series, decimal value)
         {
             //By default plot to the primary chart:
@@ -70,6 +76,7 @@ namespace QuantConnect.Algorithm
         /// </summary>
         /// <remarks> Record(string series, int value)</remarks>
         /// <seealso cref="Plot(string,string,decimal)"/>
+        [DocumentationAttribute(Charting)]
         public void Record(string series, int value)
         {
             Plot(series, value);
@@ -79,6 +86,7 @@ namespace QuantConnect.Algorithm
         /// Plot a chart using string series name, with double value. Alias of Plot();
         /// </summary>
         /// <seealso cref="Plot(string,string,decimal)"/>
+        [DocumentationAttribute(Charting)]
         public void Record(string series, double value)
         {
             Plot(series, value);
@@ -90,6 +98,7 @@ namespace QuantConnect.Algorithm
         /// <param name="series"></param>
         /// <param name="value"></param>
         /// <seealso cref="Plot(string,string,decimal)"/>
+        [DocumentationAttribute(Charting)]
         public void Record(string series, decimal value)
         {
             //By default plot to the primary chart:
@@ -100,6 +109,7 @@ namespace QuantConnect.Algorithm
         /// Plot a chart using string series name, with double value.
         /// </summary>
         /// <seealso cref="Plot(string,string,decimal)"/>
+        [DocumentationAttribute(Charting)]
         public void Plot(string series, double value) {
             Plot(series, value.SafeDecimalCast());
         }
@@ -108,6 +118,7 @@ namespace QuantConnect.Algorithm
         /// Plot a chart using string series name, with int value.
         /// </summary>
         /// <seealso cref="Plot(string,string,decimal)"/>
+        [DocumentationAttribute(Charting)]
         public void Plot(string series, int value)
         {
             Plot(series, (decimal)value);
@@ -117,15 +128,17 @@ namespace QuantConnect.Algorithm
         ///Plot a chart using string series name, with float value.
         /// </summary>
         /// <seealso cref="Plot(string,string,decimal)"/>
+        [DocumentationAttribute(Charting)]
         public void Plot(string series, float value)
         {
-            Plot(series, (decimal)value);
+            Plot(series, (double)value);
         }
 
         /// <summary>
         /// Plot a chart to string chart name, using string series name, with double value.
         /// </summary>
         /// <seealso cref="Plot(string,string,decimal)"/>
+        [DocumentationAttribute(Charting)]
         public void Plot(string chart, string series, double value)
         {
             Plot(chart, series, value.SafeDecimalCast());
@@ -135,6 +148,7 @@ namespace QuantConnect.Algorithm
         /// Plot a chart to string chart name, using string series name, with int value
         /// </summary>
         /// <seealso cref="Plot(string,string,decimal)"/>
+        [DocumentationAttribute(Charting)]
         public void Plot(string chart, string series, int value)
         {
             Plot(chart, series, (decimal)value);
@@ -144,9 +158,10 @@ namespace QuantConnect.Algorithm
         /// Plot a chart to string chart name, using string series name, with float value
         /// </summary>
         /// <seealso cref="Plot(string,string,decimal)"/>
+        [DocumentationAttribute(Charting)]
         public void Plot(string chart, string series, float value)
         {
-            Plot(chart, series, (decimal)value);
+            Plot(chart, series, (double)value);
         }
 
         /// <summary>
@@ -155,45 +170,209 @@ namespace QuantConnect.Algorithm
         /// <param name="chart">Chart name</param>
         /// <param name="series">Series name</param>
         /// <param name="value">Value of the point</param>
+        [DocumentationAttribute(Charting)]
         public void Plot(string chart, string series, decimal value)
         {
+            if (TryGetChartSeries(chart, series, out Series chartSeries))
+            {
+                chartSeries.AddPoint(UtcTime, value);
+            }
+        }
+
+        /// <summary>
+        /// Plot a candlestick to the default/primary chart series by the given series name.
+        /// </summary>
+        /// <param name="series">Series name</param>
+        /// <param name="open">The candlestick open value</param>
+        /// <param name="high">The candlestick high value</param>
+        /// <param name="low">The candlestick low value</param>
+        /// <param name="close">The candlestick close value</param>
+        /// <seealso cref="Plot(string,string,decimal,decimal,decimal,decimal)"/>
+        [DocumentationAttribute(Charting)]
+        public void Plot(string series, double open, double high, double low, double close)
+        {
+            Plot(series, open.SafeDecimalCast(), high.SafeDecimalCast(), low.SafeDecimalCast(), close.SafeDecimalCast());
+        }
+
+        /// <summary>
+        /// Plot a candlestick to the default/primary chart series by the given series name.
+        /// </summary>
+        /// <param name="series">Series name</param>
+        /// <param name="open">The candlestick open value</param>
+        /// <param name="high">The candlestick high value</param>
+        /// <param name="low">The candlestick low value</param>
+        /// <param name="close">The candlestick close value</param>
+        /// <seealso cref="Plot(string,string,decimal,decimal,decimal,decimal)"/>
+        [DocumentationAttribute(Charting)]
+        public void Plot(string series, float open, float high, float low, float close)
+        {
+            Plot(series, (double)open, (double)high, (double)low, (double)close);
+        }
+
+        /// <summary>
+        /// Plot a candlestick to the default/primary chart series by the given series name.
+        /// </summary>
+        /// <param name="series">Series name</param>
+        /// <param name="open">The candlestick open value</param>
+        /// <param name="high">The candlestick high value</param>
+        /// <param name="low">The candlestick low value</param>
+        /// <param name="close">The candlestick close value</param>
+        /// <seealso cref="Plot(string,string,decimal,decimal,decimal,decimal)"/>
+        [DocumentationAttribute(Charting)]
+        public void Plot(string series, int open, int high, int low, int close)
+        {
+            Plot(series, (decimal)open, (decimal)high, (decimal)low, (decimal)close);
+        }
+
+        /// <summary>
+        /// Plot a candlestick to the default/primary chart series by the given series name.
+        /// </summary>
+        /// <param name="series">Name of the plot series</param>
+        /// <param name="open">The candlestick open value</param>
+        /// <param name="high">The candlestick high value</param>
+        /// <param name="low">The candlestick low value</param>
+        /// <param name="close">The candlestick close value</param>
+        /// <seealso cref="Plot(string,string,decimal,decimal,decimal,decimal)"/>
+        [DocumentationAttribute(Charting)]
+        public void Plot(string series, decimal open, decimal high, decimal low, decimal close)
+        {
+            //By default plot to the primary chart:
+            Plot("Strategy Equity", series, open, high, low, close);
+        }
+
+        /// <summary>
+        /// Plot a candlestick to the given series of the given chart.
+        /// </summary>
+        /// <param name="chart">Chart name</param>
+        /// <param name="series">Series name</param>
+        /// <param name="open">The candlestick open value</param>
+        /// <param name="high">The candlestick high value</param>
+        /// <param name="low">The candlestick low value</param>
+        /// <param name="close">The candlestick close value</param>
+        /// <seealso cref="Plot(string,string,decimal,decimal,decimal,decimal)"/>
+        [DocumentationAttribute(Charting)]
+        public void Plot(string chart, string series, double open, double high, double low, double close)
+        {
+            Plot(chart, series, open.SafeDecimalCast(), high.SafeDecimalCast(), low.SafeDecimalCast(), close.SafeDecimalCast());
+        }
+
+        /// <summary>
+        /// Plot a candlestick to the given series of the given chart.
+        /// </summary>
+        /// <param name="chart">Chart name</param>
+        /// <param name="series">Series name</param>
+        /// <param name="open">The candlestick open value</param>
+        /// <param name="high">The candlestick high value</param>
+        /// <param name="low">The candlestick low value</param>
+        /// <param name="close">The candlestick close value</param>
+        /// <seealso cref="Plot(string,string,decimal,decimal,decimal,decimal)"/>
+        [DocumentationAttribute(Charting)]
+        public void Plot(string chart, string series, float open, float high, float low, float close)
+        {
+            Plot(chart, series, (double)open, (double)high, (double)low, (double)close);
+        }
+
+        /// <summary>
+        /// Plot a candlestick to the given series of the given chart.
+        /// </summary>
+        /// <param name="chart">Chart name</param>
+        /// <param name="series">Series name</param>
+        /// <param name="open">The candlestick open value</param>
+        /// <param name="high">The candlestick high value</param>
+        /// <param name="low">The candlestick low value</param>
+        /// <param name="close">The candlestick close value</param>
+        /// <seealso cref="Plot(string,string,decimal,decimal,decimal,decimal)"/>
+        [DocumentationAttribute(Charting)]
+        public void Plot(string chart, string series, int open, int high, int low, int close)
+        {
+            Plot(chart, series, (decimal)open, (decimal)high, (decimal)low, (decimal)close);
+        }
+
+        /// <summary>
+        /// Plot a candlestick to a chart of string-chart name, with string series name, and decimal value. If chart does not exist, create it.
+        /// </summary>
+        /// <param name="chart">Chart name</param>
+        /// <param name="series">Series name</param>
+        /// <param name="open">The candlestick open value</param>
+        /// <param name="high">The candlestick high value</param>
+        /// <param name="low">The candlestick low value</param>
+        /// <param name="close">The candlestick close value</param>
+        [DocumentationAttribute(Charting)]
+        public void Plot(string chart, string series, decimal open, decimal high, decimal low, decimal close)
+        {
+            if (TryGetChartSeries(chart, series, out CandlestickSeries candlestickSeries))
+            {
+                candlestickSeries.AddPoint(UtcTime, open, high, low, close);
+            }
+        }
+
+        /// <summary>
+        /// Plot a candlestick to the given series of the given chart.
+        /// </summary>
+        /// <param name="series">Name of the plot series</param>
+        /// <param name="bar">The trade bar to be plotted to the candlestick series</param>
+        /// <seealso cref="Plot(string,string,decimal,decimal,decimal,decimal)"/>
+        [DocumentationAttribute(Charting)]
+        public void Plot(string series, TradeBar bar)
+        {
+            Plot(series, bar.Open, bar.High, bar.Low, bar.Close);
+        }
+
+        /// <summary>
+        /// Plot a candlestick to the given series of the given chart.
+        /// </summary>
+        /// <param name="chart">Chart name</param>
+        /// <param name="series">Name of the plot series</param>
+        /// <param name="bar">The trade bar to be plotted to the candlestick series</param>
+        /// <seealso cref="Plot(string,string,decimal,decimal,decimal,decimal)"/>
+        [DocumentationAttribute(Charting)]
+        public void Plot(string chart, string series, TradeBar bar)
+        {
+            Plot(chart, series, bar.Open, bar.High, bar.Low, bar.Close);
+        }
+
+        private bool TryGetChartSeries<T>(string chartName, string seriesName, out T series)
+            where T : BaseSeries, new()
+        {
+            series = null;
+
             // Check if chart/series names are reserved
-            List<string> reservedSeriesNames;
-            if (ReservedChartSeriesNames.TryGetValue(chart, out reservedSeriesNames))
+            if (ReservedChartSeriesNames.TryGetValue(chartName, out var reservedSeriesNames))
             {
                 if (reservedSeriesNames.Count == 0)
                 {
-                    throw new Exception($"Algorithm.Plot(): '{chart}' is a reserved chart name.");
+                    throw new ArgumentException($"'{chartName}' is a reserved chart name.");
                 }
-                if (reservedSeriesNames.Contains(series))
+                if (reservedSeriesNames.Contains(seriesName))
                 {
-                    throw new Exception($"Algorithm.Plot(): '{series}' is a reserved series name for chart '{chart}'.");
+                    throw new ArgumentException($"'{seriesName}' is a reserved series name for chart '{chartName}'.");
                 }
             }
 
-            // If we don't have the chart, create it:
-            _charts.TryAdd(chart, new Chart(chart));
-
-            var thisChart = _charts[chart];
-            if (!thisChart.Series.ContainsKey(series))
+            if(!_charts.TryGetValue(chartName, out var chart))
             {
-                //Number of series in total, excluding reserved charts
-                var seriesCount = _charts.Select(x => x.Value)
-                    .Aggregate(0, (i, c) => ReservedChartSeriesNames.TryGetValue(c.Name, out reservedSeriesNames)
-                    ? i + c.Series.Values.Count(s => reservedSeriesNames.Count > 0 && !reservedSeriesNames.Contains(s.Name))
-                    : i + c.Series.Count);
-
-                if (seriesCount > 10)
-                {
-                    Error("Exceeded maximum series count: Each backtest can have up to 10 series in total.");
-                    return;
-                }
-
-                //If we don't have the series, create it:
-                thisChart.AddSeries(new Series(series, SeriesType.Line, 0, "$"));
+                // If we don't have the chart, create it
+                _charts[chartName] = chart = new Chart(chartName);
             }
 
-            thisChart.Series[series].AddPoint(UtcTime, value);
+            if (!chart.Series.TryGetValue(seriesName, out var chartSeries))
+            {
+                chartSeries = new T() { Name = seriesName };
+                chart.AddSeries(chartSeries);
+            }
+
+            if (LiveMode && IsWarmingUp)
+            {
+                if (!_isEmitWarmupPlotWarningSet)
+                {
+                    _isEmitWarmupPlotWarningSet = true;
+                    Debug("Plotting is disabled during algorithm warmup in live trading.");
+                }
+                return false;
+            }
+
+            series = (T)chartSeries;
+            return true;
         }
 
         /// <summary>
@@ -205,6 +384,7 @@ namespace QuantConnect.Algorithm
         /// <param name="series">The series name</param>
         /// <param name="seriesType">The type of series, i.e, Scatter</param>
         /// <param name="unit">The unit of the y axis, usually $</param>
+        [DocumentationAttribute(Charting)]
         public void AddSeries(string chart, string series, SeriesType seriesType, string unit = "$")
         {
             Chart c;
@@ -213,17 +393,17 @@ namespace QuantConnect.Algorithm
                 _charts[chart] = c = new Chart(chart);
             }
 
-            c.Series[series] = new Series(series, seriesType, unit);
+            c.Series[series] = BaseSeries.Create(seriesType, series, unit: unit);
         }
 
         /// <summary>
         /// Plots the value of each indicator on the chart
         /// </summary>
         /// <param name="chart">The chart's name</param>
-        /// <param name="indicators">The indicatorsto plot</param>
+        /// <param name="indicators">The indicators to plot</param>
         /// <seealso cref="Plot(string,string,decimal)"/>
-        public void Plot<T>(string chart, params IndicatorBase<T>[] indicators)
-            where T : IBaseData
+        [DocumentationAttribute(Charting)]
+        public void Plot(string chart, params IndicatorBase[] indicators)
         {
             foreach (var indicator in indicators)
             {
@@ -234,27 +414,19 @@ namespace QuantConnect.Algorithm
         /// <summary>
         /// Automatically plots each indicator when a new value is available
         /// </summary>
-        public void PlotIndicator<T>(string chart, params IndicatorBase<T>[] indicators)
-            where T : IBaseData
+        [DocumentationAttribute(Charting)]
+        [DocumentationAttribute(Indicators)]
+        public void PlotIndicator(string chart, params IndicatorBase[] indicators)
         {
-            foreach (var i in indicators)
-            {
-                if (i == null) continue;
-
-                // copy loop variable for usage in closure
-                var ilocal = i;
-                i.Updated += (sender, args) =>
-                {
-                    Plot(chart, ilocal);
-                };
-            }
+            PlotIndicator(chart, false, indicators);
         }
 
         /// <summary>
         /// Automatically plots each indicator when a new value is available, optionally waiting for indicator.IsReady to return true
         /// </summary>
-        public void PlotIndicator<T>(string chart, bool waitForReady, params IndicatorBase<T>[] indicators)
-            where T : IBaseData
+        [DocumentationAttribute(Charting)]
+        [DocumentationAttribute(Indicators)]
+        public void PlotIndicator(string chart, bool waitForReady, params IndicatorBase[] indicators)
         {
             foreach (var i in indicators)
             {
@@ -278,6 +450,7 @@ namespace QuantConnect.Algorithm
         /// <param name="name">Name of your runtime statistic</param>
         /// <param name="value">String value of your runtime statistic</param>
         /// <seealso cref="LiveMode"/>
+        [DocumentationAttribute(Charting)]
         public void SetRuntimeStatistic(string name, string value)
         {
             RuntimeStatistics.AddOrUpdate(name, value);
@@ -288,6 +461,7 @@ namespace QuantConnect.Algorithm
         /// </summary>
         /// <param name="name">Name of your runtime statistic</param>
         /// <param name="value">Decimal value of your runtime statistic</param>
+        [DocumentationAttribute(Charting)]
         public void SetRuntimeStatistic(string name, decimal value)
         {
             SetRuntimeStatistic(name, value.ToString(CultureInfo.InvariantCulture));
@@ -298,6 +472,7 @@ namespace QuantConnect.Algorithm
         /// </summary>
         /// <param name="name">Name of your runtime statistic</param>
         /// <param name="value">Int value of your runtime statistic</param>
+        [DocumentationAttribute(Charting)]
         public void SetRuntimeStatistic(string name, int value)
         {
             SetRuntimeStatistic(name, value.ToStringInvariant());
@@ -308,33 +483,77 @@ namespace QuantConnect.Algorithm
         /// </summary>
         /// <param name="name">Name of your runtime statistic</param>
         /// <param name="value">Double value of your runtime statistic</param>
+        [DocumentationAttribute(Charting)]
         public void SetRuntimeStatistic(string name, double value)
         {
             SetRuntimeStatistic(name, value.ToString(CultureInfo.InvariantCulture));
         }
 
         /// <summary>
-        /// Get the chart updates by fetch the recent points added and return for dynamic plotting.
+        /// Set a custom summary statistic for the algorithm.
+        /// </summary>
+        /// <param name="name">Name of the custom summary statistic</param>
+        /// <param name="value">Value of the custom summary statistic</param>
+        [DocumentationAttribute(StatisticsTag)]
+        public void SetSummaryStatistic(string name, string value)
+        {
+            _statisticsService.SetSummaryStatistic(name, value);
+        }
+
+        /// <summary>
+        /// Set a custom summary statistic for the algorithm.
+        /// </summary>
+        /// <param name="name">Name of the custom summary statistic</param>
+        /// <param name="value">Value of the custom summary statistic</param>
+        [DocumentationAttribute(StatisticsTag)]
+        public void SetSummaryStatistic(string name, int value)
+        {
+            _statisticsService.SetSummaryStatistic(name, value.ToStringInvariant());
+        }
+
+        /// <summary>
+        /// Set a custom summary statistic for the algorithm.
+        /// </summary>
+        /// <param name="name">Name of the custom summary statistic</param>
+        /// <param name="value">Value of the custom summary statistic</param>
+        [DocumentationAttribute(StatisticsTag)]
+        public void SetSummaryStatistic(string name, double value)
+        {
+            _statisticsService.SetSummaryStatistic(name, value.ToStringInvariant());
+        }
+
+        /// <summary>
+        /// Set a custom summary statistic for the algorithm.
+        /// </summary>
+        /// <param name="name">Name of the custom summary statistic</param>
+        /// <param name="value">Value of the custom summary statistic</param>
+        [DocumentationAttribute(StatisticsTag)]
+        public void SetSummaryStatistic(string name, decimal value)
+        {
+            _statisticsService.SetSummaryStatistic(name, value.ToStringInvariant());
+        }
+
+        /// <summary>
+        /// Get the chart updates by fetch the recent points added and return for dynamic Charting.
         /// </summary>
         /// <param name="clearChartData"></param>
         /// <returns>List of chart updates since the last request</returns>
         /// <remarks>GetChartUpdates returns the latest updates since previous request.</remarks>
-        public List<Chart> GetChartUpdates(bool clearChartData = false)
+        [DocumentationAttribute(Charting)]
+        public IEnumerable<Chart> GetChartUpdates(bool clearChartData = false)
         {
-            var updates = _charts.Select(x => x.Value).Select(chart => chart.GetUpdates()).ToList();
-
-            if (clearChartData)
+            foreach (var chart in _charts.Values)
             {
-                // we can clear this data out after getting updates to prevent unnecessary memory usage
-                foreach (var chart in _charts)
+                yield return chart.GetUpdates();
+                if (clearChartData)
                 {
-                    foreach (var series in chart.Value.Series)
+                    // we can clear this data out after getting updates to prevent unnecessary memory usage
+                    foreach (var series in chart.Series)
                     {
                         series.Value.Purge();
                     }
                 }
             }
-            return updates;
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,14 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("System")
-AddReference("QuantConnect.Common")
-AddReference("QuantConnect.Indicators")
-AddReference("QuantConnect.Algorithm.Framework")
-
-from QuantConnect.Data.UniverseSelection import *
-from QuantConnect.Indicators import ExponentialMovingAverage
+from AlgorithmImports import *
 from Selection.FundamentalUniverseSelectionModel import FundamentalUniverseSelectionModel
 
 class EmaCrossUniverseSelectionModel(FundamentalUniverseSelectionModel):
@@ -29,70 +22,68 @@ class EmaCrossUniverseSelectionModel(FundamentalUniverseSelectionModel):
                  fastPeriod = 100,
                  slowPeriod = 300,
                  universeCount = 500,
-                 universeSettings = None,
-                 securityInitializer = None):
+                 universeSettings = None):
         '''Initializes a new instance of the EmaCrossUniverseSelectionModel class
         Args:
             fastPeriod: Fast EMA period
             slowPeriod: Slow EMA period
             universeCount: Maximum number of members of this universe selection
-            universeSettings: The settings used when adding symbols to the algorithm, specify null to use algorthm.UniverseSettings
-            securityInitializer: Optional security initializer invoked when creating new securities, specify null to use algorithm.SecurityInitializer'''
-        super().__init__(False, universeSettings, securityInitializer)
-        self.fastPeriod = fastPeriod
-        self.slowPeriod = slowPeriod
-        self.universeCount = universeCount
+            universeSettings: The settings used when adding symbols to the algorithm, specify null to use algorithm.UniverseSettings'''
+        super().__init__(False, universeSettings)
+        self.fast_period = fastPeriod
+        self.slow_period = slowPeriod
+        self.universe_count = universeCount
         self.tolerance = 0.01
         # holds our coarse fundamental indicators by symbol
         self.averages = {}
 
-    def SelectCoarse(self, algorithm, coarse):
+    def select_coarse(self, algorithm: QCAlgorithm, fundamental: list[Fundamental]) -> list[Symbol]:
         '''Defines the coarse fundamental selection function.
         Args:
             algorithm: The algorithm instance
-            coarse: The coarse fundamental data used to perform filtering</param>
+            fundamental: The coarse fundamental data used to perform filtering</param>
         Returns:
             An enumerable of symbols passing the filter'''
         filtered = []
 
-        for cf in coarse:
-            if cf.Symbol not in self.averages:
-                self.averages[cf.Symbol] = self.SelectionData(cf.Symbol, self.fastPeriod, self.slowPeriod)
+        for cf in fundamental:
+            if cf.symbol not in self.averages:
+                self.averages[cf.symbol] = self.SelectionData(cf.symbol, self.fast_period, self.slow_period)
 
             # grab th SelectionData instance for this symbol
-            avg = self.averages.get(cf.Symbol)
+            avg = self.averages.get(cf.symbol)
 
             # Update returns true when the indicators are ready, so don't accept until they are
             # and only pick symbols who have their fastPeriod-day ema over their slowPeriod-day ema
-            if avg.Update(cf.EndTime, cf.AdjustedPrice) and avg.Fast > avg.Slow * (1 + self.tolerance):
+            if avg.update(cf.end_time, cf.adjusted_price) and avg.fast > avg.slow * (1 + self.tolerance):
                 filtered.append(avg)
 
         # prefer symbols with a larger delta by percentage between the two averages
-        filtered = sorted(filtered, key=lambda avg: avg.ScaledDelta, reverse = True)
+        filtered = sorted(filtered, key=lambda avg: avg.scaled_delta, reverse = True)
 
         # we only need to return the symbol and return 'universeCount' symbols
-        return [x.Symbol for x in filtered[:self.universeCount]]
+        return [x.symbol for x in filtered[:self.universe_count]]
 
     # class used to improve readability of the coarse selection function
     class SelectionData:
-        def __init__(self, symbol, fastPeriod, slowPeriod):
-            self.Symbol = symbol
-            self.FastEma = ExponentialMovingAverage(fastPeriod)
-            self.SlowEma = ExponentialMovingAverage(slowPeriod)
+        def __init__(self, symbol, fast_period, slow_period):
+            self.symbol = symbol
+            self.fast_ema = ExponentialMovingAverage(fast_period)
+            self.slow_ema = ExponentialMovingAverage(slow_period)
 
         @property
-        def Fast(self):
-            return float(self.FastEma.Current.Value)
+        def fast(self):
+            return float(self.fast_ema.current.value)
 
         @property
-        def Slow(self):
-            return float(self.SlowEma.Current.Value)
+        def slow(self):
+            return float(self.slow_ema.current.value)
 
         # computes an object score of how much large the fast is than the slow
         @property
-        def ScaledDelta(self):
-            return (self.Fast - self.Slow) / ((self.Fast + self.Slow) / 2)
+        def scaled_delta(self):
+            return (self.fast - self.slow) / ((self.fast + self.slow) / 2)
 
         # updates the EMAFast and EMASlow indicators, returning true when they're both ready
-        def Update(self, time, value):
-            return self.SlowEma.Update(time, value) & self.FastEma.Update(time, value)
+        def update(self, time, value):
+            return self.slow_ema.update(time, value) & self.fast_ema.update(time, value)

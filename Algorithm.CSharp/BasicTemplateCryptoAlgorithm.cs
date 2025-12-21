@@ -79,8 +79,8 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
         /// </summary>
-        /// <param name="data">Slice object keyed by symbol containing the stock data</param>
-        public override void OnData(Slice data)
+        /// <param name="slice">Slice object keyed by symbol containing the stock data</param>
+        public override void OnData(Slice slice)
         {
             if (Portfolio.CashBook["EUR"].ConversionRate == 0
                 || Portfolio.CashBook["BTC"].ConversionRate == 0
@@ -92,7 +92,7 @@ namespace QuantConnect.Algorithm.CSharp
                 Log($"LTC conversion rate: {Portfolio.CashBook["LTC"].ConversionRate}");
                 Log($"ETH conversion rate: {Portfolio.CashBook["ETH"].ConversionRate}");
 
-                throw new Exception("Conversion rate is 0");
+                throw new RegressionTestException("Conversion rate is 0");
             }
             if (Time.Hour == 1 && Time.Minute == 0)
             {
@@ -167,11 +167,7 @@ namespace QuantConnect.Algorithm.CSharp
                 {
                     if (Portfolio.CashBook["LTC"].Amount > 0)
                     {
-                        // The following two statements currently behave differently if we have initial holdings:
-                        // https://github.com/QuantConnect/Lean/issues/1860
-
                         Liquidate("LTCUSD");
-                        // SetHoldings("LTCUSD", 0);
                     }
                 }
             }
@@ -196,21 +192,39 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 12965;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 35;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "10"},
+            {"Total Orders", "12"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
             {"Compounding Annual Return", "0%"},
             {"Drawdown", "0%"},
             {"Expectancy", "0"},
+            {"Start Equity", "31592.84"},
+            {"End Equity", "30866.71"},
             {"Net Profit", "0%"},
             {"Sharpe Ratio", "0"},
+            {"Sortino Ratio", "0"},
             {"Probabilistic Sharpe Ratio", "0%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
@@ -224,26 +238,10 @@ namespace QuantConnect.Algorithm.CSharp
             {"Treynor Ratio", "0"},
             {"Total Fees", "$85.34"},
             {"Estimated Strategy Capacity", "$0"},
-            {"Fitness Score", "0.5"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "79228162514264337593543950335"},
-            {"Return Over Maximum Drawdown", "-43.943"},
-            {"Portfolio Turnover", "1.028"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "1bf1a6d9dd921982b72a6178f9e50e68"}
+            {"Lowest Capacity Asset", "BTCEUR 2XR"},
+            {"Portfolio Turnover", "118.08%"},
+            {"Drawdown Recovery", "0"},
+            {"OrderListHash", "26b9a07ace86b6a0e0eb2ff8c168cee0"}
         };
     }
 }

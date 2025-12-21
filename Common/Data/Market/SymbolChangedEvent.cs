@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  * 
@@ -59,6 +59,18 @@ namespace QuantConnect.Data.Market
         }
 
         /// <summary>
+        /// Return the URL string source of the file. This will be converted to a stream
+        /// </summary>
+        /// <param name="config">Configuration object</param>
+        /// <param name="date">Date of this source file</param>
+        /// <param name="isLiveMode">true if we're in live mode, false for backtesting mode</param>
+        /// <returns>String URL of source file.</returns>
+        public override SubscriptionDataSource GetSource(SubscriptionDataConfig config, DateTime date, bool isLiveMode)
+        {
+            return null;
+        }
+
+        /// <summary>
         /// Return a new instance clone of this object, used in fill forward
         /// </summary>
         /// <remarks>
@@ -68,6 +80,14 @@ namespace QuantConnect.Data.Market
         public override BaseData Clone()
         {
             return new SymbolChangedEvent(Symbol, Time, OldSymbol, NewSymbol);
+        }
+
+        /// <summary>
+        /// Friendly string representation of this symbol changed event
+        /// </summary>
+        public override string ToString()
+        {
+            return $"{Time} {OldSymbol}->{NewSymbol}";
         }
     }
 }

@@ -44,10 +44,12 @@ namespace QuantConnect.Algorithm.CSharp
             _symbol = AddEquity("AAPL", Resolution.Hour).Symbol;
         }
 
-        public void OnData(TradeBars tradeBars)
+        public override void OnData(Slice slice)
         {
+            _dataCount += slice.Bars.Count;
+
             TradeBar bar;
-            if (!tradeBars.TryGetValue(_symbol, out bar)) return;
+            if (!slice.Bars.TryGetValue(_symbol, out bar)) return;
 
             if (!Portfolio.Invested && Time.Date == EndDate.Date)
             {
@@ -55,41 +57,36 @@ namespace QuantConnect.Algorithm.CSharp
             }
         }
 
-        public override void OnData(Slice slice)
+        public override void OnSplits(Splits splits)
         {
-            _dataCount += slice.Bars.Count;
-            if (slice.Splits.Any())
+            if (splits.Single().Value.Type == SplitType.Warning)
             {
-                if (slice.Splits.Single().Value.Type == SplitType.Warning)
+                _receivedWarningEvent = true;
+                Debug($"{splits.Single().Value}");
+            }
+            else if (splits.Single().Value.Type == SplitType.SplitOccurred)
+            {
+                _receivedOccurredEvent = true;
+                if (splits.Single().Value.Price != 645.5700m || splits.Single().Value.ReferencePrice != 645.5700m)
                 {
-                    _receivedWarningEvent = true;
-                    Debug($"{slice.Splits.Single().Value}");
+                    throw new RegressionTestException("Did not receive expected price values");
                 }
-                else if (slice.Splits.Single().Value.Type == SplitType.SplitOccurred)
-                {
-                    _receivedOccurredEvent = true;
-                    if (slice.Splits.Single().Value.Price != 645.5700m || slice.Splits.Single().Value.ReferencePrice != 645.5700m)
-                    {
-                        throw new Exception("Did not receive expected price values");
-                    }
-                    Debug($"{slice.Splits.Single().Value}");
-                }
+                Debug($"{splits.Single().Value}");
             }
         }
-
         public override void OnEndOfAlgorithm()
         {
             if (!_receivedOccurredEvent)
             {
-                throw new Exception("Did not receive expected split event");
+                throw new RegressionTestException("Did not receive expected split event");
             }
             if (!_receivedWarningEvent)
             {
-                throw new Exception("Did not receive expected split warning event");
+                throw new RegressionTestException("Did not receive expected split warning event");
             }
             if (_dataCount != 14)
             {
-                throw new Exception($"Unexpected data count {_dataCount}. Expected 14");
+                throw new RegressionTestException($"Unexpected data count {_dataCount}. Expected 14");
             }
         }
 
@@ -101,21 +98,39 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 17;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "1"},
+            {"Total Orders", "1"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
-            {"Compounding Annual Return", "0%"},
-            {"Drawdown", "0%"},
+            {"Compounding Annual Return", "-0.068%"},
+            {"Drawdown", "0.000%"},
             {"Expectancy", "0"},
-            {"Net Profit", "0%"},
-            {"Sharpe Ratio", "0"},
+            {"Start Equity", "100000"},
+            {"End Equity", "99999.31"},
+            {"Net Profit", "-0.001%"},
+            {"Sharpe Ratio", "-128.305"},
+            {"Sortino Ratio", "0"},
             {"Probabilistic Sharpe Ratio", "0%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
@@ -124,31 +139,15 @@ namespace QuantConnect.Algorithm.CSharp
             {"Beta", "0"},
             {"Annual Standard Deviation", "0"},
             {"Annual Variance", "0"},
-            {"Information Ratio", "0"},
+            {"Information Ratio", "-9.163"},
             {"Tracking Error", "0"},
             {"Treynor Ratio", "0"},
             {"Total Fees", "$1.00"},
-            {"Estimated Strategy Capacity", "$36000000000.00"},
-            {"Fitness Score", "0"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "79228162514264337593543950335"},
-            {"Return Over Maximum Drawdown", "79228162514264337593543950335"},
-            {"Portfolio Turnover", "0"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "87b9c93bf4a458754c8568bb4f3be453"}
+            {"Estimated Strategy Capacity", "$160000000000.00"},
+            {"Lowest Capacity Asset", "AAPL R735QTJ8XC9X"},
+            {"Portfolio Turnover", "0.01%"},
+            {"Drawdown Recovery", "0"},
+            {"OrderListHash", "fded8f29d111ed771b99bc6b296f776c"}
         };
     }
 }

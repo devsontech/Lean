@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,15 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("System.Core")
-AddReference("QuantConnect.Common")
-AddReference("QuantConnect.Algorithm")
-
-from System import *
-from QuantConnect import *
-from QuantConnect.Algorithm import QCAlgorithm
-from QuantConnect.Data.UniverseSelection import *
+from AlgorithmImports import *
 
 ### <summary>
 ### Demonstration of how to estimate constituents of QC500 index based on the company fundamentals
@@ -32,13 +24,13 @@ from QuantConnect.Data.UniverseSelection import *
 ### <meta name="tag" content="fine universes" />
 class ConstituentsQC500GeneratorAlgorithm(QCAlgorithm):
 
-    def Initialize(self):
+    def initialize(self):
         '''Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. All algorithms must initialized.'''
-        self.UniverseSettings.Resolution = Resolution.Daily
+        self.universe_settings.resolution = Resolution.DAILY
 
-        self.SetStartDate(2018, 1, 1)   # Set Start Date
-        self.SetEndDate(2019, 1, 1)     # Set End Date
-        self.SetCash(100000)            # Set Strategy Cash
+        self.set_start_date(2018, 1, 1)   # Set Start Date
+        self.set_end_date(2019, 1, 1)     # Set End Date
+        self.set_cash(100000)            # Set Strategy Cash
 
         # Add QC500 Universe
-        self.AddUniverse(self.Universe.Index.QC500)
+        self.add_universe(self.universe.qc_500)

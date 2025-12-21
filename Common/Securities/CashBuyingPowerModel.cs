@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -17,7 +17,6 @@ using System;
 using System.Collections.Generic;
 using QuantConnect.Orders;
 using QuantConnect.Orders.Fees;
-using static QuantConnect.StringExtensions;
 
 namespace QuantConnect.Securities
 {
@@ -26,6 +25,14 @@ namespace QuantConnect.Securities
     /// </summary>
     public class CashBuyingPowerModel : BuyingPowerModel
     {
+        /// <summary>
+        /// Initializes a new instance of the <see cref="CashBuyingPowerModel"/> class
+        /// </summary>
+        public CashBuyingPowerModel()
+            : base(1m, 0m, 0m)
+        {
+        }
+
         /// <summary>
         /// Gets the current leverage of the security
         /// </summary>
@@ -49,8 +56,22 @@ namespace QuantConnect.Securities
         {
             if (leverage != 1)
             {
-                throw new InvalidOperationException("CashBuyingPowerModel does not allow setting leverage. Cash accounts have no leverage.");
+                throw new InvalidOperationException(Messages.CashBuyingPowerModel.UnsupportedLeverage);
             }
+        }
+
+        /// <summary>
+        /// The margin that must be held in order to increase the position by the provided quantity
+        /// </summary>
+        /// <param name="parameters">An object containing the security and quantity of shares</param>
+        public override InitialMargin GetInitialMarginRequirement(InitialMarginParameters parameters)
+        {
+            var security = parameters.Security;
+            var quantity = parameters.Quantity;
+            return security.QuoteCurrency.ConversionRate
+                * security.SymbolProperties.ContractMultiplier
+                * security.Price
+                * quantity;
         }
 
         /// <summary>
@@ -63,7 +84,7 @@ namespace QuantConnect.Securities
             var baseCurrency = parameters.Security as IBaseCurrencySymbol;
             if (baseCurrency == null)
             {
-                return new HasSufficientBuyingPowerForOrderResult(false, $"The '{parameters.Security.Symbol.Value}' security is not supported by this cash model. Currently only SecurityType.Crypto and SecurityType.Forex are supported.");
+                return parameters.Insufficient(Messages.CashBuyingPowerModel.UnsupportedSecurity(parameters.Security));
             }
 
             decimal totalQuantity;
@@ -71,39 +92,37 @@ namespace QuantConnect.Securities
             if (parameters.Order.Direction == OrderDirection.Buy)
             {
                 // quantity available for buying in quote currency
-                totalQuantity = parameters.Portfolio.CashBook[parameters.Security.QuoteCurrency.Symbol].Amount;
+                totalQuantity = parameters.Security.QuoteCurrency.Amount;
                 orderQuantity = parameters.Order.AbsoluteQuantity * GetOrderPrice(parameters.Security, parameters.Order);
             }
             else
             {
                 // quantity available for selling in base currency
-                totalQuantity = parameters.Portfolio.CashBook[baseCurrency.BaseCurrencySymbol].Amount;
+                totalQuantity = baseCurrency.BaseCurrency.Amount;
                 orderQuantity = parameters.Order.AbsoluteQuantity;
             }
 
             // calculate reserved quantity for open orders (in quote or base currency depending on direction)
             var openOrdersReservedQuantity = GetOpenOrdersReservedQuantity(parameters.Portfolio, parameters.Security, parameters.Order);
 
-            bool isSufficient;
-            var reason = string.Empty;
             if (parameters.Order.Direction == OrderDirection.Sell)
             {
                 // can sell available and non-reserved quantities
-                isSufficient = orderQuantity <= totalQuantity - openOrdersReservedQuantity;
-                if (!isSufficient)
+                if (orderQuantity <= totalQuantity - openOrdersReservedQuantity)
                 {
-                    reason = Invariant($"Your portfolio holds {totalQuantity.Normalize()} {baseCurrency.BaseCurrencySymbol}, {openOrdersReservedQuantity.Normalize()} {baseCurrency.BaseCurrencySymbol} of which are reserved for open orders, but your Sell order is for {orderQuantity.Normalize()} {baseCurrency.BaseCurrencySymbol}. Cash Modeling trading does not permit short holdings so ensure you only sell what you have, including any additional open orders.");
+                    return parameters.Sufficient();
                 }
 
-                return new HasSufficientBuyingPowerForOrderResult(isSufficient, reason);
+                return parameters.Insufficient(Messages.CashBuyingPowerModel.SellOrderShortHoldingsNotSupported(totalQuantity,
+                    openOrdersReservedQuantity, orderQuantity, baseCurrency));
             }
 
+            var maximumQuantity = 0m;
             if (parameters.Order.Type == OrderType.Market)
             {
                 // include existing holdings (in quote currency)
                 var holdingsValue =
-                    parameters.Portfolio.CashBook.Convert(
-                        parameters.Portfolio.CashBook[baseCurrency.BaseCurrencySymbol].Amount, baseCurrency.BaseCurrencySymbol, parameters.Security.QuoteCurrency.Symbol);
+                    parameters.Portfolio.CashBook.Convert(baseCurrency.BaseCurrency.Amount, baseCurrency.BaseCurrency.Symbol, parameters.Security.QuoteCurrency.Symbol);
 
                 // find a target value in account currency for buy market orders
                 var targetValue =
@@ -114,17 +133,17 @@ namespace QuantConnect.Securities
                 var targetPercent = parameters.Portfolio.TotalPortfolioValue == 0 ? 0 : targetValue / parameters.Portfolio.TotalPortfolioValue;
 
                 // maximum quantity that can be bought (in quote currency)
-                var maximumQuantity =
+                maximumQuantity =
                     GetMaximumOrderQuantityForTargetBuyingPower(
-                        new GetMaximumOrderQuantityForTargetBuyingPowerParameters(parameters.Portfolio, parameters.Security, targetPercent)).Quantity * GetOrderPrice(parameters.Security, parameters.Order);
+                        new GetMaximumOrderQuantityForTargetBuyingPowerParameters(parameters.Portfolio, parameters.Security, targetPercent, 0)).Quantity * GetOrderPrice(parameters.Security, parameters.Order);
 
-                isSufficient = orderQuantity <= Math.Abs(maximumQuantity);
-                if (!isSufficient)
+                if (orderQuantity <= Math.Abs(maximumQuantity))
                 {
-                    reason = Invariant($"Your portfolio holds {totalQuantity.Normalize()} {parameters.Security.QuoteCurrency.Symbol}, {openOrdersReservedQuantity.Normalize()} {parameters.Security.QuoteCurrency.Symbol} of which are reserved for open orders, but your Buy order is for {parameters.Order.AbsoluteQuantity.Normalize()} {baseCurrency.BaseCurrencySymbol}. Your order requires a total value of {orderQuantity.Normalize()} {parameters.Security.QuoteCurrency.Symbol}, but only a total value of {Math.Abs(maximumQuantity).Normalize()} {parameters.Security.QuoteCurrency.Symbol} is available.");
+                    return parameters.Sufficient();
                 }
 
-                return new HasSufficientBuyingPowerForOrderResult(isSufficient, reason);
+                return parameters.Insufficient(Messages.CashBuyingPowerModel.BuyOrderQuantityGreaterThanMaxForBuyingPower(totalQuantity,
+                    maximumQuantity, openOrdersReservedQuantity, orderQuantity, baseCurrency, parameters.Security, parameters.Order));
             }
 
             // for limit orders, add fees to the order cost
@@ -140,13 +159,14 @@ namespace QuantConnect.Securities
                         parameters.Security.QuoteCurrency.Symbol);
             }
 
-            isSufficient = orderQuantity <= totalQuantity - openOrdersReservedQuantity - orderFee;
-            if (!isSufficient)
+            maximumQuantity = totalQuantity - openOrdersReservedQuantity - orderFee;
+            if (orderQuantity <= maximumQuantity)
             {
-                reason = Invariant($"Your portfolio holds {totalQuantity.Normalize()} {parameters.Security.QuoteCurrency.Symbol}, {openOrdersReservedQuantity.Normalize()} {parameters.Security.QuoteCurrency.Symbol} of which are reserved for open orders, but your Buy order is for {parameters.Order.AbsoluteQuantity.Normalize()} {baseCurrency.BaseCurrencySymbol}. Your order requires a total value of {orderQuantity.Normalize()} {parameters.Security.QuoteCurrency.Symbol}, but only a total value of {(totalQuantity - openOrdersReservedQuantity - orderFee).Normalize()} {parameters.Security.QuoteCurrency.Symbol} is available.");
+                return parameters.Sufficient();
             }
 
-            return new HasSufficientBuyingPowerForOrderResult(isSufficient, reason);
+            return parameters.Insufficient(Messages.CashBuyingPowerModel.BuyOrderQuantityGreaterThanMaxForBuyingPower(totalQuantity,
+                    maximumQuantity, openOrdersReservedQuantity, orderQuantity, baseCurrency, parameters.Security, parameters.Order));
         }
 
         /// <summary>
@@ -159,8 +179,7 @@ namespace QuantConnect.Securities
         public override GetMaximumOrderQuantityResult GetMaximumOrderQuantityForDeltaBuyingPower(
             GetMaximumOrderQuantityForDeltaBuyingPowerParameters parameters)
         {
-            throw new NotImplementedException(
-                $"The {nameof(CashBuyingPowerModel)} does not require '{nameof(GetMaximumOrderQuantityForDeltaBuyingPower)}'.");
+            throw new NotImplementedException(Messages.CashBuyingPowerModel.GetMaximumOrderQuantityForDeltaBuyingPowerNotImplemented);
         }
 
         /// <summary>
@@ -175,25 +194,25 @@ namespace QuantConnect.Securities
             // no shorting allowed
             if (targetPortfolioValue < 0)
             {
-                return new GetMaximumOrderQuantityResult(0, "The cash model does not allow shorting.");
+                return new GetMaximumOrderQuantityResult(0, Messages.CashBuyingPowerModel.ShortingNotSupported);
             }
 
             var baseCurrency = parameters.Security as IBaseCurrencySymbol;
             if (baseCurrency == null)
             {
-                return new GetMaximumOrderQuantityResult(0, "The security type must be SecurityType.Crypto or SecurityType.Forex.");
+                return new GetMaximumOrderQuantityResult(0, Messages.CashBuyingPowerModel.InvalidSecurity);
             }
 
             // if target value is zero, return amount of base currency available to sell
             if (targetPortfolioValue == 0)
             {
-                return new GetMaximumOrderQuantityResult(-parameters.Portfolio.CashBook[baseCurrency.BaseCurrencySymbol].Amount);
+                return new GetMaximumOrderQuantityResult(-baseCurrency.BaseCurrency.Amount);
             }
 
             // convert base currency cash to account currency
             var baseCurrencyPosition = parameters.Portfolio.CashBook.ConvertToAccountCurrency(
-                parameters.Portfolio.CashBook[baseCurrency.BaseCurrencySymbol].Amount,
-                baseCurrency.BaseCurrencySymbol);
+                baseCurrency.BaseCurrency.Amount,
+                baseCurrency.BaseCurrency.Symbol);
 
             // remove directionality, we'll work in the land of absolutes
             var targetOrderValue = Math.Abs(targetPortfolioValue - baseCurrencyPosition);
@@ -207,14 +226,13 @@ namespace QuantConnect.Securities
             {
                 if (parameters.Security.QuoteCurrency.ConversionRate == 0)
                 {
-                    return new GetMaximumOrderQuantityResult(0, "The internal cash feed required for converting" +
-                        Invariant($" {parameters.Security.QuoteCurrency.Symbol} to {parameters.Portfolio.CashBook.AccountCurrency} does not") +
-                        " have any data yet (or market may be closed).");
+                    return new GetMaximumOrderQuantityResult(0,
+                        Messages.CashBuyingPowerModel.NoDataInInternalCashFeedYet(parameters.Security, parameters.Portfolio));
                 }
 
                 if (parameters.Security.SymbolProperties.ContractMultiplier == 0)
                 {
-                    return new GetMaximumOrderQuantityResult(0, $"The contract multiplier for the {parameters.Security.Symbol.Value} security is zero. The symbol properties database may be out of date.");
+                    return new GetMaximumOrderQuantityResult(0, Messages.CashBuyingPowerModel.ZeroContractMultiplier(parameters.Security));
                 }
 
                 // security.Price == 0
@@ -234,9 +252,7 @@ namespace QuantConnect.Securities
                 string reason = null;
                 if (!parameters.SilenceNonErrorReasons)
                 {
-                    reason = Invariant(
-                        $"The order quantity is less than the lot size of {parameters.Security.SymbolProperties.LotSize} and has been rounded to zero."
-                    );
+                    reason = Messages.CashBuyingPowerModel.OrderQuantityLessThanLotSize(parameters.Security);
                 }
                 return new GetMaximumOrderQuantityResult(0, reason, false);
             }
@@ -265,18 +281,15 @@ namespace QuantConnect.Securities
                 if (orderQuantity <= 0)
                 {
                     return new GetMaximumOrderQuantityResult(0,
-                        Invariant($"The order quantity is less than the lot size of {parameters.Security.SymbolProperties.LotSize} and has been rounded to zero.") +
-                        Invariant($"Target order value {targetOrderValue}. Order fees {orderFees}. Order quantity {orderQuantity}.")
+                        Messages.CashBuyingPowerModel.OrderQuantityLessThanLotSize(parameters.Security) +
+                        Messages.CashBuyingPowerModel.OrderQuantityLessThanLotSizeOrderDetails(targetOrderValue, orderQuantity, orderFees)
                     );
                 }
 
                 if (lastOrderQuantity == orderQuantity)
                 {
-                    throw new ArgumentException(
-                        Invariant($"GetMaximumOrderQuantityForTargetValue failed to converge to target order value {targetOrderValue}. ") +
-                        Invariant($"Current order value is {currentOrderValue}. Order quantity {orderQuantity}. Lot size is ") +
-                        Invariant($"{parameters.Security.SymbolProperties.LotSize}. Order fees {orderFees}. Security symbol {parameters.Security.Symbol}")
-                    );
+                    throw new ArgumentException(Messages.CashBuyingPowerModel.FailedToConvergeOnTargetOrderValue(targetOrderValue, currentOrderValue,
+                        orderQuantity, orderFees, parameters.Security));
                 }
                 lastOrderQuantity = orderQuantity;
 
@@ -310,7 +323,7 @@ namespace QuantConnect.Securities
         /// <summary>
         /// Gets the buying power available for a trade
         /// </summary>
-        /// <param name="parameters">A parameters object containing the algorithm's potrfolio, security, and order direction</param>
+        /// <param name="parameters">A parameters object containing the algorithm's portfolio, security, and order direction</param>
         /// <returns>The buying power available for the trade</returns>
         public override BuyingPower GetBuyingPower(BuyingPowerParameters parameters)
         {
@@ -324,7 +337,7 @@ namespace QuantConnect.Securities
                 return parameters.ResultInAccountCurrency(0m);
             }
 
-            var baseCurrencyPosition = portfolio.CashBook[baseCurrency.BaseCurrencySymbol].Amount;
+            var baseCurrencyPosition = baseCurrency.BaseCurrency.Amount;
             var quoteCurrencyPosition = portfolio.CashBook[security.QuoteCurrency.Symbol].Amount;
 
             // determine the unit price in terms of the quote currency
@@ -340,12 +353,12 @@ namespace QuantConnect.Securities
             {
                 // invert units for math, 6500USD per BTC, currency pairs aren't real fractions
                 // (USD)/(BTC/USD) => 10kUSD/ (6500 USD/BTC) => 10kUSD * (1BTC/6500USD) => ~ 1.5BTC
-                return parameters.Result(quoteCurrencyPosition / unitPrice, baseCurrency.BaseCurrencySymbol);
+                return parameters.Result(quoteCurrencyPosition / unitPrice, baseCurrency.BaseCurrency.Symbol);
             }
 
             if (direction == OrderDirection.Sell)
             {
-                return parameters.Result(baseCurrencyPosition, baseCurrency.BaseCurrencySymbol);
+                return parameters.Result(baseCurrencyPosition, baseCurrency.BaseCurrency.Symbol);
             }
 
             return parameters.ResultInAccountCurrency(0m);
@@ -371,9 +384,13 @@ namespace QuantConnect.Securities
                 case OrderType.StopLimit:
                     orderPrice = ((StopLimitOrder)order).LimitPrice;
                     break;
-                
+
                 case OrderType.LimitIfTouched:
                     orderPrice = ((LimitIfTouchedOrder)order).LimitPrice;
+                    break;
+
+                case OrderType.TrailingStop:
+                    orderPrice = ((TrailingStopOrder)order).StopPrice;
                     break;
             }
 
@@ -388,7 +405,7 @@ namespace QuantConnect.Securities
             // find the target currency for the requested direction and the securities potentially involved
             var targetCurrency = order.Direction == OrderDirection.Buy
                 ? security.QuoteCurrency.Symbol
-                : baseCurrency.BaseCurrencySymbol;
+                : baseCurrency.BaseCurrency.Symbol;
 
             var symbolDirectionPairs = new Dictionary<Symbol, OrderDirection>();
             foreach (var portfolioSecurity in portfolio.Securities.Values)
@@ -396,7 +413,7 @@ namespace QuantConnect.Securities
                 var basePortfolioSecurity = portfolioSecurity as IBaseCurrencySymbol;
                 if (basePortfolioSecurity == null) continue;
 
-                if (basePortfolioSecurity.BaseCurrencySymbol == targetCurrency)
+                if (basePortfolioSecurity.BaseCurrency.Symbol == targetCurrency)
                 {
                     symbolDirectionPairs.Add(portfolioSecurity.Symbol, OrderDirection.Sell);
                 }

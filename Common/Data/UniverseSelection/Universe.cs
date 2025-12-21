@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -52,6 +52,35 @@ namespace QuantConnect.Data.UniverseSelection
         }
 
         /// <summary>
+        /// The currently selected symbol set
+        /// </summary>
+        /// <remarks>This set might be different than <see cref="Securities"/> which might hold members that are no longer selected
+        /// but have not been removed yet, this can be because they have some open position, orders, haven't completed the minimum time in universe</remarks>
+        public HashSet<Symbol> Selected
+        {
+            get; set;
+        }
+
+        /// <summary>
+        /// True if this universe filter can run async in the data stack
+        /// </summary>
+        public virtual bool Asynchronous
+        {
+            get
+            {
+                if (UniverseSettings.Asynchronous.HasValue)
+                {
+                    return UniverseSettings.Asynchronous.Value;
+                }
+                return false;
+            }
+            set
+            {
+                UniverseSettings.Asynchronous = value;
+            }
+        }
+
+        /// <summary>
         /// Event fired when the universe selection has changed
         /// </summary>
         public event EventHandler SelectionChanged;
@@ -59,18 +88,22 @@ namespace QuantConnect.Data.UniverseSelection
         /// <summary>
         /// Gets the security type of this universe
         /// </summary>
-        public SecurityType SecurityType
-        {
-            get { return Configuration.SecurityType; }
-        }
+        public SecurityType SecurityType => Configuration.SecurityType;
 
         /// <summary>
         /// Gets the market of this universe
         /// </summary>
-        public string Market
-        {
-            get { return Configuration.Market; }
-        }
+        public string Market => Configuration.Market;
+
+        /// <summary>
+        /// Gets the symbol of this universe
+        /// </summary>
+        public Symbol Symbol => Configuration.Symbol;
+
+        /// <summary>
+        /// Gets the data type of this universe
+        /// </summary>
+        public Type DataType => Configuration.Type;
 
         /// <summary>
         /// Flag indicating if disposal of this universe has been requested
@@ -84,25 +117,15 @@ namespace QuantConnect.Data.UniverseSelection
         /// <summary>
         /// Gets the settings used for subscriptions added for this universe
         /// </summary>
-        public abstract UniverseSettings UniverseSettings
+        public virtual UniverseSettings UniverseSettings
         {
-            get;
+            get; set;
         }
 
         /// <summary>
         /// Gets the configuration used to get universe data
         /// </summary>
         public virtual SubscriptionDataConfig Configuration
-        {
-            get; private set;
-        }
-
-        /// <summary>
-        /// Gets the instance responsible for initializing newly added securities
-        /// </summary>
-        /// <obsolete>The SecurityInitializer won't be used</obsolete>
-        [Obsolete("SecurityInitializer is obsolete and will not be used.")]
-        public ISecurityInitializer SecurityInitializer
         {
             get; private set;
         }
@@ -126,19 +149,6 @@ namespace QuantConnect.Data.UniverseSelection
             Securities = new ConcurrentDictionary<Symbol, Member>();
 
             Configuration = config;
-            SecurityInitializer = QuantConnect.Securities.SecurityInitializer.Null;
-        }
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="Universe"/> class
-        /// </summary>
-        /// <param name="config">The configuration used to source data for this universe</param>
-        /// <param name="securityInitializer">Initializes securities when they're added to the universe</param>
-        [Obsolete("This constructor is obsolete because SecurityInitializer is obsolete and will not be used.")]
-        protected Universe(SubscriptionDataConfig config, ISecurityInitializer securityInitializer)
-            : this(config)
-        {
-            SecurityInitializer = securityInitializer;
         }
 
         /// <summary>
@@ -199,13 +209,21 @@ namespace QuantConnect.Data.UniverseSelection
                 return Enumerable.Empty<Symbol>();
             }
 
-            var result = SelectSymbols(utcTime, data);
-            if (ReferenceEquals(result, Unchanged))
+            var selections = data.FilteredContracts;
+            if (selections == null)
             {
-                return Unchanged;
+                // only trigger selection if it hasn't already been run
+                var result = SelectSymbols(utcTime, data);
+                if (ReferenceEquals(result, Unchanged))
+                {
+                    data.FilteredContracts = _previousSelections;
+                    return Unchanged;
+                }
+
+                selections = result.ToHashSet();
+                data.FilteredContracts = selections;
             }
 
-            var selections = result.ToHashSet();
             var hasDiffs = _previousSelections.AreDifferent(selections);
             _previousSelections = selections;
             if (!hasDiffs)
@@ -273,7 +291,10 @@ namespace QuantConnect.Data.UniverseSelection
                 UniverseSettings.Resolution,
                 UniverseSettings.FillForward,
                 UniverseSettings.ExtendedMarketHours,
-                dataNormalizationMode: UniverseSettings.DataNormalizationMode);
+                dataNormalizationMode: UniverseSettings.DataNormalizationMode,
+                subscriptionDataTypes: UniverseSettings.SubscriptionDataTypes,
+                dataMappingMode: UniverseSettings.DataMappingMode,
+                contractDepthOffset: (uint)Math.Abs(UniverseSettings.ContractDepthOffset));
             return result.Select(config => new SubscriptionRequest(isUniverseSubscription: false,
                 universe: this,
                 security: security,
@@ -297,9 +318,10 @@ namespace QuantConnect.Data.UniverseSelection
         /// </summary>
         /// <param name="utcTime">The current utc date time</param>
         /// <param name="security">The security to be added</param>
+        /// <param name="isInternal">True if internal member</param>
         /// <returns>True if the security was successfully added,
         /// false if the security was already in the universe</returns>
-        internal virtual bool AddMember(DateTime utcTime, Security security)
+        internal virtual bool AddMember(DateTime utcTime, Security security, bool isInternal)
         {
             // never add members to disposed universes
             if (DisposeRequested)
@@ -312,7 +334,7 @@ namespace QuantConnect.Data.UniverseSelection
                 return false;
             }
 
-            return Securities.TryAdd(security.Symbol, new Member(utcTime, security));
+            return Securities.TryAdd(security.Symbol, new Member(utcTime, security, isInternal));
         }
 
         /// <summary>
@@ -332,16 +354,6 @@ namespace QuantConnect.Data.UniverseSelection
                 return Securities.TryRemove(security.Symbol, out member);
             }
             return false;
-        }
-
-        /// <summary>
-        /// Sets the security initializer, used to initialize/configure securities after creation
-        /// </summary>
-        /// <param name="securityInitializer">The security initializer</param>
-        [Obsolete("SecurityInitializer is obsolete and will not be used.")]
-        public virtual void SetSecurityInitializer(ISecurityInitializer securityInitializer)
-        {
-            SecurityInitializer = securityInitializer;
         }
 
         /// <summary>
@@ -409,22 +421,29 @@ namespace QuantConnect.Data.UniverseSelection
             /// <summary>
             /// DateTime when added
             /// </summary>
-            public readonly DateTime Added;
+            public DateTime Added { get; init; }
 
             /// <summary>
             /// The security that was added
             /// </summary>
-            public readonly Security Security;
+            public Security Security { get; init; }
+
+            /// <summary>
+            /// True if the security was added as internal by this universe
+            /// </summary>
+            public bool IsInternal { get; init; }
 
             /// <summary>
             /// Initialize a new member for the universe
             /// </summary>
             /// <param name="added">DateTime added</param>
             /// <param name="security">Security to add</param>
-            public Member(DateTime added, Security security)
+            /// <param name="isInternal">True if internal member</param>
+            public Member(DateTime added, Security security, bool isInternal)
             {
                 Added = added;
                 Security = security;
+                IsInternal = isInternal;
             }
         }
 

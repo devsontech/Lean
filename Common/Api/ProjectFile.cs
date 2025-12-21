@@ -28,23 +28,47 @@ namespace QuantConnect.Api
         /// Name of a project file
         /// </summary>
         [JsonProperty(PropertyName = "name")]
-        public string Name;
+        public string Name { get; set; }
 
         /// <summary>
         /// Contents of the project file
         /// </summary>
         [JsonProperty(PropertyName = "content")]
-        public string Code;
+        public string Code { get; set; }
 
         /// <summary>
         /// DateTime project file was modified
         /// </summary>
         [JsonProperty(PropertyName = "modified")]
         public DateTime DateModified{ get; set; }
+
+        /// <summary>
+        /// Indicates if the project file is a library or not
+        /// </summary>
+        [JsonProperty(PropertyName = "isLibrary")]
+        public bool IsLibrary { get; set; }
+
+        /// <summary>
+        /// Indicates if the project file is open or not
+        /// </summary>
+        [JsonProperty(PropertyName = "open")]
+        public bool Open { get; set; }
+
+        /// <summary>
+        /// ID of the project
+        /// </summary>
+        [JsonProperty(PropertyName = "projectId")]
+        public int ProjectId { get; set; }
+
+        /// <summary>
+        /// ID of the project file, can be null
+        /// </summary>
+        [JsonProperty(PropertyName = "id")]
+        public int? Id { get; set; }
     }
 
     /// <summary>
-    /// Response received when reading all files of a project
+    /// Response received when creating a file or reading one file or more in a project
     /// </summary>
     public class ProjectFilesResponse : RestResponse
     {
@@ -52,6 +76,6 @@ namespace QuantConnect.Api
         /// List of project file information
         /// </summary>
         [JsonProperty(PropertyName = "files")]
-        public List<ProjectFile> Files;
+        public List<ProjectFile> Files { get; set; }
     }
 }

@@ -53,7 +53,7 @@ namespace QuantConnect.Algorithm.CSharp
             var quantity = CalculateOrderQuantity(_spy, 1m);
             if (quantity % 100 != 0)
             {
-                throw new Exception($"CustomBuyingPowerModel only allow quantity that is multiple of 100 and {quantity} was found");
+                throw new RegressionTestException($"CustomBuyingPowerModel only allow quantity that is multiple of 100 and {quantity} was found");
             }
 
             // We normally get insufficient buying power model, but the
@@ -74,7 +74,17 @@ namespace QuantConnect.Algorithm.CSharp
             public override HasSufficientBuyingPowerForOrderResult HasSufficientBuyingPowerForOrder(
                 HasSufficientBuyingPowerForOrderParameters parameters)
             {
-                return new HasSufficientBuyingPowerForOrderResult(true);
+                // if portfolio doesn't have enough buying power:
+                //     parameters.Insufficient()
+
+                // this model never allows a lack of funds get in the way of buying securities
+                return parameters.Sufficient();
+            }
+
+            // Let's always return 0 as the maintenance margin so we avoid margin call orders
+            public override MaintenanceMargin GetMaintenanceMargin(MaintenanceMarginParameters parameters)
+            {
+                return new MaintenanceMargin(0);
             }
         }
 
@@ -86,54 +96,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 330;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "1"},
+            {"Total Orders", "1"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
             {"Compounding Annual Return", "4775.196%"},
             {"Drawdown", "21.600%"},
             {"Expectancy", "0"},
+            {"Start Equity", "100000"},
+            {"End Equity", "138618.81"},
             {"Net Profit", "38.619%"},
-            {"Sharpe Ratio", "33.779"},
-            {"Probabilistic Sharpe Ratio", "77.029%"},
+            {"Sharpe Ratio", "14.322"},
+            {"Sortino Ratio", "26.701"},
+            {"Probabilistic Sharpe Ratio", "75.756%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "32.812"},
-            {"Beta", "8.756"},
-            {"Annual Standard Deviation", "1.11"},
-            {"Annual Variance", "1.231"},
-            {"Information Ratio", "37.501"},
-            {"Tracking Error", "0.985"},
-            {"Treynor Ratio", "4.281"},
+            {"Alpha", "10.447"},
+            {"Beta", "8.754"},
+            {"Annual Standard Deviation", "0.95"},
+            {"Annual Variance", "0.903"},
+            {"Information Ratio", "15.703"},
+            {"Tracking Error", "0.844"},
+            {"Treynor Ratio", "1.554"},
             {"Total Fees", "$30.00"},
-            {"Estimated Strategy Capacity", "$19000000.00"},
-            {"Fitness Score", "0.395"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "98.148"},
-            {"Return Over Maximum Drawdown", "384.626"},
-            {"Portfolio Turnover", "0.395"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "3df007afa8125770e8f1a49263af90a2"}
+            {"Estimated Strategy Capacity", "$150000000.00"},
+            {"Lowest Capacity Asset", "SPY R735QTJ8XC9X"},
+            {"Portfolio Turnover", "26.62%"},
+            {"Drawdown Recovery", "9"},
+            {"OrderListHash", "dae7e349316dce7621bc1f8be86ccd0d"}
         };
     }
 }

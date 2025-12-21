@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -15,9 +15,10 @@
 
 using System;
 using System.Linq;
-using Deedle;
 using Python.Runtime;
 using QuantConnect.Packets;
+using System.Collections.Generic;
+using QuantConnect.Lean.Engine.Results;
 
 namespace QuantConnect.Report.ReportElements
 {
@@ -27,18 +28,25 @@ namespace QuantConnect.Report.ReportElements
         private BacktestResult _backtest;
 
         /// <summary>
+        /// The number of trading days per year to get better result of statistics
+        /// </summary>
+        private int _tradingDaysPerYear;
+
+        /// <summary>
         /// Create a new plot of the rolling portfolio beta to equities
         /// </summary>
         /// <param name="name">Name of the widget</param>
         /// <param name="key">Location of injection</param>
         /// <param name="backtest">Backtest result object</param>
         /// <param name="live">Live result object</param>
-        public RollingPortfolioBetaReportElement(string name, string key, BacktestResult backtest, LiveResult live)
+        /// <param name="tradingDaysPerYear">The number of trading days per year to get better result of statistics</param>
+        public RollingPortfolioBetaReportElement(string name, string key, BacktestResult backtest, LiveResult live, int tradingDaysPerYear)
         {
             _live = live;
             _backtest = backtest;
             Name = name;
             Key = key;
+            _tradingDaysPerYear = tradingDaysPerYear;
         }
 
         /// <summary>
@@ -46,15 +54,10 @@ namespace QuantConnect.Report.ReportElements
         /// </summary>
         public override string Render()
         {
-            var backtestPoints = ResultsUtil.EquityPoints(_backtest);
+            var backtestPoints = GetReturnSeries(_backtest);
             var backtestBenchmarkPoints = ResultsUtil.BenchmarkPoints(_backtest);
-            var livePoints = ResultsUtil.EquityPoints(_live);
+            var livePoints = GetReturnSeries(_live);
             var liveBenchmarkPoints = ResultsUtil.BenchmarkPoints(_live);
-
-            var backtestSeries = new Series<DateTime, double>(backtestPoints);
-            var backtestBenchmarkSeries = new Series<DateTime, double>(backtestBenchmarkPoints);
-            var liveSeries = new Series<DateTime, double>(livePoints);
-            var liveBenchmarkSeries = new Series<DateTime, double>(liveBenchmarkPoints);
 
             var base64 = "";
             using (Py.GIL())
@@ -62,16 +65,16 @@ namespace QuantConnect.Report.ReportElements
                 var backtestList = new PyList();
                 var liveList = new PyList();
 
-                var backtestRollingBetaSixMonths = Rolling.Beta(backtestSeries, backtestBenchmarkSeries, windowSize: 22 * 6);
-                var backtestRollingBetaTwelveMonths = Rolling.Beta(backtestSeries, backtestBenchmarkSeries, windowSize: 252);
+                var backtestRollingBetaSixMonths = Rolling.Beta(backtestPoints, backtestBenchmarkPoints, windowSize: 22 * 6);
+                var backtestRollingBetaTwelveMonths = Rolling.Beta(backtestPoints, backtestBenchmarkPoints, windowSize: _tradingDaysPerYear);
 
                 backtestList.Append(backtestRollingBetaSixMonths.Keys.ToList().ToPython());
                 backtestList.Append(backtestRollingBetaSixMonths.Values.ToList().ToPython());
                 backtestList.Append(backtestRollingBetaTwelveMonths.Keys.ToList().ToPython());
                 backtestList.Append(backtestRollingBetaTwelveMonths.Values.ToList().ToPython());
 
-                var liveRollingBetaSixMonths = Rolling.Beta(liveSeries, liveBenchmarkSeries, windowSize: 22 * 6);
-                var liveRollingBetaTwelveMonths = Rolling.Beta(liveSeries, liveBenchmarkSeries, windowSize: 252);
+                var liveRollingBetaSixMonths = Rolling.Beta(livePoints, liveBenchmarkPoints, windowSize: 22 * 6);
+                var liveRollingBetaTwelveMonths = Rolling.Beta(livePoints, liveBenchmarkPoints, windowSize: _tradingDaysPerYear);
 
                 liveList.Append(liveRollingBetaSixMonths.Keys.ToList().ToPython());
                 liveList.Append(liveRollingBetaSixMonths.Values.ToList().ToPython());
@@ -82,6 +85,17 @@ namespace QuantConnect.Report.ReportElements
             }
 
             return base64;
+        }
+
+        private static SortedList<DateTime, double> GetReturnSeries(Result leanResult)
+        {
+            var returnSeries = ResultsUtil.EquityPoints(leanResult, BaseResultsHandler.ReturnKey);
+            if (returnSeries == null || returnSeries.Count == 0)
+            {
+                // for backwards compatibility
+                returnSeries = ResultsUtil.EquityPoints(leanResult, "Daily Performance");
+            }
+            return returnSeries;
         }
     }
 }

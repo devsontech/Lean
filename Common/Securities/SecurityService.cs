@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -14,10 +14,13 @@
  *
 */
 
-using System.Collections.Generic;
+using System;
+using System.Linq;
+using QuantConnect.Util;
 using QuantConnect.Data;
 using QuantConnect.Interfaces;
-using System;
+using System.Collections.Generic;
+using QuantConnect.Data.Market;
 
 namespace QuantConnect.Securities
 {
@@ -33,7 +36,9 @@ namespace QuantConnect.Securities
         private readonly ISecurityInitializerProvider _securityInitializerProvider;
         private readonly SecurityCacheProvider _cacheProvider;
         private readonly IPrimaryExchangeProvider _primaryExchangeProvider;
+        private readonly IAlgorithm _algorithm;
         private bool _isLiveMode;
+        private bool _modelsMismatchWarningSent;
 
         /// <summary>
         /// Creates a new instance of the SecurityService class
@@ -44,7 +49,8 @@ namespace QuantConnect.Securities
             ISecurityInitializerProvider securityInitializerProvider,
             IRegisteredSecurityDataTypesProvider registeredTypes,
             SecurityCacheProvider cacheProvider,
-            IPrimaryExchangeProvider primaryExchangeProvider=null)
+            IPrimaryExchangeProvider primaryExchangeProvider = null,
+            IAlgorithm algorithm = null)
         {
             _cashBook = cashBook;
             _registeredTypes = registeredTypes;
@@ -53,6 +59,7 @@ namespace QuantConnect.Securities
             _securityInitializerProvider = securityInitializerProvider;
             _cacheProvider = cacheProvider;
             _primaryExchangeProvider = primaryExchangeProvider;
+            _algorithm = algorithm;
         }
 
         /// <summary>
@@ -60,15 +67,42 @@ namespace QuantConnect.Securities
         /// </summary>
         /// <remarks>Following the obsoletion of Security.Subscriptions,
         /// both overloads will be merged removing <see cref="SubscriptionDataConfig"/> arguments</remarks>
-        public Security CreateSecurity(Symbol symbol,
+        private Security CreateSecurity(Symbol symbol,
             List<SubscriptionDataConfig> subscriptionDataConfigList,
-            decimal leverage = 0,
-            bool addToSymbolCache = true)
+            decimal leverage,
+            bool addToSymbolCache,
+            Security underlying,
+            bool initializeSecurity,
+            bool reCreateSecurity,
+            bool seedSecurity)
         {
             var configList = new SubscriptionDataConfigList(symbol);
-            configList.AddRange(subscriptionDataConfigList);
+            if (subscriptionDataConfigList != null)
+            {
+                configList.AddRange(subscriptionDataConfigList);
+            }
 
-            var exchangeHours = _marketHoursDatabase.GetEntry(symbol.ID.Market, symbol, symbol.ID.SecurityType).ExchangeHours;
+            if (!reCreateSecurity && _algorithm != null && _algorithm.Securities.TryGetValue(symbol, out var existingSecurity))
+            {
+                existingSecurity.AddData(configList);
+
+                // If non-internal, mark as tradable if it was not already since this is an existing security but might include new subscriptions
+                if (!configList.IsInternalFeed)
+                {
+                    existingSecurity.MakeTradable();
+                }
+
+                InitializeSecurity(initializeSecurity, existingSecurity, seedSecurity);
+
+                return existingSecurity;
+            }
+
+            var dataTypes = Enumerable.Empty<Type>();
+            if (symbol.SecurityType == SecurityType.Base && SecurityIdentifier.TryGetCustomDataTypeInstance(symbol.ID.Symbol, out var type))
+            {
+                dataTypes = new[] { type };
+            }
+            var exchangeHours = _marketHoursDatabase.GetEntry(symbol, dataTypes).ExchangeHours;
 
             var defaultQuoteCurrency = _cashBook.AccountCurrency;
             if (symbol.ID.SecurityType == SecurityType.Forex)
@@ -78,7 +112,7 @@ namespace QuantConnect.Securities
 
             if (symbol.ID.SecurityType == SecurityType.Crypto && !_symbolPropertiesDatabase.ContainsKey(symbol.ID.Market, symbol, symbol.ID.SecurityType))
             {
-                throw new ArgumentException($"Symbol can't be found in the Symbol Properties Database: {symbol.Value}");
+                throw new ArgumentException(Messages.SecurityService.SymbolNotFoundInSymbolPropertiesDatabase(symbol));
             }
 
             // For Futures Options that don't have a SPDB entry, the futures entry will be used instead.
@@ -96,38 +130,39 @@ namespace QuantConnect.Securities
 
             // verify the cash book is in a ready state
             var quoteCurrency = symbolProperties.QuoteCurrency;
-            if (!_cashBook.ContainsKey(quoteCurrency))
+            if (!_cashBook.TryGetValue(quoteCurrency, out var quoteCash))
             {
                 // since we have none it's safe to say the conversion is zero
-                _cashBook.Add(quoteCurrency, 0, 0);
+                quoteCash = _cashBook.Add(quoteCurrency, 0, 0);
             }
-            if (symbol.ID.SecurityType == SecurityType.Forex || symbol.ID.SecurityType == SecurityType.Crypto)
+
+            Cash baseCash = null;
+            // we skip cfd because we don't need to add the base cash
+            if (symbol.SecurityType != SecurityType.Cfd)
             {
-                // decompose the symbol into each currency pair
-                string baseCurrency;
-                if (symbol.ID.SecurityType == SecurityType.Forex)
+                if (CurrencyPairUtil.TryDecomposeCurrencyPair(symbol, out var baseCurrencySymbol, out _))
                 {
-                    Forex.Forex.DecomposeCurrencyPair(symbol.Value, out baseCurrency, out quoteCurrency);
+                    if (!_cashBook.TryGetValue(baseCurrencySymbol, out baseCash))
+                    {
+                        // since we have none it's safe to say the conversion is zero
+                        baseCash = _cashBook.Add(baseCurrencySymbol, 0, 0);
+                    }
                 }
-                else
+                else if (CurrencyPairUtil.IsValidSecurityType(symbol.SecurityType, false))
                 {
-                    Crypto.Crypto.DecomposeCurrencyPair(symbol, symbolProperties, out baseCurrency, out quoteCurrency);
-                }
-
-                if (!_cashBook.ContainsKey(baseCurrency))
-                {
-                    // since we have none it's safe to say the conversion is zero
-                    _cashBook.Add(baseCurrency, 0, 0);
-                }
-                if (!_cashBook.ContainsKey(quoteCurrency))
-                {
-                    // since we have none it's safe to say the conversion is zero
-                    _cashBook.Add(quoteCurrency, 0, 0);
+                    throw new ArgumentException($"Failed to resolve base currency for '{symbol.ID.Symbol}', it might be missing from the Symbol database or market '{symbol.ID.Market}' could be wrong");
                 }
             }
 
-            var quoteCash = _cashBook[symbolProperties.QuoteCurrency];
             var cache = _cacheProvider.GetSecurityCache(symbol);
+
+            List<TickType> sessionDataTypes = null;
+            bool hasDataTypes = _algorithm != null && _algorithm.SubscriptionManager.AvailableDataTypes?.TryGetValue(symbol.SecurityType, out sessionDataTypes) == true;
+            if (!hasDataTypes || sessionDataTypes.Count == 0)
+            {
+                sessionDataTypes = SubscriptionManager.DefaultDataTypes()[symbol.SecurityType];
+            }
+            cache.Session = new Session(sessionDataTypes.First(), exchangeHours, symbol);
 
             Security security;
             switch (symbol.ID.SecurityType)
@@ -135,18 +170,18 @@ namespace QuantConnect.Securities
                 case SecurityType.Equity:
                     var primaryExchange =
                         _primaryExchangeProvider?.GetPrimaryExchange(symbol.ID) ??
-                        PrimaryExchange.UNKNOWN;
+                        Exchange.UNKNOWN;
                     security = new Equity.Equity(symbol, exchangeHours, quoteCash, symbolProperties, _cashBook, _registeredTypes, cache, primaryExchange);
                     break;
 
                 case SecurityType.Option:
                     if (addToSymbolCache) SymbolCache.Set(symbol.Underlying.Value, symbol.Underlying);
-                    security = new Option.Option(symbol, exchangeHours, quoteCash, new Option.OptionSymbolProperties(symbolProperties), _cashBook, _registeredTypes, cache);
+                    security = new Option.Option(symbol, exchangeHours, quoteCash, new Option.OptionSymbolProperties(symbolProperties), _cashBook, _registeredTypes, cache, underlying);
                     break;
 
                 case SecurityType.IndexOption:
                     if (addToSymbolCache) SymbolCache.Set(symbol.Underlying.Value, symbol.Underlying);
-                    security = new IndexOption.IndexOption(symbol, exchangeHours, quoteCash, new IndexOption.IndexOptionSymbolProperties(symbolProperties), _cashBook, _registeredTypes, cache);
+                    security = new IndexOption.IndexOption(symbol, exchangeHours, quoteCash, new IndexOption.IndexOptionSymbolProperties(symbolProperties), _cashBook, _registeredTypes, cache, underlying);
                     break;
 
                 case SecurityType.FutureOption:
@@ -157,7 +192,7 @@ namespace QuantConnect.Securities
                     // 100x seen in equities.
                     optionSymbolProperties.SetContractUnitOfTrade(1);
 
-                    security = new FutureOption.FutureOption(symbol, exchangeHours, quoteCash, optionSymbolProperties, _cashBook, _registeredTypes, cache);
+                    security = new FutureOption.FutureOption(symbol, exchangeHours, quoteCash, optionSymbolProperties, _cashBook, _registeredTypes, cache, underlying);
                     break;
 
                 case SecurityType.Future:
@@ -165,7 +200,7 @@ namespace QuantConnect.Securities
                     break;
 
                 case SecurityType.Forex:
-                    security = new Forex.Forex(symbol, exchangeHours, quoteCash, symbolProperties, _cashBook, _registeredTypes, cache);
+                    security = new Forex.Forex(symbol, exchangeHours, quoteCash, baseCash, symbolProperties, _cashBook, _registeredTypes, cache);
                     break;
 
                 case SecurityType.Cfd:
@@ -177,7 +212,11 @@ namespace QuantConnect.Securities
                     break;
 
                 case SecurityType.Crypto:
-                    security = new Crypto.Crypto(symbol, exchangeHours, quoteCash, symbolProperties, _cashBook, _registeredTypes, cache);
+                    security = new Crypto.Crypto(symbol, exchangeHours, quoteCash, baseCash, symbolProperties, _cashBook, _registeredTypes, cache);
+                    break;
+
+                case SecurityType.CryptoFuture:
+                    security = new CryptoFuture.CryptoFuture(symbol, exchangeHours, quoteCash, baseCash, symbolProperties, _cashBook, _registeredTypes, cache);
                     break;
 
                 default:
@@ -188,15 +227,17 @@ namespace QuantConnect.Securities
 
             // if we're just creating this security and it only has an internal
             // feed, mark it as non-tradable since the user didn't request this data
-            if (!configList.IsInternalFeed)
+            if (security.IsTradable)
             {
-                security.IsTradable = true;
+                security.IsTradable = !configList.IsInternalFeed;
             }
 
             security.AddData(configList);
 
             // invoke the security initializer
-            _securityInitializerProvider.SecurityInitializer.Initialize(security);
+            InitializeSecurity(initializeSecurity, security, seedSecurity);
+
+            CheckCanonicalSecurityModels(security);
 
             // if leverage was specified then apply to security after the initializer has run, parameters of this
             // method take precedence over the intializer
@@ -221,9 +262,47 @@ namespace QuantConnect.Securities
         /// </summary>
         /// <remarks>Following the obsoletion of Security.Subscriptions,
         /// both overloads will be merged removing <see cref="SubscriptionDataConfig"/> arguments</remarks>
-        public Security CreateSecurity(Symbol symbol, SubscriptionDataConfig subscriptionDataConfig, decimal leverage = 0, bool addToSymbolCache = true)
+        public Security CreateSecurity(Symbol symbol,
+            List<SubscriptionDataConfig> subscriptionDataConfigList,
+            decimal leverage = 0,
+            bool addToSymbolCache = true,
+            Security underlying = null,
+            bool seedSecurity = true)
         {
-            return CreateSecurity(symbol, new List<SubscriptionDataConfig> { subscriptionDataConfig }, leverage, addToSymbolCache);
+            return CreateSecurity(symbol, subscriptionDataConfigList, leverage, addToSymbolCache, underlying,
+                initializeSecurity: true, reCreateSecurity: false, seedSecurity: seedSecurity);
+        }
+
+        /// <summary>
+        /// Creates a new security
+        /// </summary>
+        /// <remarks>Following the obsoletion of Security.Subscriptions,
+        /// both overloads will be merged removing <see cref="SubscriptionDataConfig"/> arguments</remarks>
+        public Security CreateSecurity(Symbol symbol,
+            SubscriptionDataConfig subscriptionDataConfig,
+            decimal leverage = 0,
+            bool addToSymbolCache = true,
+            Security underlying = null,
+            bool seedSecurity = true)
+        {
+            return CreateSecurity(symbol, new List<SubscriptionDataConfig> { subscriptionDataConfig }, leverage, addToSymbolCache, underlying, seedSecurity);
+        }
+
+        /// <summary>
+        /// Creates a new security
+        /// </summary>
+        /// <remarks>Following the obsoletion of Security.Subscriptions,
+        /// both overloads will be merged removing <see cref="SubscriptionDataConfig"/> arguments</remarks>
+        public Security CreateBenchmarkSecurity(Symbol symbol)
+        {
+            return CreateSecurity(symbol,
+                new List<SubscriptionDataConfig>(),
+                leverage: 1,
+                addToSymbolCache: false,
+                underlying: null,
+                initializeSecurity: false,
+                reCreateSecurity: true,
+                seedSecurity: false);
         }
 
         /// <summary>
@@ -233,6 +312,45 @@ namespace QuantConnect.Securities
         public void SetLiveMode(bool isLiveMode)
         {
             _isLiveMode = isLiveMode;
+        }
+
+        /// <summary>
+        /// Checks whether the created security has the same models as its canonical security (in case it has one)
+        /// and sends a one-time warning if it doesn't.
+        /// </summary>
+        private void CheckCanonicalSecurityModels(Security security)
+        {
+            if (!_modelsMismatchWarningSent &&
+                _algorithm != null &&
+                security.Symbol.HasCanonical() &&
+                _algorithm.Securities.TryGetValue(security.Symbol.Canonical, out var canonicalSecurity))
+            {
+                if (security.FillModel.GetType() != canonicalSecurity.FillModel.GetType() ||
+                    security.FeeModel.GetType() != canonicalSecurity.FeeModel.GetType() ||
+                    security.BuyingPowerModel.GetType() != canonicalSecurity.BuyingPowerModel.GetType() ||
+                    security.MarginInterestRateModel.GetType() != canonicalSecurity.MarginInterestRateModel.GetType() ||
+                    security.SlippageModel.GetType() != canonicalSecurity.SlippageModel.GetType() ||
+                    security.VolatilityModel.GetType() != canonicalSecurity.VolatilityModel.GetType() ||
+                    security.SettlementModel.GetType() != canonicalSecurity.SettlementModel.GetType())
+                {
+                    _modelsMismatchWarningSent = true;
+                    _algorithm.Debug($"Warning: Security {security.Symbol} its canonical security {security.Symbol.Canonical} have at least one model of different types (fill, fee, buying power, margin interest rate, slippage, volatility, settlement). To avoid this, consider using a security initializer to set the right models to each security type according to your algorithm's requirements.");
+                }
+            }
+        }
+
+        private void InitializeSecurity(bool initializeSecurity, Security security, bool seedSecurity)
+        {
+            if (initializeSecurity && !security.IsInitialized)
+            {
+                if (seedSecurity && _algorithm.Settings.SeedInitialPrices)
+                {
+                    AlgorithmUtils.SeedSecurities([security], _algorithm);
+                }
+
+                _securityInitializerProvider.SecurityInitializer.Initialize(security);
+                security.IsInitialized = true;
+            }
         }
     }
 }

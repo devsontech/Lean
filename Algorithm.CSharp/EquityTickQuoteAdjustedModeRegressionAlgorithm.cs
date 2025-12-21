@@ -38,9 +38,9 @@ namespace QuantConnect.Algorithm.CSharp
             _ibm = AddEquity("IBM", Resolution.Tick).Symbol;
         }
 
-        public override void OnData(Slice data)
+        public override void OnData(Slice slice)
         {
-            if (!data.Ticks.ContainsKey(_ibm))
+            if (!slice.Ticks.ContainsKey(_ibm))
             {
                 return;
             }
@@ -51,7 +51,7 @@ namespace QuantConnect.Algorithm.CSharp
                 return;
             }
 
-            foreach (var tick in data.Ticks[_ibm])
+            foreach (var tick in slice.Ticks[_ibm])
             {
                 if (tick.BidPrice != 0 && !_bought && ((tick.Value - tick.BidPrice) <= 0.05m))
                 {
@@ -76,21 +76,39 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp };
+        public List<Language> Languages { get; } = new() { Language.CSharp };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 694806;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "2"},
+            {"Total Orders", "2"},
             {"Average Win", "0%"},
             {"Average Loss", "-0.12%"},
-            {"Compounding Annual Return", "-9.062%"},
+            {"Compounding Annual Return", "-9.135%"},
             {"Drawdown", "0.100%"},
             {"Expectancy", "-1"},
-            {"Net Profit", "-0.121%"},
+            {"Start Equity", "100000"},
+            {"End Equity", "99877.60"},
+            {"Net Profit", "-0.122%"},
             {"Sharpe Ratio", "0"},
+            {"Sortino Ratio", "0"},
             {"Probabilistic Sharpe Ratio", "0%"},
             {"Loss Rate", "100%"},
             {"Win Rate", "0%"},
@@ -102,28 +120,12 @@ namespace QuantConnect.Algorithm.CSharp
             {"Information Ratio", "-8.91"},
             {"Tracking Error", "0.223"},
             {"Treynor Ratio", "0"},
-            {"Total Fees", "$6.41"},
+            {"Total Fees", "$7.34"},
             {"Estimated Strategy Capacity", "$0"},
-            {"Fitness Score", "0.249"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "79228162514264337593543950335"},
-            {"Return Over Maximum Drawdown", "-79.031"},
-            {"Portfolio Turnover", "0.498"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "af92d7f4e0810bc4a95d5ccb5542b438"}
+            {"Lowest Capacity Asset", "IBM R735QTJ8XC9X"},
+            {"Portfolio Turnover", "39.89%"},
+            {"Drawdown Recovery", "0"},
+            {"OrderListHash", "d2af4746a4d01ca4d0ce0b0c44f30451"}
         };
     }
 }

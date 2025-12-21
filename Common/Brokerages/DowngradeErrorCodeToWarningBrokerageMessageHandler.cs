@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -13,8 +13,8 @@
  * limitations under the License.
 */
 
+using System.Linq;
 using System.Collections.Generic;
-using QuantConnect.Util;
 
 namespace QuantConnect.Brokerages
 {
@@ -41,7 +41,7 @@ namespace QuantConnect.Brokerages
         /// Handles the message
         /// </summary>
         /// <param name="message">The message to be handled</param>
-        public void Handle(BrokerageMessageEvent message)
+        public void HandleMessage(BrokerageMessageEvent message)
         {
             if (message.Type == BrokerageMessageType.Error && _errorCodesToIgnore.Contains(message.Code))
             {
@@ -49,7 +49,17 @@ namespace QuantConnect.Brokerages
                 message = new BrokerageMessageEvent(BrokerageMessageType.Warning, message.Code, message.Message);
             }
 
-            _brokerageMessageHandler.Handle(message);
+            _brokerageMessageHandler.HandleMessage(message);
+        }
+
+        /// <summary>
+        /// Handles a new order placed manually in the brokerage side
+        /// </summary>
+        /// <param name="eventArgs">The new order event</param>
+        /// <returns>Whether the order should be added to the transaction handler</returns>
+        public bool HandleOrder(NewBrokerageOrderNotificationEventArgs eventArgs)
+        {
+            return _brokerageMessageHandler.HandleOrder(eventArgs);
         }
     }
 }

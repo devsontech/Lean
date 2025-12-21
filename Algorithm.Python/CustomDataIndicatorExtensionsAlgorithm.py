@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,25 +11,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("System")
-AddReference("QuantConnect.Algorithm")
-AddReference("QuantConnect.Common")
-AddReference("QuantConnect.Indicators")
-
-
-from System import *
-from QuantConnect import *
-from QuantConnect.Indicators import *
-from QuantConnect.Data import *
-from QuantConnect.Data.Market import *
-from QuantConnect.Data.Custom import *
-from QuantConnect.Algorithm import *
-from QuantConnect.Python import PythonQuandl
+from AlgorithmImports import *
+from HistoryAlgorithm import *
 
 ### <summary>
 ### The algorithm creates new indicator value with the existing indicator method by Indicator Extensions
-### Demonstration of using the external custom datasource Quandl to request the VIX and VXV daily data
+### Demonstration of using the external custom data to request the IBM and SPY daily data
 ### </summary>
 ### <meta name="tag" content="using data" />
 ### <meta name="tag" content="using quantconnect" />
@@ -41,44 +28,36 @@ from QuantConnect.Python import PythonQuandl
 class CustomDataIndicatorExtensionsAlgorithm(QCAlgorithm):
 
     # Initialize the data and resolution you require for your strategy
-    def Initialize(self):
+    def initialize(self):
 
-        self.SetStartDate(2014,1,1) 
-        self.SetEndDate(2018,1,1)  
-        self.SetCash(25000)
-        
-        self.vix = 'CBOE/VIX'
-        self.vxv = 'CBOE/VXV'
-        
+        self.set_start_date(2014,1,1)
+        self.set_end_date(2018,1,1)
+        self.set_cash(25000)
+
+        self.ibm = 'IBM'
+        self.spy = 'SPY'
+
         # Define the symbol and "type" of our generic data
-        self.AddData(QuandlVix, self.vix, Resolution.Daily)
-        self.AddData(Quandl, self.vxv, Resolution.Daily)
-        
-        # Set up default Indicators, these are just 'identities' of the closing price
-        self.vix_sma = self.SMA(self.vix, 1, Resolution.Daily)
-        self.vxv_sma = self.SMA(self.vxv, 1, Resolution.Daily)
-        
-        # This will create a new indicator whose value is smaVXV / smaVIX
-        self.ratio = IndicatorExtensions.Over(self.vxv_sma, self.vix_sma)
-        
-        # Plot indicators each time they update using the PlotIndicator function
-        self.PlotIndicator("Ratio", self.ratio)
-        self.PlotIndicator("Data", self.vix_sma, self.vxv_sma)
-    
-    # OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
-    def OnData(self, data):
-        
-        # Wait for all indicators to fully initialize
-        if not (self.vix_sma.IsReady and self.vxv_sma.IsReady and self.ratio.IsReady): return
-        if not self.Portfolio.Invested and self.ratio.Current.Value > 1:
-            self.MarketOrder(self.vix, 100)
-        elif self.ratio.Current.Value < 1:
-                self.Liquidate()
+        self.add_data(CustomDataEquity, self.ibm, Resolution.DAILY)
+        self.add_data(CustomDataEquity, self.spy, Resolution.DAILY)
 
-# In CBOE/VIX data, there is a "vix close" column instead of "close" which is the 
-# default column namein LEAN Quandl custom data implementation.
-# This class assigns new column name to match the the external datasource setting.
-class QuandlVix(PythonQuandl):
-    
-    def __init__(self):
-        self.ValueColumnName = "VIX Close"
+        # Set up default Indicators, these are just 'identities' of the closing price
+        self.ibm_sma = self.sma(self.ibm, 1, Resolution.DAILY)
+        self.spy_sma = self.sma(self.spy, 1, Resolution.DAILY)
+
+        # This will create a new indicator whose value is sma_s_p_y / sma_i_b_m
+        self.ratio = IndicatorExtensions.over(self.spy_sma, self.ibm_sma)
+
+        # Plot indicators each time they update using the PlotIndicator function
+        self.plot_indicator("Ratio", self.ratio)
+        self.plot_indicator("Data", self.ibm_sma, self.spy_sma)
+
+    # OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
+    def on_data(self, data):
+
+        # Wait for all indicators to fully initialize
+        if not (self.ibm_sma.is_ready and self.spy_sma.is_ready and self.ratio.is_ready): return
+        if not self.portfolio.invested and self.ratio.current.value > 1:
+            self.market_order(self.ibm, 100)
+        elif self.ratio.current.value < 1:
+                self.liquidate()

@@ -18,13 +18,15 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using QuantConnect.Data.Consolidators;
+using QuantConnect.Data.Custom.IconicTypes;
 using QuantConnect.Data.Market;
+using QuantConnect.Data.UniverseSelection;
 using QuantConnect.Util;
 
 namespace QuantConnect.Data
 {
     /// <summary>
-    /// Provides extension methods to slice enumerables
+    /// Provides extension methods to slices and slice enumerables
     /// </summary>
     public static class SliceExtensions
     {
@@ -46,6 +48,39 @@ namespace QuantConnect.Data
         public static IEnumerable<Ticks> Ticks(this IEnumerable<Slice> slices)
         {
             return slices.Where(x => x.Ticks.Count > 0).Select(x => x.Ticks);
+        }
+
+        /// <summary>
+        /// Gets the data dictionaries or points of the requested type in each slice
+        /// </summary>
+        /// <param name="slices">The enumerable of slice</param>
+        /// <returns>An enumerable of data dictionary or data point of the requested type</returns>
+        public static IEnumerable<DataDictionary<BaseDataCollection>> GetUniverseData(this IEnumerable<Slice> slices)
+        {
+            return slices.SelectMany(x => x.AllData).Select(x =>
+            {
+                // we wrap the universe data collection into a data dictionary so it fits the api pattern
+                return new DataDictionary<BaseDataCollection>(new[] { (BaseDataCollection)x }, (y) => y.Symbol);
+            });
+        }
+
+        /// <summary>
+        /// Gets the data dictionaries or points of the requested type in each slice
+        /// </summary>
+        /// <param name="slices">The enumerable of slice</param>
+        /// <param name="type">Data type of the data that will be fetched</param>
+        /// <param name="symbol">The symbol to retrieve</param>
+        /// <returns>An enumerable of data dictionary or data point of the requested type</returns>
+        public static IEnumerable<dynamic> Get(this IEnumerable<Slice> slices, Type type, Symbol symbol = null)
+        {
+            var result = slices.Select(x => x.Get(type));
+
+            if (symbol == null)
+            {
+                return result;
+            }
+
+            return result.Where(x => x.ContainsKey(symbol)).Select(x => x[symbol]);
         }
 
         /// <summary>
@@ -162,6 +197,49 @@ namespace QuantConnect.Data
         }
 
         /// <summary>
+        /// Tries to get the data for the specified symbol and type
+        /// </summary>
+        /// <typeparam name="T">The type of data we want, for example, <see cref="TradeBar"/> or <see cref="UnlinkedData"/>, etc...</typeparam>
+        /// <param name="slice">The slice</param>
+        /// <param name="symbol">The symbol data is sought for</param>
+        /// <param name="data">The found data</param>
+        /// <returns>True if data was found for the specified type and symbol</returns>
+        public static bool TryGet<T>(this Slice slice, Symbol symbol, out T data)
+            where T : IBaseData
+        {
+            data = default(T);
+            var typeData = slice.Get(typeof(T)) as DataDictionary<T>;
+            if (typeData.ContainsKey(symbol))
+            {
+                data = typeData[symbol];
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Tries to get the data for the specified symbol and type
+        /// </summary>
+        /// <param name="slice">The slice</param>
+        /// <param name="type">The type of data we seek</param>
+        /// <param name="symbol">The symbol data is sought for</param>
+        /// <param name="data">The found data</param>
+        /// <returns>True if data was found for the specified type and symbol</returns>
+        public static bool TryGet(this Slice slice, Type type, Symbol symbol, out dynamic data)
+        {
+            data = null;
+            var typeData = slice.Get(type);
+            if (typeData.ContainsKey(symbol))
+            {
+                data = typeData[symbol];
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Converts the specified enumerable of decimals into a double array
         /// </summary>
         /// <param name="decimals">The enumerable of decimal</param>
@@ -204,22 +282,54 @@ namespace QuantConnect.Data
         /// </summary>
         /// <param name="slices">The data to send into the consolidators, likely result of a history request</param>
         /// <param name="handler">Delegate handles each data piece from the slice</param>
-        public static void PushThrough(this IEnumerable<Slice> slices, Action<BaseData> handler)
+        /// <param name="dataType">Defines the type of the data that should be pushed</param>
+        public static void PushThrough(this IEnumerable<Slice> slices, Action<BaseData> handler, Type dataType = null)
         {
-            foreach (var slice in slices)
+            if (dataType != null)
             {
-                foreach (var symbol in slice.Keys)
+                Func<Slice, IEnumerable<BaseData>> dataSelector = default;
+                if (dataType == typeof(QuoteBar))
                 {
-                    dynamic value;
-                    if (!slice.TryGetValue(symbol, out value))
+                    dataSelector = slice => slice.QuoteBars.Values;
+                }
+                else if (dataType == typeof(Tick))
+                {
+                    dataSelector = slice => slice.Ticks.Values.Select(x => x.Last());
+                }
+                else if (dataType == typeof(TradeBar))
+                {
+                    dataSelector = slice => slice.Bars.Values;
+                }
+                else
+                {
+                    dataSelector = slice => slice.Get(dataType).Values;
+                }
+
+                foreach (var slice in slices)
+                {
+                    foreach (BaseData baseData in dataSelector(slice))
                     {
-                        continue;
+                        handler(baseData);
                     }
+                }
+            }
+            else
+            {
+                foreach (var slice in slices)
+                {
+                    foreach (var symbol in slice.Keys)
+                    {
+                        dynamic value;
+                        if (!slice.TryGetValue(symbol, out value))
+                        {
+                            continue;
+                        }
 
-                    var list = value as IList;
-                    var data = (BaseData)(list != null ? list[list.Count - 1] : value);
+                        var list = value as IList;
+                        var data = (BaseData)(list != null ? list[list.Count - 1] : value);
 
-                    handler(data);
+                        handler(data);
+                    }
                 }
             }
         }

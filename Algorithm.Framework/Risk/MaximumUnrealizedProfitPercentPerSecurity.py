@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,42 +11,37 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("System")
-AddReference("QuantConnect.Common")
-AddReference("QuantConnect.Algorithm")
-AddReference("QuantConnect.Algorithm.Framework")
-
-from QuantConnect import *
-from QuantConnect.Algorithm import *
-from QuantConnect.Algorithm.Framework import *
-from QuantConnect.Algorithm.Framework.Portfolio import PortfolioTarget
-from QuantConnect.Algorithm.Framework.Risk import RiskManagementModel
+from AlgorithmImports import *
 
 class MaximumUnrealizedProfitPercentPerSecurity(RiskManagementModel):
     '''Provides an implementation of IRiskManagementModel that limits the unrealized profit per holding to the specified percentage'''
 
-    def __init__(self, maximumUnrealizedProfitPercent = 0.05):
+    def __init__(self, maximum_unrealized_profit_percent = 0.05):
         '''Initializes a new instance of the MaximumUnrealizedProfitPercentPerSecurity class
         Args:
-            maximumUnrealizedProfitPercent: The maximum percentage unrealized profit allowed for any single security holding, defaults to 5% drawdown per security'''
-        self.maximumUnrealizedProfitPercent = abs(maximumUnrealizedProfitPercent)
+            maximum_unrealized_profit_percent: The maximum percentage unrealized profit allowed for any single security holding, defaults to 5% drawdown per security'''
+        self.maximum_unrealized_profit_percent = abs(maximum_unrealized_profit_percent)
 
-    def ManageRisk(self, algorithm, targets):
+    def manage_risk(self, algorithm, targets):
         '''Manages the algorithm's risk at each time step
         Args:
             algorithm: The algorithm instance
             targets: The current portfolio targets to be assessed for risk'''
         targets = []
-        for kvp in algorithm.Securities:
-            security = kvp.Value
+        for kvp in algorithm.securities:
+            security = kvp.value
 
-            if not security.Invested:
+            if not security.invested:
                 continue
 
-            pnl = security.Holdings.UnrealizedProfitPercent
-            if pnl > self.maximumUnrealizedProfitPercent:
+            pnl = security.holdings.unrealized_profit_percent
+            if pnl > self.maximum_unrealized_profit_percent:
+                symbol = security.symbol
+
+                # Cancel insights
+                algorithm.insights.cancel([ symbol ]);
+
                 # liquidate
-                targets.append(PortfolioTarget(security.Symbol, 0))
+                targets.append(PortfolioTarget(symbol, 0))
 
         return targets

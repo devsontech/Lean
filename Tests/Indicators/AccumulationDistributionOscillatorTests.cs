@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  * 
@@ -19,7 +19,7 @@ using QuantConnect.Indicators;
 
 namespace QuantConnect.Tests.Indicators
 {
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.Fixtures)]
     public class AccumulationDistributionOscillatorTests : CommonIndicatorTests<TradeBar>
     {
         protected override IndicatorBase<TradeBar> CreateIndicator()
@@ -35,6 +35,16 @@ namespace QuantConnect.Tests.Indicators
         protected override string TestColumnName
         {
             get { return "AdOsc_3_10"; }
+        }
+
+        /// <summary>
+        /// The final value of this indicator is zero because it uses the Volume of the bars it receives.
+        /// Since RenkoBar's don't always have Volume, the final current value is zero. Therefore we
+        /// skip this test
+        /// </summary>
+        /// <param name="indicator"></param>
+        protected override void IndicatorValueIsNotZeroAfterReceiveRenkoBars(IndicatorBase indicator)
+        {
         }
     }
 }

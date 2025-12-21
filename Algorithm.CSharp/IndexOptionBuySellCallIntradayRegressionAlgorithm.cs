@@ -46,7 +46,7 @@ namespace QuantConnect.Algorithm.CSharp
             var spx = AddIndex("SPX", Resolution.Minute).Symbol;
 
             // Select a index option expiring ITM, and adds it to the algorithm.
-            var spxOptions = OptionChainProvider.GetOptionContractList(spx, Time)
+            var spxOptions = OptionChain(spx)
                 .Where(x => (x.ID.StrikePrice == 3700m || x.ID.StrikePrice == 3800m) && x.ID.OptionRight == OptionRight.Call && x.ID.Date.Year == 2021 && x.ID.Date.Month == 1)
                 .Select(x => AddIndexOptionContract(x, Resolution.Minute).Symbol)
                 .OrderBy(x => x.ID.StrikePrice)
@@ -70,16 +70,16 @@ namespace QuantConnect.Algorithm.CSharp
 
             if (spxOptions.Count != 2)
             {
-                throw new Exception($"Expected 2 index options symbols from chain provider, found {spxOptions.Count}");
+                throw new RegressionTestException($"Expected 2 index options symbols from chain provider, found {spxOptions.Count}");
             }
 
             if (spxOptions[0] != expectedContract3700)
             {
-                throw new Exception($"Contract {expectedContract3700} was not found in the chain, found instead: {spxOptions[0]}");
+                throw new RegressionTestException($"Contract {expectedContract3700} was not found in the chain, found instead: {spxOptions[0]}");
             }
             if (spxOptions[1] != expectedContract3800)
             {
-                throw new Exception($"Contract {expectedContract3800} was not found in the chain, found instead: {spxOptions[1]}");
+                throw new RegressionTestException($"Contract {expectedContract3800} was not found in the chain, found instead: {spxOptions[1]}");
             }
 
             Schedule.On(DateRules.Tomorrow, TimeRules.AfterMarketOpen(spx, 1), () =>
@@ -96,12 +96,12 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// Ran at the end of the algorithm to ensure the algorithm has no holdings
         /// </summary>
-        /// <exception cref="Exception">The algorithm has holdings</exception>
+        /// <exception cref="RegressionTestException">The algorithm has holdings</exception>
         public override void OnEndOfAlgorithm()
         {
             if (Portfolio.Invested)
             {
-                throw new Exception($"Expected no holdings at end of algorithm, but are invested in: {string.Join(", ", Portfolio.Keys)}");
+                throw new RegressionTestException($"Expected no holdings at end of algorithm, but are invested in: {string.Join(", ", Portfolio.Keys)}");
             }
         }
 
@@ -113,54 +113,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 32144;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 1;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "4"},
+            {"Total Orders", "4"},
             {"Average Win", "0%"},
-            {"Average Loss", "-0.06%"},
-            {"Compounding Annual Return", "-1.552%"},
-            {"Drawdown", "0.100%"},
+            {"Average Loss", "-0.08%"},
+            {"Compounding Annual Return", "-2.251%"},
+            {"Drawdown", "0.200%"},
             {"Expectancy", "-1"},
-            {"Net Profit", "-0.110%"},
-            {"Sharpe Ratio", "-3.525"},
-            {"Probabilistic Sharpe Ratio", "0.518%"},
+            {"Start Equity", "100000"},
+            {"End Equity", "99840"},
+            {"Net Profit", "-0.160%"},
+            {"Sharpe Ratio", "-3.642"},
+            {"Sortino Ratio", "0"},
+            {"Probabilistic Sharpe Ratio", "0.427%"},
             {"Loss Rate", "100%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "-0.014"},
-            {"Beta", "-0.004"},
-            {"Annual Standard Deviation", "0.004"},
+            {"Alpha", "-0.018"},
+            {"Beta", "-0.006"},
+            {"Annual Standard Deviation", "0.005"},
             {"Annual Variance", "0"},
-            {"Information Ratio", "-0.453"},
-            {"Tracking Error", "0.156"},
-            {"Treynor Ratio", "3.397"},
+            {"Information Ratio", "-0.44"},
+            {"Tracking Error", "0.139"},
+            {"Treynor Ratio", "3.118"},
             {"Total Fees", "$0.00"},
             {"Estimated Strategy Capacity", "$0"},
-            {"Fitness Score", "0"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "-4619.237"},
-            {"Return Over Maximum Drawdown", "-14.266"},
-            {"Portfolio Turnover", "0.005"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "7d15f56731d38768ea81afac627f0657"}
+            {"Lowest Capacity Asset", "SPX XL80P3HB9YI6|SPX 31"},
+            {"Portfolio Turnover", "0.51%"},
+            {"Drawdown Recovery", "0"},
+            {"OrderListHash", "9237e1fd3cf099a47a2adae18f91aa2f"}
         };
     }
 }

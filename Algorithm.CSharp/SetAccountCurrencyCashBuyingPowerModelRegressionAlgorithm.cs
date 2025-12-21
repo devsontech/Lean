@@ -22,6 +22,7 @@ using QuantConnect.Interfaces;
 using QuantConnect.Orders;
 using QuantConnect.Securities;
 using QuantConnect.Statistics;
+using QuantConnect.Algorithm.Framework.Portfolio;
 
 namespace QuantConnect.Algorithm.CSharp
 {
@@ -61,14 +62,14 @@ namespace QuantConnect.Algorithm.CSharp
             if (!(_btcUsd.BuyingPowerModel is CashBuyingPowerModel)
                 || !(_btcEur.BuyingPowerModel is CashBuyingPowerModel))
             {
-                throw new Exception("This regression algorithm is expected to test the CashBuyingPowerModel");
+                throw new RegressionTestException("This regression algorithm is expected to test the CashBuyingPowerModel");
             }
 
             // Second call to change account currency will be ignored
             SetAccountCurrency("ARG");
             if (AccountCurrency != "EUR")
             {
-                throw new Exception($"Unexpected account currency value {AccountCurrency}");
+                throw new RegressionTestException($"Unexpected account currency value {AccountCurrency}");
             }
         }
 
@@ -76,7 +77,7 @@ namespace QuantConnect.Algorithm.CSharp
         /// OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
         /// </summary>
         /// <param name="data">Slice object keyed by symbol containing the stock data</param>
-        public override void OnData(Slice data)
+        public override void OnData(Slice slice)
         {
             Log($"OnData(): Current execution step: {_step}");
             switch (_step)
@@ -88,7 +89,7 @@ namespace QuantConnect.Algorithm.CSharp
                     if (res.Status != OrderStatus.Invalid
                         && res.OrderEvents.First().Message.Contains("Reason: Your portfolio holds 0 EUR"))
                     {
-                        throw new Exception($"We shouldn't be able to buy {_btcEur.Symbol}" +
+                        throw new RegressionTestException($"We shouldn't be able to buy {_btcEur.Symbol}" +
                             " because we don't own any EUR");
                     }
 
@@ -127,7 +128,7 @@ namespace QuantConnect.Algorithm.CSharp
 
         private void UpdateExpectedOrderQuantity(decimal target)
         {
-            _expectedOrderQuantity = ((Portfolio.TotalPortfolioValue - Settings.FreePortfolioValue) * target - _btcUsd.Holdings.HoldingsValue)
+            _expectedOrderQuantity = (Portfolio.TotalPortfolioValueLessFreeBuffer * target - _btcUsd.Holdings.HoldingsValue)
                 / (_btcUsd.Price * _btcUsd.QuoteCurrency.ConversionRate);
             _expectedOrderQuantity--; // minus 1 per fees
             _expectedOrderQuantity -= _expectedOrderQuantity % _btcUsd.SymbolProperties.LotSize;
@@ -138,11 +139,11 @@ namespace QuantConnect.Algorithm.CSharp
         {
             if (Portfolio.CashBook["BTC"].Amount != 0)
             {
-                throw new Exception($"Unexpected BTC ending cash amount: {Portfolio.CashBook["BTC"].Amount}.");
+                throw new RegressionTestException($"Unexpected BTC ending cash amount: {Portfolio.CashBook["BTC"].Amount}.");
             }
             if (Portfolio.CashBook["EUR"].Amount != 0)
             {
-                throw new Exception($"Unexpected EUR ending cash amount: {Portfolio.CashBook["EUR"].Amount}.");
+                throw new RegressionTestException($"Unexpected EUR ending cash amount: {Portfolio.CashBook["EUR"].Amount}.");
             }
 
             var expectedAmount = _initialCapital
@@ -153,7 +154,7 @@ namespace QuantConnect.Algorithm.CSharp
             // leave 0.5% for error
             if (Math.Abs(expectedAmount - amount) > Math.Abs(expectedAmount) * 0.005m)
             {
-                throw new Exception($"Unexpected USD ending cash amount: {amount}. Expected {expectedAmount}");
+                throw new RegressionTestException($"Unexpected USD ending cash amount: {amount}. Expected {expectedAmount}");
             }
         }
 
@@ -165,7 +166,7 @@ namespace QuantConnect.Algorithm.CSharp
                 // leave 1 unit as error in expected value
                 if (Math.Abs(orderEvent.FillQuantity - _expectedOrderQuantity) > 1)
                 {
-                    throw new Exception($"Unexpected order event fill quantity: {orderEvent.FillQuantity}. " +
+                    throw new RegressionTestException($"Unexpected order event fill quantity: {orderEvent.FillQuantity}. " +
                         $"Expected {_expectedOrderQuantity}");
                 }
 
@@ -182,7 +183,7 @@ namespace QuantConnect.Algorithm.CSharp
                     || Math.Abs(expectedOrderFee - orderFeeInAccountCurrency) > 0.00001m
                     || Math.Abs(expectedOrderFee - calculatedOrderFee) > 0.00001m)
                 {
-                    throw new Exception($"Unexpected order fee: {orderFeeInAccountCurrency}. " +
+                    throw new RegressionTestException($"Unexpected order fee: {orderFeeInAccountCurrency}. " +
                         $"Expected {expectedOrderFee}. Calculated Order Fee {calculatedOrderFee}");
                 }
 
@@ -197,7 +198,7 @@ namespace QuantConnect.Algorithm.CSharp
 
                     if (Math.Abs(expectedProfitLoss - lastTrade.ProfitLoss) > 1)
                     {
-                        throw new Exception($"Unexpected last trade ProfitLoss: {lastTrade.ProfitLoss}. " +
+                        throw new RegressionTestException($"Unexpected last trade ProfitLoss: {lastTrade.ProfitLoss}. " +
                             $"Expected {expectedProfitLoss}");
                     }
 
@@ -210,7 +211,7 @@ namespace QuantConnect.Algorithm.CSharp
 
                     if (Math.Abs(_btcUsd.Holdings.LastTradeProfit - expectedProfitLoss) > 1)
                     {
-                        throw new Exception($"Unexpected Holdings.NetProfit: {_btcUsd.Holdings.LastTradeProfit}. " +
+                        throw new RegressionTestException($"Unexpected Holdings.NetProfit: {_btcUsd.Holdings.LastTradeProfit}. " +
                             $"Expected {expectedProfitLoss}");
                     }
                 }
@@ -228,21 +229,39 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp };
+        public List<Language> Languages { get; } = new() { Language.CSharp };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 7201;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 15;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "3"},
+            {"Total Orders", "4"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
             {"Compounding Annual Return", "0%"},
             {"Drawdown", "0%"},
             {"Expectancy", "0"},
+            {"Start Equity", "8141.93"},
+            {"End Equity", "8087.60"},
             {"Net Profit", "0%"},
             {"Sharpe Ratio", "0"},
+            {"Sortino Ratio", "0"},
             {"Probabilistic Sharpe Ratio", "0%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
@@ -254,28 +273,12 @@ namespace QuantConnect.Algorithm.CSharp
             {"Information Ratio", "0"},
             {"Tracking Error", "0"},
             {"Treynor Ratio", "0"},
-            {"Total Fees", "$48.58"},
-            {"Estimated Strategy Capacity", "$9000.00"},
-            {"Fitness Score", "0.5"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "79228162514264337593543950335"},
-            {"Return Over Maximum Drawdown", "-141.877"},
-            {"Portfolio Turnover", "2.002"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "€0"},
-            {"Total Accumulated Estimated Alpha Value", "€0"},
-            {"Mean Population Estimated Insight Value", "€0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "6e0350f4d7625028c7bc43bd29806d04"}
+            {"Total Fees", "€48.58"},
+            {"Estimated Strategy Capacity", "€9000.00"},
+            {"Lowest Capacity Asset", "BTCUSD 2XR"},
+            {"Portfolio Turnover", "200.21%"},
+            {"Drawdown Recovery", "0"},
+            {"OrderListHash", "407df5c68369b6d1aa21506a762f3bbd"}
         };
     }
 }

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -15,11 +15,12 @@
 */
 
 using System;
-using System.Collections.Generic;
 using NodaTime;
-using QuantConnect.Securities;
-using QuantConnect.Logging;
 using Python.Runtime;
+using QuantConnect.Logging;
+using QuantConnect.Interfaces;
+using QuantConnect.Securities;
+using System.Collections.Generic;
 
 namespace QuantConnect.Scheduling
 {
@@ -47,13 +48,15 @@ namespace QuantConnect.Scheduling
         /// <summary>
         /// Initializes a new instance of the <see cref="ScheduleManager"/> class
         /// </summary>
+        /// <param name="algorithm">The algorithm instance</param>
         /// <param name="securities">Securities manager containing the algorithm's securities</param>
         /// <param name="timeZone">The algorithm's time zone</param>
-        public ScheduleManager(SecurityManager securities, DateTimeZone timeZone)
+        /// <param name="marketHoursDatabase">The market hours database instance to use</param>
+        public ScheduleManager(IAlgorithm algorithm, SecurityManager securities, DateTimeZone timeZone, MarketHoursDatabase marketHoursDatabase)
         {
             _securities = securities;
-            DateRules = new DateRules(securities, timeZone);
-            TimeRules = new TimeRules(securities, timeZone);
+            DateRules = new DateRules(algorithm, securities, timeZone, marketHoursDatabase);
+            TimeRules = new TimeRules(algorithm, securities, timeZone, marketHoursDatabase);
 
             // used for storing any events before the event schedule is set
             _preInitializedEvents = new List<ScheduledEvent>();
@@ -188,21 +191,12 @@ namespace QuantConnect.Scheduling
         public ScheduledEvent On(string name, IDateRule dateRule, ITimeRule timeRule, Action<string, DateTime> callback)
         {
             // back the date up to ensure we get all events, the event scheduler will skip past events that whose time has passed
-            var dates = dateRule.GetDates(_securities.UtcTime.Date.AddDays(-1), Time.EndOfTime);
+            var dates = GetDatesDeferred(dateRule, _securities);
             var eventTimes = timeRule.CreateUtcEventTimes(dates);
             var scheduledEvent = new ScheduledEvent(name, eventTimes, callback);
             Add(scheduledEvent);
 
-            // ScheduledEvent constructor will prime the scheduled event
-            if (scheduledEvent.NextEventUtcTime != DateTime.MaxValue)
-            {
-                Log.Trace($"Event Name \"{scheduledEvent.Name}\", scheduled to run at {scheduledEvent.NextEventUtcTime} (UTC)...");
-            }
-            else
-            {
-                Log.Error($"Event Name \"{scheduledEvent.Name}\", scheduled to run, but no event times were selected");
-            }
-
+            Log.Trace($"Event Name \"{scheduledEvent.Name}\", scheduled to run.");
             return scheduledEvent;
         }
 
@@ -282,5 +276,17 @@ namespace QuantConnect.Scheduling
         }
 
         #endregion
+
+        /// <summary>
+        /// Helper methods to defer the evaluation of the current time until the dates are enumerated for the first time.
+        /// This allows for correct support for warmup period
+        /// </summary>
+        internal static IEnumerable<DateTime> GetDatesDeferred(IDateRule dateRule, SecurityManager securities)
+        {
+            foreach (var item in dateRule.GetDates(DateTime.SpecifyKind(securities.UtcTime.Date.AddDays(-1), DateTimeKind.Unspecified), Time.EndOfTime))
+            {
+                yield return item;
+            }
+        }
     }
 }

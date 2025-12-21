@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -24,6 +24,16 @@ namespace QuantConnect.Tests.Common.Data
     public class DynamicDataTests
     {
         [Test]
+        public void SupportsSnakeNameRetrival()
+        {
+            dynamic data = new DataType();
+            data.PropertyA = 1;
+
+            Assert.AreEqual(1, data.property_a);
+            Assert.AreEqual(data.PropertyA, data.property_a);
+        }
+
+        [Test]
         public void StoresValues_Using_LowerCaseKeys()
         {
             dynamic data = new DataType();
@@ -46,9 +56,17 @@ namespace QuantConnect.Tests.Common.Data
 
             BaseData baseData = data;
             Assert.AreEqual(time, baseData.Time);
+            Assert.AreEqual(time, baseData.EndTime);
             Assert.AreEqual(value, baseData.Value);
             Assert.AreEqual(value, baseData.Price);
             Assert.AreEqual(symbol, baseData.Symbol);
+
+            // let's access the properties through the dynamic handling
+            Assert.AreEqual(time, data.Time);
+            Assert.AreEqual(time, data.EndTime);
+            Assert.AreEqual(value, data.Value);
+            Assert.AreEqual(value, data.Price);
+            Assert.AreEqual(symbol, data.Symbol);
         }
 
         [Test]

@@ -13,7 +13,10 @@
  * limitations under the License.
 */
 
+using System;
+using System.Linq;
 using System.Collections.Generic;
+using QuantConnect.Securities.Future;
 
 namespace QuantConnect.Securities.IndexOption
 {
@@ -22,15 +25,36 @@ namespace QuantConnect.Securities.IndexOption
     /// </summary>
     public static class IndexOptionSymbol
     {
-        private static readonly HashSet<string> _supportedIndexOptionTickers = new HashSet<string>
+        private static readonly Dictionary<string, string> _nonStandardOptionToIndex = new()
         {
-            "SPX",
-            "NDX",
-            "VIX",
-            "SPXW",
-            "NQX",
-            "VIXW"
+            { "RUTW", "RUT" },
+            { "SPXW", "SPX" },
+            { "VIXW", "VIX" },
+            { "NDXP", "NDX" },
+            { "NQX", "NDX" },
         };
+
+        /// <summary>
+        /// These are known assets that are weeklies or end-of-month settled contracts.
+        /// </summary>
+        private static readonly HashSet<string> _nonStandardIndexOptionTickers = new()
+        {
+            // Weeklies
+            "RUTW", // PM-Settled. While RUT AM-Settled on 3rd Fridays
+            "SPXW",
+            "VIXW",
+            // PM-Settled
+            "NDXP",
+            // reduced value index options, 20%
+            "NQX"
+        };
+
+        /// <summary>
+        /// Supported index option tickers
+        /// </summary>
+        public static readonly HashSet<string> SupportedIndexOptionTickers = new string[] { "SPX", "NDX", "VIX", "RUT" }
+            .Union(_nonStandardIndexOptionTickers)
+            .ToHashSet();
 
         /// <summary>
         /// Determines if the Index Option Symbol is for a monthly contract
@@ -46,14 +70,16 @@ namespace QuantConnect.Securities.IndexOption
 
             switch (symbol.ID.Symbol)
             {
-                // These are known assets that are weeklies or end-of-month settled contracts.
-                case "SPXW":
-                case "VIXW":
-                case "NDXP":
                 case "NQX":
-                    return false;
-
+                case "SPXW":
+                case "RUTW":
+                // they have weeklies and monthly contracts
+                // NQX https://www.nasdaq.com/docs/NQXFactSheet.pdf
+                // SPXW https://www.cboe.com/tradable_products/sp_500/spx_weekly_options/specifications/
+                // RUTW expires every day
+                return FuturesExpiryUtilityFunctions.ThirdFriday(symbol.ID.Date) == symbol.ID.Date;
                 default:
+                    // NDX/SPX/NQX/VIX/VIXW/NDXP/RUT are all normal contracts
                     return true;
             }
         }
@@ -71,7 +97,61 @@ namespace QuantConnect.Securities.IndexOption
         /// </remarks>
         public static bool IsIndexOption(string ticker)
         {
-            return _supportedIndexOptionTickers.Contains(ticker.ToUpper());
+            return SupportedIndexOptionTickers.Contains(ticker.LazyToUpper());
+        }
+
+        /// <summary>
+        /// Maps an index option ticker to its underlying index ticker
+        /// </summary>
+        /// <param name="indexOption">Index option ticker to map to the underlying</param>
+        /// <returns>Index ticker</returns>
+        public static string MapToUnderlying(string indexOption)
+        {
+            if(_nonStandardOptionToIndex.TryGetValue(indexOption.LazyToUpper(), out var index))
+            {
+                return index;
+            }
+
+            return indexOption;
+        }
+
+        /// <summary>
+        /// Returns the last trading date for the given index option ticker and expiration date
+        /// </summary>
+        /// <remarks>This is useful for IB brokerage</remarks>
+        public static DateTime GetLastTradingDate(string ticker, DateTime expirationDate)
+        {
+            return expirationDate.AddDays(-GetExpirationOffset(ticker));
+        }
+
+        /// <summary>
+        /// Returns the expiry date for the given index option ticker and last trading date
+        /// </summary>
+        /// <remarks>This is useful for IB brokerage</remarks>
+        public static DateTime GetExpiryDate(string ticker, DateTime lastTradingDate)
+        {
+            return lastTradingDate.AddDays(GetExpirationOffset(ticker));
+        }
+
+        /// <summary>
+        /// Some index options last tradable date is the previous day to the expiration
+        /// https://www.cboe.com/tradable_products/vix/vix_options/specifications/
+        /// https://www.cboe.com/tradable_products/ftse_russell/russell_2000_index_options/rut_specifications
+        /// </summary>
+        private static int GetExpirationOffset(string ticker)
+        {
+            switch (ticker)
+            {
+                case "SPX":
+                case "NDX":
+                case "VIX":
+                case "VIXW":
+                case "RUT":
+                    return 1;
+                default:
+                    // SPXW, NQX, NDXP, RUTW
+                    return 0;
+            }
         }
     }
 }

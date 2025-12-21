@@ -34,8 +34,7 @@ namespace QuantConnect.Algorithm.CSharp
     public class OptionChainConsistencyRegressionAlgorithm : QCAlgorithm, IRegressionAlgorithmDefinition
     {
         private const string UnderlyingTicker = "GOOG";
-        public readonly Symbol Underlying = QuantConnect.Symbol.Create(UnderlyingTicker, SecurityType.Equity, Market.USA);
-        public readonly Symbol OptionSymbol = QuantConnect.Symbol.Create(UnderlyingTicker, SecurityType.Option, Market.USA);
+        private readonly Symbol _optionSymbol = QuantConnect.Symbol.Create(UnderlyingTicker, SecurityType.Option, Market.USA);
 
         public override void Initialize()
         {
@@ -64,7 +63,7 @@ namespace QuantConnect.Algorithm.CSharp
             if (!Portfolio.Invested)
             {
                 OptionChain chain;
-                if (slice.OptionChains.TryGetValue(OptionSymbol, out chain))
+                if (slice.OptionChains.TryGetValue(_optionSymbol, out chain))
                 {
                     // check if data is consistent
                     foreach (var o in chain)
@@ -72,7 +71,7 @@ namespace QuantConnect.Algorithm.CSharp
                         if (!Securities.ContainsKey(o.Symbol))
                         {
                             // inconsistency found: option chains contains contract information that is not available in securities manager and not available for trading
-                            throw new Exception("inconsistency found: option chains contains contract " +
+                            throw new RegressionTestException("inconsistency found: option chains contains contract " +
                                 $"{o.Symbol.Value} that is not available in securities manager and not available for trading"
                             );
                         }
@@ -99,7 +98,7 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// Order fill event handler. On an order fill update the resulting information is passed to this method.
         /// </summary>
-        /// <param name="orderEvent">Order event details containing details of the evemts</param>
+        /// <param name="orderEvent">Order event details containing details of the events</param>
         /// <remarks>This method can be called asynchronously and so should only be used by seasoned C# experts. Ensure you use proper locks on thread-unsafe objects</remarks>
         public override void OnOrderEvent(OrderEvent orderEvent)
         {
@@ -114,21 +113,39 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 14325;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "2"},
+            {"Total Orders", "2"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
             {"Compounding Annual Return", "0%"},
             {"Drawdown", "0%"},
             {"Expectancy", "0"},
+            {"Start Equity", "10000"},
+            {"End Equity", "9613"},
             {"Net Profit", "0%"},
             {"Sharpe Ratio", "0"},
+            {"Sortino Ratio", "0"},
             {"Probabilistic Sharpe Ratio", "0%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
@@ -141,27 +158,11 @@ namespace QuantConnect.Algorithm.CSharp
             {"Tracking Error", "0"},
             {"Treynor Ratio", "0"},
             {"Total Fees", "$2.00"},
-            {"Estimated Strategy Capacity", "$4900.00"},
-            {"Fitness Score", "0"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "0"},
-            {"Return Over Maximum Drawdown", "0"},
-            {"Portfolio Turnover", "0"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "6f6d53762c0bb64467ee6215b2aa57c9"}
+            {"Estimated Strategy Capacity", "$5000.00"},
+            {"Lowest Capacity Asset", "GOOCV W6NBKPFL4KO6|GOOCV VP83T1ZUHROL"},
+            {"Portfolio Turnover", "9.93%"},
+            {"Drawdown Recovery", "0"},
+            {"OrderListHash", "29e41c0e2a316485a2761c4e56189585"}
         };
     }
 }

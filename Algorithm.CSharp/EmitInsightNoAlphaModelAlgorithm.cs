@@ -51,13 +51,17 @@ namespace QuantConnect.Algorithm.CSharp
             // set algorithm framework models except ALPHA
             SetUniverseSelection(new ManualUniverseSelectionModel(_symbol));
             SetPortfolioConstruction(new EqualWeightingPortfolioConstructionModel());
+
+            // Order margin value has to have a minimum of 0.5% of Portfolio value, allows filtering out small trades and reduce fees.
+            // Commented so regression algorithm is more sensitive
+            //Settings.MinimumOrderMarginPortfolioPercentage = 0.005m;
         }
 
         /// <summary>
         /// OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
         /// </summary>
         /// <param name="data">Slice object keyed by symbol containing the stock data</param>
-        public override void OnData(Slice data)
+        public override void OnData(Slice slice)
         {
             if (!Portfolio.Invested)
             {
@@ -65,7 +69,7 @@ namespace QuantConnect.Algorithm.CSharp
 
                 if (order != null)
                 {
-                    throw new Exception($"Unexpected open order {order}");
+                    throw new RegressionTestException($"Unexpected open order {order}");
                 }
 
                 EmitInsights(Insight.Price(_symbol, Resolution.Daily, 10, InsightDirection.Down));
@@ -75,12 +79,12 @@ namespace QuantConnect.Algorithm.CSharp
 
                 if (order == null)
                 {
-                    throw new Exception("Expected open order for emitted insight");
+                    throw new RegressionTestException("Expected open order for emitted insight");
                 }
                 if (order.Direction != OrderDirection.Sell
                     || order.Symbol != _symbol)
                 {
-                    throw new Exception($"Unexpected open order for emitted insight: {order}");
+                    throw new RegressionTestException($"Unexpected open order for emitted insight: {order}");
                 }
 
                 SetHoldings(_symbol, 1);
@@ -92,7 +96,7 @@ namespace QuantConnect.Algorithm.CSharp
             var holdings = Securities[_symbol].Holdings;
             if (Math.Sign(holdings.Quantity) != -1)
             {
-                throw new Exception("Unexpected holdings");
+                throw new RegressionTestException("Unexpected holdings");
             }
         }
 
@@ -104,54 +108,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp };
+        public List<Language> Languages { get; } = new() { Language.CSharp };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 48;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "5"},
+            {"Total Orders", "6"},
             {"Average Win", "0%"},
             {"Average Loss", "-0.02%"},
-            {"Compounding Annual Return", "-72.266%"},
+            {"Compounding Annual Return", "-74.669%"},
             {"Drawdown", "2.900%"},
             {"Expectancy", "-1"},
-            {"Net Profit", "-1.742%"},
-            {"Sharpe Ratio", "-2.983"},
-            {"Probabilistic Sharpe Ratio", "22.301%"},
+            {"Start Equity", "100000"},
+            {"End Equity", "98259.71"},
+            {"Net Profit", "-1.740%"},
+            {"Sharpe Ratio", "-3.018"},
+            {"Sortino Ratio", "-3.766"},
+            {"Probabilistic Sharpe Ratio", "24.616%"},
             {"Loss Rate", "100%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "-0.388"},
-            {"Beta", "-0.138"},
-            {"Annual Standard Deviation", "0.195"},
-            {"Annual Variance", "0.038"},
-            {"Information Ratio", "-6.727"},
-            {"Tracking Error", "0.294"},
-            {"Treynor Ratio", "4.204"},
+            {"Alpha", "1.301"},
+            {"Beta", "-0.998"},
+            {"Annual Standard Deviation", "0.222"},
+            {"Annual Variance", "0.049"},
+            {"Information Ratio", "-5.95"},
+            {"Tracking Error", "0.445"},
+            {"Treynor Ratio", "0.672"},
             {"Total Fees", "$19.23"},
-            {"Estimated Strategy Capacity", "$470000000.00"},
-            {"Fitness Score", "0.054"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "-4.06"},
-            {"Return Over Maximum Drawdown", "-25.225"},
-            {"Portfolio Turnover", "0.999"},
-            {"Total Insights Generated", "1"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "1"},
-            {"Long/Short Ratio", "0%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "39c512346541c1d40c04a514d605b723"}
+            {"Estimated Strategy Capacity", "$1200000000.00"},
+            {"Lowest Capacity Asset", "SPY R735QTJ8XC9X"},
+            {"Portfolio Turnover", "100.02%"},
+            {"Drawdown Recovery", "0"},
+            {"OrderListHash", "094cbf077486ed2ec2558a2255a385c2"}
         };
     }
 }

@@ -17,36 +17,42 @@ using System;
 using NUnit.Framework;
 using Python.Runtime;
 using System.Collections.Generic;
+using System.Linq;
+using QuantConnect.Data;
+using QuantConnect.Data.Consolidators;
 using QuantConnect.Data.Market;
 using QuantConnect.Python;
+using QuantConnect.Algorithm;
+using QuantConnect.Tests.Engine.DataFeeds;
+using QuantConnect.Statistics;
+using QuantConnect.Tests.Common.Data;
 
 namespace QuantConnect.Tests.Python
 {
     [TestFixture]
-    public class DataConsolidatorPythonWrapperTests
+    public class DataConsolidatorPythonWrapperTests: BaseConsolidatorTests
     {
         [Test]
         public void UpdatePyConsolidator()
         {
             using (Py.GIL())
             {
-                var module = PythonEngine.ModuleFromString(Guid.NewGuid().ToString(),
-                    "from clr import AddReference\n" +
-                    "AddReference(\"QuantConnect.Common\")\n" +
-                    "from QuantConnect import *\n" +
-                    "from QuantConnect.Data.Market import *\n" +
-                    "class CustomConsolidator():\n" +
+                var module = PyModule.FromString(Guid.NewGuid().ToString(),
+                    "from AlgorithmImports import *\n" +
+                    "class CustomConsolidator(PythonConsolidator):\n" +
                     "   def __init__(self):\n" +
-                    "       self.UpdateWasCalled = False\n" +
-                    "       self.InputType = QuoteBar\n" +
-                    "       self.OutputType = QuoteBar\n" +
-                    "       self.Consolidated = None\n" +
-                    "       self.WorkingData = None\n" +
-                    "   def Update(self, data):\n" +
-                    "       self.UpdateWasCalled = True\n");
+                    "       self.update_was_called = False\n" +
+                    "       self.input_type = QuoteBar\n" +
+                    "       self.output_type = QuoteBar\n" +
+                    "       self.consolidated = None\n" +
+                    "       self.working_data = None\n" +
+                    "   def update(self, data):\n" +
+                    "       self.update_was_called = True\n" +
+                    "   def scan(self, time):\n" +
+                    "       pass\n");
 
                 var customConsolidator = module.GetAttr("CustomConsolidator").Invoke();
-                var wrapper = new DataConsolidatorPythonWrapper(customConsolidator);
+                using var wrapper = new DataConsolidatorPythonWrapper(customConsolidator);
 
                 var time = DateTime.Today;
                 var period = TimeSpan.FromMinutes(1);
@@ -65,7 +71,7 @@ namespace QuantConnect.Tests.Python
                 wrapper.Update(bar1);
 
                 bool called;
-                customConsolidator.GetAttr("UpdateWasCalled").TryConvert(out called);
+                customConsolidator.GetAttr("update_was_called").TryConvert(out called);
                 Assert.True(called);
             }
         }
@@ -75,23 +81,22 @@ namespace QuantConnect.Tests.Python
         {
             using (Py.GIL())
             {
-                var module = PythonEngine.ModuleFromString(Guid.NewGuid().ToString(),
-                    "from clr import AddReference\n" +
-                    "AddReference(\"QuantConnect.Common\")\n" +
-                    "from QuantConnect import *\n" +
-                    "from QuantConnect.Data.Market import *\n" +
-                    "class CustomConsolidator():\n" +
+                var module = PyModule.FromString(Guid.NewGuid().ToString(),
+                    "from AlgorithmImports import *\n" +
+                    "class CustomConsolidator(PythonConsolidator):\n" +
                     "   def __init__(self):\n" +
-                    "       self.ScanWasCalled = False\n" +
-                    "       self.InputType = QuoteBar\n" +
-                    "       self.OutputType = QuoteBar\n" +
-                    "       self.Consolidated = None\n" +
-                    "       self.WorkingData = None\n" +
-                    "   def Scan(self,time):\n" +
-                    "       self.ScanWasCalled = True\n");
+                    "       self.scan_was_called = False\n" +
+                    "       self.input_type = QuoteBar\n" +
+                    "       self.output_type = QuoteBar\n" +
+                    "       self.consolidated = None\n" +
+                    "       self.working_data = None\n" +
+                    "   def update(self, data):\n" +
+                    "       pass\n" +
+                    "   def scan(self, time):\n" +
+                    "       self.scan_was_called = True\n");
 
                 var customConsolidator = module.GetAttr("CustomConsolidator").Invoke();
-                var wrapper = new DataConsolidatorPythonWrapper(customConsolidator);
+                using var wrapper = new DataConsolidatorPythonWrapper(customConsolidator);
 
                 var time = DateTime.Today;
                 var period = TimeSpan.FromMinutes(1);
@@ -99,7 +104,7 @@ namespace QuantConnect.Tests.Python
                 wrapper.Scan(DateTime.Now);
 
                 bool called;
-                customConsolidator.GetAttr("ScanWasCalled").TryConvert(out called);
+                customConsolidator.GetAttr("scan_was_called").TryConvert(out called);
                 Assert.True(called);
             }
         }
@@ -109,20 +114,21 @@ namespace QuantConnect.Tests.Python
         {
             using (Py.GIL())
             {
-                var module = PythonEngine.ModuleFromString(Guid.NewGuid().ToString(),
-                    "from clr import AddReference\n" +
-                    "AddReference(\"QuantConnect.Common\")\n" +
-                    "from QuantConnect import *\n" +
-                    "from QuantConnect.Data.Market import *\n" +
-                    "class CustomConsolidator():\n" +
+                var module = PyModule.FromString(Guid.NewGuid().ToString(),
+                    "from AlgorithmImports import *\n" +
+                    "class CustomConsolidator(PythonConsolidator):\n" +
                     "   def __init__(self):\n" +
-                    "       self.InputType = QuoteBar\n" +
-                    "       self.OutputType = QuoteBar\n" +
-                    "       self.Consolidated = None\n" +
-                    "       self.WorkingData = None\n");
+                    "       self.input_type = QuoteBar\n" +
+                    "       self.output_type = QuoteBar\n" +
+                    "       self.consolidated = None\n" +
+                    "       self.working_data = None\n" +
+                    "   def update(self, data):\n" +
+                    "       pass\n" +
+                    "   def scan(self, time):\n" +
+                    "       pass\n");
 
                 var customConsolidator = module.GetAttr("CustomConsolidator").Invoke();
-                var wrapper = new DataConsolidatorPythonWrapper(customConsolidator);
+                using var wrapper = new DataConsolidatorPythonWrapper(customConsolidator);
 
                 var time = DateTime.Today;
                 var period = TimeSpan.FromMinutes(1);
@@ -137,20 +143,21 @@ namespace QuantConnect.Tests.Python
         {
             using (Py.GIL())
             {
-                var module = PythonEngine.ModuleFromString(Guid.NewGuid().ToString(),
-                    "from clr import AddReference\n" +
-                    "AddReference(\"QuantConnect.Common\")\n" +
-                    "from QuantConnect import *\n" +
-                    "from QuantConnect.Data.Market import *\n" +
-                    "class CustomConsolidator():\n" +
+                var module = PyModule.FromString(Guid.NewGuid().ToString(),
+                    "from AlgorithmImports import *\n" +
+                    "class CustomConsolidator(PythonConsolidator):\n" +
                     "   def __init__(self):\n" +
-                    "       self.InputType = QuoteBar\n" +
-                    "       self.OutputType = QuoteBar\n" +
-                    "       self.Consolidated = None\n" +
-                    "       self.WorkingData = None\n");
+                    "       self.input_type = QuoteBar\n" +
+                    "       self.output_type = QuoteBar\n" +
+                    "       self.consolidated = None\n" +
+                    "       self.working_data = None\n" +
+                    "   def update(self, data):\n" +
+                    "       pass\n" +
+                    "   def scan(self, time):\n" +
+                    "       pass\n");
 
                 var customConsolidator = module.GetAttr("CustomConsolidator").Invoke();
-                var wrapper = new DataConsolidatorPythonWrapper(customConsolidator);
+                using var wrapper = new DataConsolidatorPythonWrapper(customConsolidator);
 
                 var time = DateTime.Today;
                 var period = TimeSpan.FromMinutes(1);
@@ -165,33 +172,32 @@ namespace QuantConnect.Tests.Python
         {
             var parameter = new RegressionTests.AlgorithmStatisticsTestParameters("CustomConsolidatorRegressionAlgorithm",
                 new Dictionary<string, string> {
-                    {"Total Trades", "32"},
-                    {"Average Win", "0.32%"},
-                    {"Average Loss", "-0.02%"},
-                    {"Compounding Annual Return", "66.006%"},
-                    {"Drawdown", "0.300%"},
-                    {"Expectancy", "2.478"},
-                    {"Net Profit", "1.070%"},
-                    {"Sharpe Ratio", "8.835"},
-                    {"Probabilistic Sharpe Ratio", "89.255%"},
-                    {"Loss Rate", "75%"},
-                    {"Win Rate", "25%"},
-                    {"Profit-Loss Ratio", "12.91"},
-                    {"Alpha", "0.525"},
-                    {"Beta", "0.345"},
-                    {"Annual Standard Deviation", "0.081"},
-                    {"Annual Variance", "0.007"},
-                    {"Information Ratio", "1.156"},
-                    {"Tracking Error", "0.144"},
-                    {"Treynor Ratio", "2.07"},
-                    {"Total Fees", "$52.82"}
+                    {PerformanceMetrics.TotalOrders, "15"},
+                    {"Average Win", "0.42%"},
+                    {"Average Loss", "-0.03%"},
+                    {"Compounding Annual Return", "76.673%"},
+                    {"Drawdown", "0.200%"},
+                    {"Expectancy", "4.239"},
+                    {"Net Profit", "1.203%"},
+                    {"Sharpe Ratio", "7.908"},
+                    {"Probabilistic Sharpe Ratio", "95.063%"},
+                    {"Loss Rate", "62%"},
+                    {"Win Rate", "38%"},
+                    {"Profit-Loss Ratio", "12.97"},
+                    {"Alpha", "0.408"},
+                    {"Beta", "0.35"},
+                    {"Annual Standard Deviation", "0.067"},
+                    {"Annual Variance", "0.005"},
+                    {"Information Ratio", "1.484"},
+                    {"Tracking Error", "0.117"},
+                    {"Treynor Ratio", "1.526"},
+                    {"Total Fees", "$24.34"}
                 },
                 Language.Python,
                 AlgorithmStatus.Completed);
 
             AlgorithmRunner.RunLocalBacktest(parameter.Algorithm,
                 parameter.Statistics,
-                parameter.AlphaStatistics,
                 parameter.Language,
                 parameter.ExpectedFinalStatus);
         }
@@ -201,26 +207,23 @@ namespace QuantConnect.Tests.Python
         {
             using (Py.GIL())
             {
-                var module = PythonEngine.ModuleFromString(Guid.NewGuid().ToString(),
-                    "from clr import AddReference\n" +
-                    "AddReference(\"QuantConnect.Common\")\n" +
-                    "from QuantConnect import *\n" +
-                    "from QuantConnect.Data.Consolidators import *\n" +
-                    "from datetime import *\n" +
+                var module = PyModule.FromString(Guid.NewGuid().ToString(),
+                    "from AlgorithmImports import *\n" +
                     "class ImplementingClass():\n" +
                     "   def __init__(self):\n" +
                     "       self.EventCalled = False\n" +
-                    "       self.Consolidator = CustomConsolidator(timedelta(minutes=1))\n" +
+                    "       self.Consolidator = CustomConsolidator(timedelta(minutes=2))\n" +
                     "       self.Consolidator.DataConsolidated += self.ConsolidatorEvent\n" +
                     "   def ConsolidatorEvent(self, sender, bar):\n" +
                     "       self.EventCalled = True\n" +
                     "class CustomConsolidator(QuoteBarConsolidator):\n" +
                     "   def __init__(self,span):\n" +
-                    "       self.Span = span");
+                    "       super().__init__(span)\n" +
+                    "       self.Span = span\n");
 
                 var implementingClass = module.GetAttr("ImplementingClass").Invoke();
                 var customConsolidator = implementingClass.GetAttr("Consolidator");
-                var wrapper = new DataConsolidatorPythonWrapper(customConsolidator);
+                using var wrapper = new DataConsolidatorPythonWrapper(customConsolidator);
 
                 bool called;
                 implementingClass.GetAttr("EventCalled").TryConvert(out called);
@@ -241,9 +244,101 @@ namespace QuantConnect.Tests.Python
                 };
 
                 wrapper.Update(bar1);
-                wrapper.Scan(time.AddMinutes(1));
+                wrapper.Scan(time.AddMinutes(2));
                 implementingClass.GetAttr("EventCalled").TryConvert(out called);
                 Assert.True(called);
+            }
+        }
+
+        [Test]
+        public void SubscriptionManagedDoesNotWrapCSharpConsolidators()
+        {
+            //Setup algorithm and Equity
+            var algorithm = new QCAlgorithm();
+            algorithm.SubscriptionManager.SetDataManager(new DataManagerStub(algorithm));
+            var spy = algorithm.AddEquity("SPY").Symbol;
+
+            using (Py.GIL())
+            {
+                var module = PyModule.FromString(Guid.NewGuid().ToString(),
+                    "from AlgorithmImports import *\n" +
+                    "consolidator = QuoteBarConsolidator(timedelta(5))");
+
+                var pyConsolidator = module.GetAttr("consolidator");
+
+                algorithm.SubscriptionManager.AddConsolidator(spy, pyConsolidator);
+
+                pyConsolidator.TryConvert(out IDataConsolidator consolidator);
+                algorithm.SubscriptionManager.RemoveConsolidator(spy, consolidator);
+
+                var count = algorithm.SubscriptionManager
+                    .SubscriptionDataConfigService
+                    .GetSubscriptionDataConfigs(spy)
+                    .Sum(x => x.Consolidators.Count);
+
+                Assert.AreEqual(0, count);
+                consolidator.Dispose();
+            }
+
+        }
+
+        protected override IEnumerable<IBaseData> GetTestValues()
+        {
+            var time = DateTime.Today;
+            return new List<QuoteBar>()
+            {
+                new QuoteBar(){Time = time, Symbol = Symbols.SPY, Bid = new Bar(1, 2, 0.5m, 1.75m), Ask = new Bar(2.2m, 4.4m, 3.3m, 3.3m), LastBidSize = 10, LastAskSize = 0 },
+                new QuoteBar(){Time = time, Symbol = Symbols.SPY, Bid = new Bar(0, 4, 0.4m, 3.75m), Ask = new Bar(2.3m, 9.4m, 2.3m, 4.5m), LastBidSize = 5, LastAskSize = 4 },
+                new QuoteBar(){Time = time, Symbol = Symbols.SPY, Bid = new Bar(2, 2, 0.9m, 1.45m), Ask = new Bar(2.7m, 8.4m, 3.6m, 3.6m), LastBidSize = 8, LastAskSize = 4 },
+                new QuoteBar(){Time = time, Symbol = Symbols.SPY, Bid = new Bar(2, 6, 2.5m, 5.55m), Ask = new Bar(3.2m, 6.4m, 2.3m, 5.3m), LastBidSize = 9, LastAskSize = 4 },
+                new QuoteBar(){Time = time, Symbol = Symbols.SPY, Bid = new Bar(1, 2, 1.5m, 0.34m), Ask = new Bar(3.6m, 9.4m, 3.7m, 3.8m), LastBidSize = 5, LastAskSize = 8 },
+                new QuoteBar(){Time = time, Symbol = Symbols.SPY, Bid = new Bar(1, 2, 1.1m, 0.75m), Ask = new Bar(3.8m, 8.4m, 7.3m, 5.3m), LastBidSize = 9, LastAskSize = 5 },
+                new QuoteBar(){Time = time, Symbol = Symbols.SPY, Bid = new Bar(3, 3, 2.2m, 1.12m), Ask = new Bar(4.5m, 7.2m, 7.1m, 6.1m), LastBidSize = 6, LastAskSize = 3 },
+            };
+        }
+
+        protected override void AssertConsolidator(IDataConsolidator consolidator)
+        {
+            base.AssertConsolidator(consolidator);
+            using (Py.GIL())
+            {
+                var pythonConsolidator = consolidator as TestDataConsolidatorPythonWrapper;
+                pythonConsolidator.RawIndicator.GetAttr("update_was_called").TryConvert(out bool pythonConsolidatorUpdateWasCalled);
+                Assert.IsFalse(pythonConsolidatorUpdateWasCalled);
+            }
+        }
+
+        protected override IDataConsolidator CreateConsolidator()
+        {
+            using (Py.GIL())
+            {
+                var module = PyModule.FromString(Guid.NewGuid().ToString(),
+                        "from AlgorithmImports import *\n" +
+                        "class CustomConsolidator(PythonConsolidator):\n" +
+                        "   def __init__(self):\n" +
+                        "       self.update_was_called = False\n" +
+                        "       self.input_type = QuoteBar\n" +
+                        "       self.output_type = QuoteBar\n" +
+                        "       self.consolidated = None\n" +
+                        "       self.working_data = None\n" +
+                        "   def update(self, data):\n" +
+                        "       self.update_was_called = True\n" +
+                        "   def scan(self, time):\n" +
+                        "       pass\n" +
+                        "   def reset(self):\n" +
+                        "       self.update_was_called = False\n");
+
+                var customConsolidator = module.GetAttr("CustomConsolidator").Invoke();
+                return new TestDataConsolidatorPythonWrapper(customConsolidator);
+            }
+        }
+
+        public class TestDataConsolidatorPythonWrapper : DataConsolidatorPythonWrapper
+        {
+            public PyObject RawIndicator { get; set; }
+            public TestDataConsolidatorPythonWrapper(PyObject consolidator) : base(consolidator)
+            {
+                RawIndicator = consolidator;
             }
         }
     }

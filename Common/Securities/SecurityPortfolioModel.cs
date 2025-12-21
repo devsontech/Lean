@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -14,8 +14,8 @@
 */
 
 using System;
-using QuantConnect.Logging;
 using QuantConnect.Orders;
+using QuantConnect.Logging;
 using QuantConnect.Orders.Fees;
 
 namespace QuantConnect.Securities
@@ -43,14 +43,12 @@ namespace QuantConnect.Securities
             var closedPosition = false;
             //Make local decimals to avoid any rounding errors from int multiplication
             var quantityHoldings = (decimal)security.Holdings.Quantity;
-            var absoluteHoldingsQuantity = security.Holdings.AbsoluteQuantity;
             var averageHoldingsPrice = security.Holdings.AveragePrice;
 
             try
             {
                 // apply sales value to holdings in the account currency
-                var saleValueInQuoteCurrency = fill.FillPrice * Convert.ToDecimal(fill.AbsoluteFillQuantity) * security.SymbolProperties.ContractMultiplier;
-                var saleValue = saleValueInQuoteCurrency * quoteCash.ConversionRate;
+                var saleValue = security.Holdings.GetQuantityValue(fill.AbsoluteFillQuantity, fill.FillPrice).InAccountCurrency;
                 security.Holdings.AddNewSale(saleValue);
 
                 // subtract transaction fees from the portfolio
@@ -69,16 +67,16 @@ namespace QuantConnect.Securities
 
                 // apply the funds using the current settlement model
                 // we dont adjust funds for futures and CFDs: it is zero upfront payment derivative (margin applies though)
-                // We do however apply funds for futures options, since they affect our cash balance the moment they are purchased/sold.
-                if (security.Type != SecurityType.Future && security.Type != SecurityType.Cfd)
+                // We do however apply funds for futures options, pay/gained premium, since they affect our cash balance the moment they are purchased/sold.
+                if (security.Type != SecurityType.Future && security.Type != SecurityType.Cfd && security.Type != SecurityType.CryptoFuture)
                 {
-                    security.SettlementModel.ApplyFunds(portfolio, security, fill.UtcTime, quoteCash.Symbol, -fill.FillQuantity * fill.FillPrice * security.SymbolProperties.ContractMultiplier);
+                    security.SettlementModel.ApplyFunds(new ApplyFundsSettlementModelParameters(portfolio, security, fill.UtcTime, new CashAmount(-fill.FillQuantity * fill.FillPrice * security.SymbolProperties.ContractMultiplier, quoteCash.Symbol), fill));
                 }
                 if (security.Type == SecurityType.Forex || security.Type == SecurityType.Crypto)
                 {
                     // model forex fills as currency swaps
                     var forex = (IBaseCurrencySymbol) security;
-                    security.SettlementModel.ApplyFunds(portfolio, security, fill.UtcTime, forex.BaseCurrencySymbol, fill.FillQuantity);
+                    security.SettlementModel.ApplyFunds(new ApplyFundsSettlementModelParameters(portfolio, security, fill.UtcTime, new CashAmount(fill.FillQuantity, forex.BaseCurrency.Symbol), fill));
                 }
 
                 // did we close or open a position further?
@@ -88,28 +86,17 @@ namespace QuantConnect.Securities
                 // calculate the last trade profit
                 if (closedPosition)
                 {
-                    // profit = (closed sale value - cost)*conversion to account currency
-                    // closed sale value = quantity closed * fill price       BUYs are deemed negative cash flow
-                    // cost = quantity closed * average holdings price        SELLS are deemed positive cash flow
-                    var absoluteQuantityClosed = Math.Min(fill.AbsoluteFillQuantity, absoluteHoldingsQuantity);
-                    var closedSaleValueInQuoteCurrency = Math.Sign(-fill.FillQuantity)*fill.FillPrice*absoluteQuantityClosed;
-                    var closedCost = Math.Sign(-fill.FillQuantity)*absoluteQuantityClosed*averageHoldingsPrice;
-                    var lastTradeProfit = (closedSaleValueInQuoteCurrency - closedCost)
-                        * security.SymbolProperties.ContractMultiplier;
-                    var lastTradeProfitInAccountCurrency = lastTradeProfit * security.QuoteCurrency.ConversionRate;
-
-                    // Reflect account cash adjustment for futures/CFD position
-                    if (security.Type == SecurityType.Future || security.Type == SecurityType.Cfd)
-                    {
-                        security.SettlementModel.ApplyFunds(portfolio, security, fill.UtcTime, quoteCash.Symbol, lastTradeProfit);
-                    }
+                    var lastTradeProfit = ProcessCloseTradeProfit(portfolio, security, fill);
 
                     //Update Vehicle Profit Tracking:
+                    var lastTradeProfitInAccountCurrency = lastTradeProfit.InAccountCurrency;
                     security.Holdings.AddNewProfit(lastTradeProfitInAccountCurrency);
                     security.Holdings.SetLastTradeProfit(lastTradeProfitInAccountCurrency);
-                    portfolio.AddTransactionRecord(security.LocalTime.ConvertToUtc(
-                        security.Exchange.TimeZone),
-                        lastTradeProfitInAccountCurrency - 2 * feeInAccountCurrency);
+                    var transactionProfitLoss = lastTradeProfitInAccountCurrency - 2 * feeInAccountCurrency;
+                    portfolio.AddTransactionRecord(
+                        security.LocalTime.ConvertToUtc(security.Exchange.TimeZone),
+                        transactionProfitLoss,
+                        fill.IsWin(security, transactionProfitLoss));
                 }
 
                 //UPDATE HOLDINGS QUANTITY, AVG PRICE:
@@ -182,6 +169,32 @@ namespace QuantConnect.Securities
 
             //Set the results back to the vehicle.
             security.Holdings.SetHoldings(averageHoldingsPrice, quantityHoldings);
+        }
+
+        /// <summary>
+        /// Helper method to determine the close trade profit
+        /// </summary>
+        protected virtual ConvertibleCashAmount ProcessCloseTradeProfit(SecurityPortfolioManager portfolio, Security security, OrderEvent fill)
+        {
+            var absoluteHoldingsQuantity = security.Holdings.AbsoluteQuantity;
+
+            // profit = (closed sale value - cost)*conversion to account currency
+            // closed sale value = quantity closed * fill price       BUYs are deemed negative cash flow
+            // cost = quantity closed * average holdings price        SELLS are deemed positive cash flow
+            var absoluteQuantityClosed = Math.Min(fill.AbsoluteFillQuantity, absoluteHoldingsQuantity);
+            var quantityClosed = Math.Sign(-fill.FillQuantity) * absoluteQuantityClosed;
+            var closedCost = security.Holdings.GetQuantityValue(quantityClosed, security.Holdings.AveragePrice);
+            var closedSaleValueInQuoteCurrency = security.Holdings.GetQuantityValue(quantityClosed, fill.FillPrice);
+
+            var lastTradeProfit = new ConvertibleCashAmount(closedSaleValueInQuoteCurrency.Amount - closedCost.Amount, closedSaleValueInQuoteCurrency.Cash);
+
+            // Reflect account cash adjustment for futures/CFD position
+            if (security.Type == SecurityType.Future || security.Type == SecurityType.Cfd || security.Type == SecurityType.CryptoFuture)
+            {
+                security.SettlementModel.ApplyFunds(new ApplyFundsSettlementModelParameters(portfolio, security, fill.UtcTime, lastTradeProfit, fill));
+            }
+
+            return lastTradeProfit;
         }
     }
 }

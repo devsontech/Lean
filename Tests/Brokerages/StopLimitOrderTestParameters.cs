@@ -24,8 +24,8 @@ namespace QuantConnect.Tests.Brokerages
         private readonly decimal _highLimit;
         private readonly decimal _lowLimit;
 
-        public StopLimitOrderTestParameters(Symbol symbol, decimal highLimit, decimal lowLimit, IOrderProperties properties = null)
-            : base(symbol, properties)
+        public StopLimitOrderTestParameters(Symbol symbol, decimal highLimit, decimal lowLimit, IOrderProperties properties = null, OrderSubmissionData orderSubmissionData = null)
+            : base(symbol, properties, orderSubmissionData)
         {
             _highLimit = highLimit;
             _lowLimit = lowLimit;
@@ -33,46 +33,38 @@ namespace QuantConnect.Tests.Brokerages
 
         public override Order CreateShortOrder(decimal quantity)
         {
-            return new StopLimitOrder(Symbol, -Math.Abs(quantity), _lowLimit, _highLimit, DateTime.Now, properties: Properties)
+            return new StopLimitOrder(Symbol, -Math.Abs(quantity), _lowLimit, _highLimit, DateTime.UtcNow, properties: Properties)
             {
-                OrderSubmissionData = OrderSubmissionData
+                Status = OrderStatus.New,
+                OrderSubmissionData = OrderSubmissionData,
+                PriceCurrency = GetSymbolProperties(Symbol).QuoteCurrency
             };
         }
 
         public override Order CreateLongOrder(decimal quantity)
         {
-            return new StopLimitOrder(Symbol, Math.Abs(quantity), _highLimit, _lowLimit, DateTime.Now, properties: Properties)
+            return new StopLimitOrder(Symbol, Math.Abs(quantity), _highLimit, _lowLimit, DateTime.UtcNow, properties: Properties)
             {
-                OrderSubmissionData = OrderSubmissionData
+                Status = OrderStatus.New,
+                OrderSubmissionData = OrderSubmissionData,
+                PriceCurrency = GetSymbolProperties(Symbol).QuoteCurrency
             };
         }
 
         public override bool ModifyOrderToFill(IBrokerage brokerage, Order order, decimal lastMarketPrice)
         {
+            var roundOffPlaces = GetSymbolProperties(order.Symbol).MinimumPriceVariation.GetDecimalPlaces();
             var stop = (StopLimitOrder)order;
             var previousStop = stop.StopPrice;
             if (order.Quantity > 0)
             {
                 // for stop buys we need to decrease the stop price
-                stop.StopPrice = Math.Min(stop.StopPrice, Math.Max(stop.StopPrice / 2, Math.Round(lastMarketPrice, 2, MidpointRounding.AwayFromZero)));
-
-                //change behaviour for forex type unit tests
-                if (order.SecurityType == SecurityType.Forex || order.SecurityType == SecurityType.Crypto)
-                {
-                    stop.StopPrice = Math.Min(stop.StopPrice, Math.Max(stop.StopPrice / 2, Math.Round(lastMarketPrice, 4, MidpointRounding.AwayFromZero)));
-                }
+                stop.StopPrice = Math.Min(stop.StopPrice, Math.Max(stop.StopPrice / 2, Math.Round(lastMarketPrice, roundOffPlaces, MidpointRounding.AwayFromZero)));
             }
             else
             {
                 // for stop sells we need to increase the stop price
-                stop.StopPrice = Math.Max(stop.StopPrice, Math.Min(stop.StopPrice * 2, Math.Round(lastMarketPrice, 2, MidpointRounding.AwayFromZero)));
-
-
-                //change behaviour for forex type unit tests
-                if (order.SecurityType == SecurityType.Forex || order.SecurityType == SecurityType.Crypto)
-                {
-                    stop.StopPrice = Math.Max(stop.StopPrice, Math.Min(stop.StopPrice * 2, Math.Round(lastMarketPrice, 4, MidpointRounding.AwayFromZero)));
-                }
+                stop.StopPrice = Math.Max(stop.StopPrice, Math.Min(stop.StopPrice * 2, Math.Round(lastMarketPrice, roundOffPlaces, MidpointRounding.AwayFromZero)));
             }
             stop.LimitPrice = stop.StopPrice;
             return stop.StopPrice != previousStop;
@@ -82,6 +74,11 @@ namespace QuantConnect.Tests.Brokerages
         public override OrderStatus ExpectedStatus => OrderStatus.Submitted;
 
         public override bool ExpectedCancellationResult => true;
+
+        public override string ToString()
+        {
+            return $"{OrderType.StopLimit}: {SecurityType}, {Symbol}";
+        }
     }
 
     // to be used with brokerages which do not support UpdateOrder

@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,17 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("System")
-AddReference("QuantConnect.Algorithm")
-AddReference("QuantConnect.Common")
-
-from System import *
-from QuantConnect import *
-from QuantConnect.Algorithm import QCAlgorithm
-from QuantConnect.Data import SubscriptionDataSource
-from QuantConnect.Python import PythonData
-from datetime import date, timedelta, datetime
+from AlgorithmImports import *
 
 ### <summary>
 ### This algorithm shows how to grab symbols from an external api each day
@@ -34,43 +24,43 @@ from datetime import date, timedelta, datetime
 ### <meta name="tag" content="custom universes" />
 class CustomDataUniverseAlgorithm(QCAlgorithm):
 
-    def Initialize(self):
+    def initialize(self):
 
         # Data ADDED via universe selection is added with Daily resolution.
-        self.UniverseSettings.Resolution = Resolution.Daily
+        self.universe_settings.resolution = Resolution.DAILY
 
-        self.SetStartDate(2015,1,5)
-        self.SetEndDate(2015,7,1)
-        self.SetCash(100000)
+        self.set_start_date(2015,1,5)
+        self.set_end_date(2015,7,1)
+        self.set_cash(100000)
 
-        self.AddEquity("SPY", Resolution.Daily)
-        self.SetBenchmark("SPY")
+        self.add_equity("SPY", Resolution.DAILY)
+        self.set_benchmark("SPY")
 
         # add a custom universe data source (defaults to usa-equity)
-        self.AddUniverse(NyseTopGainers, "universe-nyse-top-gainers", Resolution.Daily, self.nyseTopGainers)
+        self.add_universe(NyseTopGainers, "universe-nyse-top-gainers", Resolution.DAILY, self.nyse_top_gainers)
     
-    def nyseTopGainers(self, data):
-        return [ x.Symbol for x in data if x["TopGainersRank"] <= 2 ]
+    def nyse_top_gainers(self, data):
+        return [ x.symbol for x in data if x["TopGainersRank"] <= 2 ]
 
 
-    def OnData(self, slice):
+    def on_data(self, slice):
         pass
     
-    def OnSecuritiesChanged(self, changes):
+    def on_securities_changed(self, changes):
         self._changes = changes
 
-        for security in changes.RemovedSecurities:
+        for security in changes.removed_securities:
             #  liquidate securities that have been removed
-            if security.Invested:
-                self.Liquidate(security.Symbol)
-                self.Log("Exit {0} at {1}".format(security.Symbol, security.Close))
+            if security.invested:
+                self.liquidate(security.symbol)
+                self.log("Exit {0} at {1}".format(security.symbol, security.close))
 
-        for security in changes.AddedSecurities:
+        for security in changes.added_securities:
             # enter short positions on new securities
-            if not security.Invested and security.Close != 0:
-                qty = self.CalculateOrderQuantity(security.Symbol, -0.25)
-                self.MarketOnOpenOrder(security.Symbol, qty)
-                self.Log("Enter {0} at {1}".format(security.Symbol, security.Close))
+            if not security.invested and security.close != 0:
+                qty = self.calculate_order_quantity(security.symbol, -0.25)
+                self.market_on_open_order(security.symbol, qty)
+                self.log("Enter {0} at {1}".format(security.symbol, security.close))
 
         
 class NyseTopGainers(PythonData):
@@ -78,22 +68,22 @@ class NyseTopGainers(PythonData):
         self.count = 0
         self.last_date = datetime.min
 
-    def GetSource(self, config, date, isLiveMode):
-        url = "http://www.wsj.com/mdc/public/page/2_3021-gainnyse-gainer.html" if isLiveMode else \
+    def get_source(self, config, date, is_live_mode):
+        url = "http://www.wsj.com/mdc/public/page/2_3021-gainnyse-gainer.html" if is_live_mode else \
             "https://www.dropbox.com/s/vrn3p38qberw3df/nyse-gainers.csv?dl=1"
 
-        return SubscriptionDataSource(url, SubscriptionTransportMedium.RemoteFile)
+        return SubscriptionDataSource(url, SubscriptionTransportMedium.REMOTE_FILE)
     
-    def Reader(self, config, line, date, isLiveMode):
+    def reader(self, config, line, date, is_live_mode):
         
-        if not isLiveMode:
+        if not is_live_mode:
             # backtest gets data from csv file in dropbox
             if not (line.strip() and line[0].isdigit()): return None
             csv = line.split(',')
             nyse = NyseTopGainers()
-            nyse.Time = datetime.strptime(csv[0], "%Y%m%d")
-            nyse.EndTime = nyse.Time + timedelta(1)
-            nyse.Symbol = Symbol.Create(csv[1], SecurityType.Equity, Market.USA)
+            nyse.time = datetime.strptime(csv[0], "%Y%m%d")
+            nyse.end_time = nyse.time + timedelta(1)
+            nyse.symbol = Symbol.create(csv[1], SecurityType.EQUITY, Market.USA)
             nyse["TopGainersRank"] = int(csv[2])
             return nyse
 
@@ -114,9 +104,9 @@ class NyseTopGainers(PythonData):
 
         symbol_string = line[last_open_paren + 1:last_close_paren]
         nyse = NyseTopGainers()
-        nyse.Time = date
-        nyse.EndTime = nyse.Time + timedelta(1)
-        nyse.Symbol = Symbol.Create(symbol_string, SecurityType.Equity, Market.USA)
+        nyse.time = date
+        nyse.end_time = nyse.time + timedelta(1)
+        nyse.symbol = Symbol.create(symbol_string, SecurityType.EQUITY, Market.USA)
         nyse["TopGainersRank"] = self.count
         self.count = self.count + 1
         return nyse

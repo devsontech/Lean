@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,46 +11,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("System")
-AddReference("QuantConnect.Algorithm")
-AddReference("QuantConnect.Algorithm.Framework")
-AddReference("QuantConnect.Common")
-
-from System import *
-from QuantConnect import *
-from QuantConnect.Orders import *
-from QuantConnect.Algorithm import *
-from QuantConnect.Algorithm.Framework import *
-from QuantConnect.Algorithm.Framework.Alphas import *
-from QuantConnect.Algorithm.Framework.Execution import *
-from QuantConnect.Algorithm.Framework.Portfolio import *
-from QuantConnect.Algorithm.Framework.Selection import *
-from datetime import timedelta
+from AlgorithmImports import *
 
 ### <summary>
 ### Regression algorithm testing portfolio construction model control over rebalancing,
 ### specifying a date rules, see GH 4075.
 ### </summary>
 class PortfolioRebalanceOnDateRulesRegressionAlgorithm(QCAlgorithm):
-    def Initialize(self):
+    def initialize(self):
         ''' Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. All algorithms must initialized.'''
 
-        self.UniverseSettings.Resolution = Resolution.Daily
+        self.universe_settings.resolution = Resolution.DAILY
 
-        self.SetStartDate(2015,1,1)
-        self.SetEndDate(2017,1,1)
+        # Order margin value has to have a minimum of 0.5% of Portfolio value, allows filtering out small trades and reduce fees.
+        # Commented so regression algorithm is more sensitive
+        #self.settings.minimum_order_margin_portfolio_percentage = 0.005
 
-        self.Settings.RebalancePortfolioOnInsightChanges = False;
-        self.Settings.RebalancePortfolioOnSecurityChanges = False;
+        # let's use 0 minimum order margin percentage so we can assert trades are only submitted immediately after rebalance on Wednesday
+        # if not, due to TPV variations happening every day we might no cross the minimum on wednesday but yes another day of the week
+        self.settings.minimum_order_margin_portfolio_percentage = 0
 
-        self.SetUniverseSelection(CustomUniverseSelectionModel("CustomUniverseSelectionModel", lambda time: [ "AAPL", "IBM", "FB", "SPY" ]))
-        self.SetAlpha(ConstantAlphaModel(InsightType.Price, InsightDirection.Up, TimeSpan.FromMinutes(20), 0.025, None))
-        self.SetPortfolioConstruction(EqualWeightingPortfolioConstructionModel(self.DateRules.Every(DayOfWeek.Wednesday)))
-        self.SetExecution(ImmediateExecutionModel())
+        self.set_start_date(2015,1,1)
+        self.set_end_date(2017,1,1)
 
-    def OnOrderEvent(self, orderEvent):
-        if orderEvent.Status == OrderStatus.Submitted:
-            self.Debug(str(orderEvent));
-            if self.UtcTime.weekday() != 2:
-                raise ValueError(str(self.UtcTime) + " " + str(orderEvent.Symbol) + " " + str(self.UtcTime.weekday()));
+        self.settings.rebalance_portfolio_on_insight_changes = False
+        self.settings.rebalance_portfolio_on_security_changes = False
+
+        self.set_universe_selection(CustomUniverseSelectionModel("CustomUniverseSelectionModel", lambda time: [ "AAPL", "IBM", "FB", "SPY" ]))
+        self.set_alpha(ConstantAlphaModel(InsightType.PRICE, InsightDirection.UP, TimeSpan.from_minutes(20), 0.025, None))
+        self.set_portfolio_construction(EqualWeightingPortfolioConstructionModel(self.date_rules.every(DayOfWeek.WEDNESDAY)))
+        self.set_execution(ImmediateExecutionModel())
+
+    def on_order_event(self, order_event):
+        if order_event.status == OrderStatus.SUBMITTED:
+            self.debug(str(order_event))
+            if self.utc_time.weekday() != 2:
+                raise ValueError(str(self.utc_time) + " " + str(order_event.symbol) + " " + str(self.utc_time.weekday()))

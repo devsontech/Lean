@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -17,11 +17,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using QuantConnect.Data.Market;
-using QuantConnect.Interfaces;
 using QuantConnect.Securities;
 using QuantConnect.Securities.Future;
-using QuantConnect.Util;
 
 namespace QuantConnect.Data.UniverseSelection
 {
@@ -30,8 +27,20 @@ namespace QuantConnect.Data.UniverseSelection
     /// </summary>
     public class FuturesChainUniverse : Universe
     {
-        private readonly UniverseSettings _universeSettings;
-        private DateTime _cacheDate;
+        /// <summary>
+        /// True if this universe filter can run async in the data stack
+        /// </summary>
+        public override bool Asynchronous
+        {
+            get
+            {
+                if (UniverseSettings.Asynchronous.HasValue)
+                {
+                    return UniverseSettings.Asynchronous.Value;
+                }
+                return Future.ContractFilter.Asynchronous;
+            }
+        }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="FuturesChainUniverse"/> class
@@ -43,25 +52,7 @@ namespace QuantConnect.Data.UniverseSelection
             : base(future.SubscriptionDataConfig)
         {
             Future = future;
-            _universeSettings = universeSettings;
-        }
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="FuturesChainUniverse"/> class
-        /// </summary>
-        /// <param name="future">The canonical future chain security</param>
-        /// <param name="universeSettings">The universe settings to be used for new subscriptions</param>
-        /// <param name="subscriptionManager">The subscription manager used to return available data types</param>
-        /// <param name="securityInitializer">The security initializer to use on newly created securities</param>
-        [Obsolete("This constructor is obsolete because SecurityInitializer is obsolete and will not be used.")]
-        public FuturesChainUniverse(Future future,
-                                    UniverseSettings universeSettings,
-                                    SubscriptionManager subscriptionManager,
-                                    ISecurityInitializer securityInitializer = null)
-            : base(future.SubscriptionDataConfig, securityInitializer)
-        {
-            Future = future;
-            _universeSettings = universeSettings;
+            UniverseSettings = universeSettings;
         }
 
         /// <summary>
@@ -74,7 +65,14 @@ namespace QuantConnect.Data.UniverseSelection
         /// </summary>
         public override UniverseSettings UniverseSettings
         {
-            get { return _universeSettings; }
+            set
+            {
+                if (value != null)
+                {
+                    // make sure data mode is raw
+                    base.UniverseSettings = new UniverseSettings(value) { DataNormalizationMode = DataNormalizationMode.Raw };
+                }
+            }
         }
 
         /// <summary>
@@ -85,94 +83,11 @@ namespace QuantConnect.Data.UniverseSelection
         /// <returns>The data that passes the filter</returns>
         public override IEnumerable<Symbol> SelectSymbols(DateTime utcTime, BaseDataCollection data)
         {
-            var futuresUniverseDataCollection = data as FuturesChainUniverseDataCollection;
-            if (futuresUniverseDataCollection == null)
-            {
-                throw new ArgumentException($"Expected data of type '{typeof(FuturesChainUniverseDataCollection).Name}'");
-            }
+            var localEndTime = utcTime.ConvertFromUtc(Future.Exchange.TimeZone);
+            var availableContracts = data.Data.Cast<FutureUniverse>().ToList();
+            var results = Future.ContractFilter.Filter(new FutureFilterUniverse(availableContracts, localEndTime));
 
-            var underlying = new Tick { Time = utcTime };
-
-            // date change detection needs to be done in exchange time zone
-            if (_cacheDate == data.Time.ConvertFromUtc(Future.Exchange.TimeZone).Date)
-            {
-                return Unchanged;
-            }
-
-            var availableContracts = futuresUniverseDataCollection.Data.Select(x => x.Symbol);
-            var results = Future.ContractFilter.Filter(new FutureFilterUniverse(availableContracts, underlying));
-
-            // if results are not dynamic, we cache them and won't call filtering till the end of the day
-            if (!results.IsDynamic)
-            {
-                _cacheDate = data.Time.ConvertFromUtc(Future.Exchange.TimeZone).Date;
-            }
-
-            var resultingSymbols = results.ToHashSet();
-
-            futuresUniverseDataCollection.FilteredContracts = resultingSymbols;
-
-            return resultingSymbols;
-        }
-
-        /// <summary>
-        /// Determines whether or not the specified security can be removed from
-        /// this universe. This is useful to prevent securities from being taken
-        /// out of a universe before the algorithm has had enough time to make
-        /// decisions on the security
-        /// </summary>
-        /// <param name="utcTime">The current utc time</param>
-        /// <param name="security">The security to check if its ok to remove</param>
-        /// <returns>True if we can remove the security, false otherwise</returns>
-        public override bool CanRemoveMember(DateTime utcTime, Security security)
-        {
-            // can always remove securities after dispose requested
-            if (DisposeRequested)
-            {
-                return true;
-            }
-
-            // if we haven't begun receiving data for this security then it's safe to remove
-            var lastData = security.Cache.GetData();
-            if (lastData == null)
-            {
-                return true;
-            }
-
-            // only remove members on day changes, this prevents us from needing to
-            // fast forward contracts continuously as price moves and out filtered
-            // contracts change thoughout the day
-            var localTime = utcTime.ConvertFromUtc(security.Exchange.TimeZone);
-            if (localTime.Date != lastData.Time.Date)
-            {
-                return true;
-            }
-            return false;
-        }
-
-        /// <summary>
-        /// Gets the subscription requests to be added for the specified security
-        /// </summary>
-        /// <param name="security">The security to get subscriptions for</param>
-        /// <param name="currentTimeUtc">The current time in utc. This is the frontier time of the algorithm</param>
-        /// <param name="maximumEndTimeUtc">The max end time</param>
-        /// <param name="subscriptionService">Instance which implements <see cref="ISubscriptionDataConfigService"/> interface</param>
-        /// <returns>All subscriptions required by this security</returns>
-        public override IEnumerable<SubscriptionRequest> GetSubscriptionRequests(Security security, DateTime currentTimeUtc, DateTime maximumEndTimeUtc,
-            ISubscriptionDataConfigService subscriptionService)
-        {
-            if (Future.Symbol.Underlying == security.Symbol)
-            {
-                Future.Underlying = security;
-            }
-            else
-            {
-                // set the underlying security and pricing model from the canonical security
-                var future = (Future)security;
-                future.Underlying = Future.Underlying;
-            }
-
-            return base.GetSubscriptionRequests(security, currentTimeUtc, maximumEndTimeUtc, subscriptionService);
+            return results.Select(x => x.Symbol);
         }
     }
 }

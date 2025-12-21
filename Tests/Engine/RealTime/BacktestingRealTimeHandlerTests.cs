@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -28,6 +28,7 @@ using QuantConnect.Lean.Engine.Results;
 using QuantConnect.Packets;
 using QuantConnect.Scheduling;
 using QuantConnect.Securities;
+using QuantConnect.Tests.Common.Data.UniverseSelection;
 using QuantConnect.Tests.Engine.DataFeeds;
 
 namespace QuantConnect.Tests.Engine.RealTime
@@ -147,13 +148,14 @@ namespace QuantConnect.Tests.Engine.RealTime
             for (var i = 0; i < 100; i++)
             {
                 var id = i;
-                realTimeHandler.Add(new ScheduledEvent($"{id}", eventTime,
+                using var scheduleEvent = new ScheduledEvent($"{id}", eventTime,
                     (s, time) =>
                     {
                         Assert.AreEqual(id, count);
                         Assert.AreEqual(s, $"{id}");
                         count++;
-                    }));
+                    });
+                realTimeHandler.Add(scheduleEvent);
             }
 
             realTimeHandler.SetTime(DateTime.UtcNow);
@@ -175,7 +177,7 @@ namespace QuantConnect.Tests.Engine.RealTime
 
             var count = 0;
             var asserts = 0;
-            realTimeHandler.Add(new ScheduledEvent("1",
+            using var scheduledEvent = new ScheduledEvent("1",
                 new List<DateTime> { date, date.AddMinutes(10) },
                 (s, time) =>
                 {
@@ -190,9 +192,10 @@ namespace QuantConnect.Tests.Engine.RealTime
                         asserts++;
                         Assert.AreEqual(date.AddMinutes(10), time);
                     }
-                }));
+                });
+            realTimeHandler.Add(scheduledEvent);
 
-            realTimeHandler.Add(new ScheduledEvent("2",
+            using var scheduledEvent2 = new ScheduledEvent("2",
                 new List<DateTime> { date.AddMinutes(1), date.AddMinutes(2) },
                 (s, time) =>
                 {
@@ -207,7 +210,8 @@ namespace QuantConnect.Tests.Engine.RealTime
                         asserts++;
                         Assert.AreEqual(date.AddMinutes(2), time);
                     }
-                }));
+                });
+            realTimeHandler.Add(scheduledEvent2);
 
             if (oneStep)
             {
@@ -315,7 +319,7 @@ namespace QuantConnect.Tests.Engine.RealTime
 
             var count = 0;
             var asserts = 0;
-            realTimeHandler.Add(new ScheduledEvent("1",
+            using var scheduledEvent = new ScheduledEvent("1",
                 new List<DateTime> { date, date.AddMinutes(10) },
                 (s, time) =>
                 {
@@ -330,9 +334,10 @@ namespace QuantConnect.Tests.Engine.RealTime
                         asserts++;
                         Assert.AreEqual(date.AddMinutes(10), time);
                     }
-                }));
+                });
+            realTimeHandler.Add(scheduledEvent);
 
-            realTimeHandler.Add(new ScheduledEvent("2",
+            using var scheduledEvent2 = new ScheduledEvent("2",
                 new List<DateTime> { date.AddMinutes(1), date.AddMinutes(2) },
                 (s, time) =>
                 {
@@ -347,7 +352,8 @@ namespace QuantConnect.Tests.Engine.RealTime
                         asserts++;
                         Assert.AreEqual(date.AddMinutes(2), time);
                     }
-                }));
+                });
+            realTimeHandler.Add(scheduledEvent2);
 
             if (oneStep)
             {
@@ -399,7 +405,7 @@ namespace QuantConnect.Tests.Engine.RealTime
             Assert.AreEqual(0, realTimeHandler.GetScheduledEventsCount);
 
             realTimeHandler.OnSecuritiesChanged(
-                new SecurityChanges(new[] { security }, Enumerable.Empty<Security>()));
+                SecurityChangesTests.CreateNonInternal(new[] { security }, Enumerable.Empty<Security>()));
 
             Assert.AreEqual(0, realTimeHandler.GetScheduledEventsCount);
 
@@ -441,9 +447,39 @@ namespace QuantConnect.Tests.Engine.RealTime
             Assert.AreEqual(0, realTimeHandler.GetScheduledEventsCount);
 
             realTimeHandler.OnSecuritiesChanged(
-                new SecurityChanges(new[] { security }, Enumerable.Empty<Security>()));
+                SecurityChangesTests.CreateNonInternal(new[] { security }, Enumerable.Empty<Security>()));
 
             Assert.AreEqual(1, realTimeHandler.GetScheduledEventsCount);
+            realTimeHandler.Exit();
+        }
+
+        [Test]
+        public void IgnoresInternalSecurityChanges()
+        {
+            var algorithm = new TestAlgorithmB();
+            var security = (algorithm as QCAlgorithm).AddEquity("SPY");
+
+            var realTimeHandler = new TestBacktestingRealTimeHandler();
+            realTimeHandler.Setup(algorithm,
+                new AlgorithmNodePacket(PacketType.AlgorithmNode) { Language = Language.CSharp },
+                _resultHandler,
+                null,
+                new TestTimeLimitManager());
+
+            Assert.AreEqual(0, realTimeHandler.GetScheduledEventsCount);
+
+            realTimeHandler.OnSecuritiesChanged(SecurityChanges.Create([], [], [security], []));
+            Assert.AreEqual(0, realTimeHandler.GetScheduledEventsCount);
+
+            realTimeHandler.OnSecuritiesChanged(SecurityChanges.Create([security], [], [], []));
+            Assert.AreEqual(1, realTimeHandler.GetScheduledEventsCount);
+
+            realTimeHandler.OnSecuritiesChanged(SecurityChanges.Create([], [], [], [security]));
+            Assert.AreEqual(1, realTimeHandler.GetScheduledEventsCount);
+
+            realTimeHandler.OnSecuritiesChanged(SecurityChanges.Create([], [security], [], []));
+            Assert.AreEqual(0, realTimeHandler.GetScheduledEventsCount);
+
             realTimeHandler.Exit();
         }
 

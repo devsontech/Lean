@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,35 +11,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("System")
-AddReference("QuantConnect.Algorithm")
-AddReference("QuantConnect.Common")
-
-from System import *
-from QuantConnect import *
-from QuantConnect.Algorithm import *
+from AlgorithmImports import *
 
 ### <summary>
 ### Basic algorithm using SetAccountCurrency
 ### </summary>
 class BasicSetAccountCurrencyAlgorithm(QCAlgorithm):
-    def Initialize(self):
+    def initialize(self):
         '''Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. All algorithms must initialized.'''
 
-        self.SetStartDate(2018, 4, 4)  #Set Start Date
-        self.SetEndDate(2018, 4, 4)    #Set End Date
+        self.set_start_date(2018, 4, 4)  #Set Start Date
+        self.set_end_date(2018, 4, 4)    #Set End Date
+        self.set_brokerage_model(BrokerageName.GDAX, AccountType.CASH)
+        self.set_account_currency_and_amount()
+
+        self._btc_eur = self.add_crypto("BTCEUR").symbol
+
+    def set_account_currency_and_amount(self):
         # Before setting any cash or adding a Security call SetAccountCurrency
-        self.SetAccountCurrency("EUR");
-        self.SetCash(100000)           #Set Strategy Cash
+        self.set_account_currency("EUR")
+        self.set_cash(100000)           #Set Strategy Cash
 
-        self._btcEur = self.AddCrypto("BTCEUR").Symbol
-
-    def OnData(self, data):
+    def on_data(self, data):
         '''OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
 
         Arguments:
             data: Slice object keyed by symbol containing the stock data
         '''
-        if not self.Portfolio.Invested:
-            self.SetHoldings(self._btcEur, 1)
+        if not self.portfolio.invested:
+            self.set_holdings(self._btc_eur, 1)

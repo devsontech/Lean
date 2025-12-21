@@ -22,6 +22,7 @@ using QuantConnect.Data.Market;
 using QuantConnect.Indicators;
 using QuantConnect.Interfaces;
 using QuantConnect.Securities;
+using QuantConnect.Securities.Future;
 
 namespace QuantConnect.Algorithm.CSharp
 {
@@ -30,90 +31,136 @@ namespace QuantConnect.Algorithm.CSharp
     /// </summary>
     public class ConsolidateRegressionAlgorithm : QCAlgorithm, IRegressionAlgorithmDefinition
     {
-        private List<int> _consolidationCount;
-        private int _customDataConsolidator;
-        private Symbol _symbol;
+        private List<int> _consolidationCounts;
+        private List<int> _expectedConsolidationCounts;
+        private List<SimpleMovingAverage> _smas;
+        private List<DateTime> _lastSmaUpdates;
+        private int _customDataConsolidatorCount;
+        private Future _future;
 
         /// <summary>
         /// Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. All algorithms must initialized.
         /// </summary>
         public override void Initialize()
         {
-            SetStartDate(2013, 10, 08);
-            SetEndDate(2013, 10, 09);
+            SetStartDate(2020, 01, 05);
+            SetEndDate(2020, 01, 20);
 
             var SP500 = QuantConnect.Symbol.Create(Futures.Indices.SP500EMini, SecurityType.Future, Market.CME);
-            _symbol = FutureChainProvider.GetFutureContractList(SP500, StartDate).First();
-            AddFutureContract(_symbol);
+            var symbol = FuturesChain(SP500).OrderBy(x => x.Symbol.ID.Date).First();
+            _future = AddFutureContract(symbol);
 
-            _consolidationCount = new List<int> { 0, 0, 0, 0, 0, 0, 0, 0 };
+            var tradableDatesCount = QuantConnect.Time.EachTradeableDayInTimeZone(_future.Exchange.Hours,
+                StartDate,
+                EndDate,
+                _future.Exchange.TimeZone,
+                false).Count();
+            _expectedConsolidationCounts = new(10);
 
-            var sma = new SimpleMovingAverage(10);
-            Consolidate<QuoteBar>(_symbol, time => new CalendarInfo(time.RoundDown(TimeSpan.FromDays(1)), TimeSpan.FromDays(1)),
-                bar => UpdateQuoteBar(sma, bar, 0));
+            Consolidate<QuoteBar>(symbol, time => new CalendarInfo(time.RoundDown(TimeSpan.FromDays(1)), TimeSpan.FromDays(1)),
+                bar => UpdateQuoteBar(bar, 0));
+            // The consolidator will respect the full 1 day bar span and will not consolidate the last tradable date,
+            // since scan will not be called at 202/01/21 12am
+            _expectedConsolidationCounts.Add(tradableDatesCount - 1);
 
-            var sma2 = new SimpleMovingAverage(10);
-            Consolidate<QuoteBar>(_symbol, TimeSpan.FromDays(1), bar => UpdateQuoteBar(sma2, bar, 1));
+            Consolidate<QuoteBar>(symbol, time => new CalendarInfo(time.RoundDown(TimeSpan.FromDays(1)), TimeSpan.FromDays(1)),
+                TickType.Quote, bar => UpdateQuoteBar(bar, 1));
+            _expectedConsolidationCounts.Add(tradableDatesCount - 1);
 
-            var sma3 = new SimpleMovingAverage(10);
-            Consolidate(_symbol, Resolution.Daily, TickType.Quote, (Action<QuoteBar>)(bar => UpdateQuoteBar(sma3, bar, 2)));
+            Consolidate<QuoteBar>(symbol, TimeSpan.FromDays(1), bar => UpdateQuoteBar(bar, 2));
+            _expectedConsolidationCounts.Add(tradableDatesCount - 1);
 
-            var sma4 = new SimpleMovingAverage(10);
-            Consolidate(_symbol, TimeSpan.FromDays(1), bar => UpdateTradeBar(sma4, bar, 3));
+            Consolidate(symbol, Resolution.Daily, TickType.Quote, (Action<QuoteBar>)(bar => UpdateQuoteBar(bar, 3)));
+            _expectedConsolidationCounts.Add(tradableDatesCount);
 
-            var sma5 = new SimpleMovingAverage(10);
-            Consolidate<TradeBar>(_symbol, TimeSpan.FromDays(1), bar => UpdateTradeBar(sma5, bar, 4));
+            Consolidate(symbol, TimeSpan.FromDays(1), bar => UpdateTradeBar(bar, 4));
+            _expectedConsolidationCounts.Add(tradableDatesCount - 1);
+
+            Consolidate<TradeBar>(symbol, TimeSpan.FromDays(1), bar => UpdateTradeBar(bar, 5));
+            _expectedConsolidationCounts.Add(tradableDatesCount - 1);
+
+            // Test using abstract T types, through defining a 'BaseData' handler
+
+            Consolidate(symbol, Resolution.Daily, null, (Action<BaseData>)(bar => UpdateBar(bar, 6)));
+            _expectedConsolidationCounts.Add(tradableDatesCount);
+
+            Consolidate(symbol, TimeSpan.FromDays(1), null, (Action<BaseData>)(bar => UpdateBar(bar, 7)));
+            _expectedConsolidationCounts.Add(tradableDatesCount - 1);
+
+            Consolidate(symbol, TimeSpan.FromDays(1), (Action<BaseData>)(bar => UpdateBar(bar, 8)));
+            _expectedConsolidationCounts.Add(tradableDatesCount - 1);
+
+            _consolidationCounts = Enumerable.Repeat(0, _expectedConsolidationCounts.Count).ToList();
+            _smas = _consolidationCounts.Select(_ => new SimpleMovingAverage(10)).ToList();
+            _lastSmaUpdates = _consolidationCounts.Select(_ => DateTime.MinValue).ToList();
 
             // custom data
-            var sma6 = new SimpleMovingAverage(10);
-            var symbol = AddData<CustomDataRegressionAlgorithm.Bitcoin>("BTC", Resolution.Minute).Symbol;
-            Consolidate<TradeBar>(symbol, TimeSpan.FromDays(1), bar => _customDataConsolidator++);
+            var customSecurity = AddData<CustomDataRegressionAlgorithm.Bitcoin>("BTC", Resolution.Minute);
+            Consolidate<TradeBar>(customSecurity.Symbol, TimeSpan.FromDays(1), bar => _customDataConsolidatorCount++);
 
             try
             {
-                Consolidate<QuoteBar>(symbol, TimeSpan.FromDays(1), bar => { UpdateQuoteBar(sma6, bar, -1); });
-                throw new Exception($"Expected {nameof(ArgumentException)} to be thrown");
+                Consolidate<QuoteBar>(customSecurity.Symbol, TimeSpan.FromDays(1), bar => { UpdateQuoteBar(bar, -1); });
+                throw new RegressionTestException($"Expected {nameof(ArgumentException)} to be thrown");
             }
             catch (ArgumentException)
             {
                 // will try to use BaseDataConsolidator for which input is TradeBars not QuoteBars
             }
-
-            // Test using abstract T types, through defining a 'BaseData' handler
-            var sma7 = new SimpleMovingAverage(10);
-            Consolidate(_symbol, Resolution.Daily, null, (Action<BaseData>)(bar => UpdateBar(sma7, bar, 5)));
-
-            var sma8 = new SimpleMovingAverage(10);
-            Consolidate(_symbol, TimeSpan.FromDays(1), null, (Action<BaseData>)(bar => UpdateBar(sma8, bar, 6)));
-
-            var sma9 = new SimpleMovingAverage(10);
-            Consolidate(_symbol, TimeSpan.FromDays(1), (Action<BaseData>)(bar => UpdateBar(sma9, bar, 7)));
         }
-        private void UpdateBar(SimpleMovingAverage sma, BaseData tradeBar, int position)
+
+        private void UpdateBar(BaseData tradeBar, int position)
         {
             if (!(tradeBar is TradeBar))
             {
-                throw new Exception("Expected a TradeBar");
+                throw new RegressionTestException("Expected a TradeBar");
             }
-            _consolidationCount[position]++;
-            sma.Update(tradeBar.EndTime, tradeBar.Value);
+            _consolidationCounts[position]++;
+            _smas[position].Update(tradeBar.EndTime, tradeBar.Value);
+            _lastSmaUpdates[position] = tradeBar.EndTime;
         }
-        private void UpdateTradeBar(SimpleMovingAverage sma, TradeBar tradeBar, int position)
+        private void UpdateTradeBar(TradeBar tradeBar, int position)
         {
-            _consolidationCount[position]++;
-            sma.Update(tradeBar.EndTime, tradeBar.High);
+            _consolidationCounts[position]++;
+            _smas[position].Update(tradeBar.EndTime, tradeBar.High);
+            _lastSmaUpdates[position] = tradeBar.EndTime;
         }
-        private void UpdateQuoteBar(SimpleMovingAverage sma, QuoteBar quoteBar, int position)
+        private void UpdateQuoteBar(QuoteBar quoteBar, int position)
         {
-            _consolidationCount[position]++;
-            sma.Update(quoteBar.EndTime, quoteBar.High);
+            _consolidationCounts[position]++;
+            _smas[position].Update(quoteBar.EndTime, quoteBar.High);
+            _lastSmaUpdates[position] = quoteBar.EndTime;
         }
 
         public override void OnEndOfAlgorithm()
         {
-            if (_consolidationCount.Any(i => i != 3) || _customDataConsolidator == 0)
+            for (var i = 0; i < _consolidationCounts.Count; i++)
             {
-                throw new Exception("Unexpected consolidation count");
+                var consolidationCount = _consolidationCounts[i];
+                var expectedConsolidationCount = _expectedConsolidationCounts[i];
+
+                if (consolidationCount != expectedConsolidationCount)
+                {
+                    throw new RegressionTestException($"Expected {expectedConsolidationCount} consolidations for consolidator {i} but received {consolidationCount}");
+                }
+            }
+
+            if (_customDataConsolidatorCount == 0)
+            {
+                throw new RegressionTestException($"Unexpected custom data consolidation count: {_customDataConsolidatorCount}");
+            }
+
+            for (var i = 0; i < _smas.Count; i++)
+            {
+                if (_smas[i].Samples != _expectedConsolidationCounts[i])
+                {
+                    throw new RegressionTestException($"Expected {_expectedConsolidationCounts} samples in each SMA but found {_smas[i].Samples} in SMA in index {i}");
+                }
+
+                if (_smas[i].Current.Time != _lastSmaUpdates[i])
+                {
+                    throw new RegressionTestException($"Expected SMA in index {i} to have been last updated at {_lastSmaUpdates[i]} but was {_smas[i].Current.Time}");
+                }
             }
         }
 
@@ -121,11 +168,11 @@ namespace QuantConnect.Algorithm.CSharp
         /// OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
         /// </summary>
         /// <param name="data">Slice object keyed by symbol containing the stock data</param>
-        public override void OnData(Slice data)
+        public override void OnData(Slice slice)
         {
-            if (!Portfolio.Invested)
+            if (!Portfolio.Invested && _future.HasData)
             {
-                SetHoldings(_symbol, 0.5);
+                SetHoldings(_future.Symbol, 0.5);
             }
         }
 
@@ -137,54 +184,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 14228;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 1;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "1"},
+            {"Total Orders", "1"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
-            {"Compounding Annual Return", "-99.999%"},
-            {"Drawdown", "16.100%"},
+            {"Compounding Annual Return", "665.524%"},
+            {"Drawdown", "1.500%"},
             {"Expectancy", "0"},
-            {"Net Profit", "-6.366%"},
-            {"Sharpe Ratio", "1.194"},
-            {"Probabilistic Sharpe Ratio", "0%"},
+            {"Start Equity", "100000"},
+            {"End Equity", "109332.4"},
+            {"Net Profit", "9.332%"},
+            {"Sharpe Ratio", "9.805"},
+            {"Sortino Ratio", "0"},
+            {"Probabilistic Sharpe Ratio", "93.474%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "5.56"},
-            {"Beta", "-71.105"},
-            {"Annual Standard Deviation", "0.434"},
-            {"Annual Variance", "0.188"},
-            {"Information Ratio", "1.016"},
-            {"Tracking Error", "0.44"},
-            {"Treynor Ratio", "-0.007"},
-            {"Total Fees", "$20.35"},
-            {"Estimated Strategy Capacity", "$19000000.00"},
-            {"Fitness Score", "0.138"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "-1.727"},
-            {"Return Over Maximum Drawdown", "-12.061"},
-            {"Portfolio Turnover", "4.916"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "7c841ca58a4385f42236838e5bf0c382"}
+            {"Alpha", "3.164"},
+            {"Beta", "0.957"},
+            {"Annual Standard Deviation", "0.383"},
+            {"Annual Variance", "0.146"},
+            {"Information Ratio", "8.29"},
+            {"Tracking Error", "0.379"},
+            {"Treynor Ratio", "3.917"},
+            {"Total Fees", "$15.05"},
+            {"Estimated Strategy Capacity", "$2100000000.00"},
+            {"Lowest Capacity Asset", "ES XCZJLC9NOB29"},
+            {"Portfolio Turnover", "64.34%"},
+            {"Drawdown Recovery", "0"},
+            {"OrderListHash", "d814db6d5a9c97ee6de477ea06cd3834"}
         };
     }
 }

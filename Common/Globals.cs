@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -14,6 +14,7 @@
  *
 */
 
+using System.IO;
 using System.Reflection;
 using QuantConnect.Configuration;
 
@@ -30,16 +31,51 @@ namespace QuantConnect
         }
 
         /// <summary>
+        /// The base api url address to use
+        /// </summary>
+        public static string Api { get; set; }
+
+        /// <summary>
+        /// The user Id
+        /// </summary>
+        public static int UserId { get; set; }
+
+        /// <summary>
+        /// The project id
+        /// </summary>
+        public static int ProjectId { get; set; }
+
+        /// <summary>
+        /// The user token
+        /// </summary>
+        public static string UserToken { get; set; }
+
+        /// <summary>
+        /// The organization id
+        /// </summary>
+        public static string OrganizationID { get; set; }
+
+        /// <summary>
+        /// The results destination folder
+        /// </summary>
+        public static string ResultsDestinationFolder { get; set; }
+
+        /// <summary>
         /// The root directory of the data folder for this application
         /// </summary>
         public static string DataFolder { get; private set; }
+
+        /// <summary>
+        /// True if running in live mode
+        /// </summary>
+        public static bool LiveMode { get; private set; }
 
         /// <summary>
         /// Resets global values with the Config data.
         /// </summary>
         public static void Reset ()
         {
-            DataFolder = Config.Get("data-folder", Config.Get("data-directory", @"../../../Data/"));
+            CacheDataFolder = DataFolder = Config.Get("data-folder", @"../../../Data/");
 
             Version = Assembly.GetExecutingAssembly().GetName().Version.ToString();
             var versionid = Config.Get("version-id");
@@ -48,7 +84,20 @@ namespace QuantConnect
                 Version += "." + versionid;
             }
 
-            CacheDataFolder = Config.Get("cache-location", DataFolder);
+            var cacheLocation = Config.Get("cache-location");
+            if (!string.IsNullOrEmpty(cacheLocation) && !cacheLocation.IsDirectoryEmpty())
+            {
+                CacheDataFolder = cacheLocation;
+            }
+
+            LiveMode = Config.GetBool("live-mode");
+
+            UserId = Config.GetInt("job-user-id");
+            ProjectId = Config.GetInt("project-id");
+            UserToken = Config.Get("api-access-token");
+            OrganizationID = Config.Get("job-organization-id");
+            Api = Config.Get("api-url", "https://www.quantconnect.com/api/v2/");
+            ResultsDestinationFolder = Config.Get("results-destination-folder", Directory.GetCurrentDirectory());
         }
 
         /// <summary>
@@ -65,5 +114,19 @@ namespace QuantConnect
         /// Data path to cache folder location
         /// </summary>
         public static string CacheDataFolder { get; private set; }
+
+        /// <summary>
+        /// Helper method that will build a data folder path checking if it exists on the cache folder else will return data folder
+        /// </summary>
+        public static string GetDataFolderPath(string relativePath)
+        {
+            var result = Path.Combine(CacheDataFolder, relativePath);
+            if (result.IsDirectoryEmpty())
+            {
+                result = Path.Combine(DataFolder, relativePath);
+            }
+
+            return result;
+        }
     }
 }

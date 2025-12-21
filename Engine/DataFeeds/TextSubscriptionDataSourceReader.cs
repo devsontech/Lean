@@ -14,15 +14,13 @@
 */
 
 using System;
-using System.IO;
 using System.Linq;
 using QuantConnect.Data;
+using QuantConnect.Logging;
 using QuantConnect.Interfaces;
-using QuantConnect.Data.Market;
 using System.Collections.Generic;
 using QuantConnect.Data.Fundamental;
 using QuantConnect.Data.UniverseSelection;
-using QuantConnect.Logging;
 
 namespace QuantConnect.Lean.Engine.DataFeeds
 {
@@ -35,7 +33,6 @@ namespace QuantConnect.Lean.Engine.DataFeeds
     {
         private readonly bool _implementsStreamReader;
         private readonly DateTime _date;
-        private readonly SubscriptionDataConfig _config;
         private BaseData _factory;
         private bool _shouldCacheDataPoints;
 
@@ -44,10 +41,9 @@ namespace QuantConnect.Lean.Engine.DataFeeds
         private static Queue<string> CacheKeys = new Queue<string>(100);
 
         /// <summary>
-        /// Event fired when the specified source is considered invalid, this may
-        /// be from a missing file or failure to download a remote source
+        /// The requested subscription configuration
         /// </summary>
-        public override event EventHandler<InvalidSourceEventArgs> InvalidSource;
+        protected SubscriptionDataConfig Config { get; set; }
 
         /// <summary>
         /// Event fired when an exception is thrown during a call to
@@ -56,41 +52,26 @@ namespace QuantConnect.Lean.Engine.DataFeeds
         public event EventHandler<ReaderErrorEventArgs> ReaderError;
 
         /// <summary>
-        /// Event fired when there's an error creating an <see cref="IStreamReader"/> or the
-        /// instantiated <see cref="IStreamReader"/> has no data.
-        /// </summary>
-        public event EventHandler<CreateStreamReaderErrorEventArgs> CreateStreamReaderError;
-
-        /// <summary>
         /// Initializes a new instance of the <see cref="TextSubscriptionDataSourceReader"/> class
         /// </summary>
         /// <param name="dataCacheProvider">This provider caches files if needed</param>
         /// <param name="config">The subscription's configuration</param>
         /// <param name="date">The date this factory was produced to read data for</param>
         /// <param name="isLiveMode">True if we're in live mode, false for backtesting</param>
-        public TextSubscriptionDataSourceReader(IDataCacheProvider dataCacheProvider, SubscriptionDataConfig config, DateTime date, bool isLiveMode)
-            : base(dataCacheProvider, isLiveMode)
+        /// <param name="objectStore">The object storage for data persistence.</param>
+        public TextSubscriptionDataSourceReader(IDataCacheProvider dataCacheProvider, SubscriptionDataConfig config, DateTime date, bool isLiveMode,
+            IObjectStore objectStore)
+            : base(dataCacheProvider, isLiveMode, objectStore)
         {
             _date = date;
-            _config = config;
-            _shouldCacheDataPoints = !_config.IsCustomData && _config.Resolution >= Resolution.Hour
-                && _config.Type != typeof(FineFundamental) && _config.Type != typeof(CoarseFundamental)
+            Config = config;
+            _shouldCacheDataPoints = !Config.IsCustomData && Config.Resolution >= Resolution.Hour
+                && Config.Type != typeof(FineFundamental) && Config.Type != typeof(CoarseFundamental) && Config.Type != typeof(Fundamental)
+                // don't cache universe data, doesn't make much sense and we don't want to change the symbol of the clone
+                && !Config.Type.IsAssignableTo(typeof(BaseDataCollection))
                 && !DataCacheProvider.IsDataEphemeral;
 
-            // we know these type implement the streamReader interface lets avoid dynamic reflection call to figure it out
-            if (_config.Type == typeof(TradeBar) || _config.Type == typeof(QuoteBar) || _config.Type == typeof(Tick))
-            {
-                _implementsStreamReader = true;
-            }
-            else
-            {
-                var method = _config.Type.GetMethod("Reader",
-                    new[] { typeof(SubscriptionDataConfig), typeof(StreamReader), typeof(DateTime), typeof(bool) });
-                if (method != null && method.DeclaringType == _config.Type)
-                {
-                    _implementsStreamReader = true;
-                }
-            }
+            _implementsStreamReader = Config.Type.ImplementsStreamReader();
         }
 
         /// <summary>
@@ -108,7 +89,7 @@ namespace QuantConnect.Lean.Engine.DataFeeds
             string cacheKey = null;
             if (_shouldCacheDataPoints)
             {
-                cacheKey = source.Source + _config.Type;
+                cacheKey = source.Source + Config.Type;
                 BaseDataSourceCache.TryGetValue(cacheKey, out cache);
             }
             if (cache == null)
@@ -116,17 +97,16 @@ namespace QuantConnect.Lean.Engine.DataFeeds
                 cache = _shouldCacheDataPoints ? new List<BaseData>(30000) : null;
                 using (var reader = CreateStreamReader(source))
                 {
-                    // if the reader doesn't have data then we're done with this subscription
-                    if (reader == null || reader.EndOfStream)
+                    if (reader == null)
                     {
-                        OnCreateStreamReaderError(_date, source);
+                        // if the reader doesn't have data then we're done with this subscription
                         yield break;
                     }
 
                     if (_factory == null)
                     {
                         // only create a factory if the stream isn't null
-                        _factory = _config.GetBaseDataInstance();
+                        _factory = Config.GetBaseDataInstance();
                     }
                     // while the reader has data
                     while (!reader.EndOfStream)
@@ -137,13 +117,13 @@ namespace QuantConnect.Lean.Engine.DataFeeds
                         {
                             if (reader.StreamReader != null && _implementsStreamReader)
                             {
-                                instance = _factory.Reader(_config, reader.StreamReader, _date, IsLiveMode);
+                                instance = _factory.Reader(Config, reader.StreamReader, _date, IsLiveMode);
                             }
                             else
                             {
                                 // read a line and pass it to the base data factory
                                 line = reader.ReadLine();
-                                instance = _factory.Reader(_config, line, _date, IsLiveMode);
+                                instance = _factory.Reader(Config, line, _date, IsLiveMode);
                             }
                         }
                         catch (Exception err)
@@ -151,7 +131,7 @@ namespace QuantConnect.Lean.Engine.DataFeeds
                             OnReaderError(line ?? "StreamReader", err);
                         }
 
-                        if (instance != null && instance.EndTime != default(DateTime))
+                        if (instance != null && instance.EndTime != default)
                         {
                             if (_shouldCacheDataPoints)
                             {
@@ -211,20 +191,9 @@ namespace QuantConnect.Lean.Engine.DataFeeds
             foreach (var data in cache.Skip(index))
             {
                 var clone = data.Clone();
-                clone.Symbol = _config.Symbol;
+                clone.Symbol = Config.Symbol;
                 yield return clone;
             }
-        }
-
-        /// <summary>
-        /// Event invocator for the <see cref="InvalidSource"/> event
-        /// </summary>
-        /// <param name="source">The <see cref="SubscriptionDataSource"/> that was invalid</param>
-        /// <param name="exception">The exception if one was raised, otherwise null</param>
-        private void OnInvalidSource(SubscriptionDataSource source, Exception exception)
-        {
-            var handler = InvalidSource;
-            if (handler != null) handler(this, new InvalidSourceEventArgs(source, exception));
         }
 
         /// <summary>
@@ -239,17 +208,6 @@ namespace QuantConnect.Lean.Engine.DataFeeds
         }
 
         /// <summary>
-        /// Event invocator for the <see cref="CreateStreamReaderError"/> event
-        /// </summary>
-        /// <param name="date">The date of the source</param>
-        /// <param name="source">The source that caused the error</param>
-        private void OnCreateStreamReaderError(DateTime date, SubscriptionDataSource source)
-        {
-            var handler = CreateStreamReaderError;
-            if (handler != null) handler(this, new CreateStreamReaderErrorEventArgs(date, source));
-        }
-
-        /// <summary>
         /// Set the cache size to use
         /// </summary>
         /// <remarks>How to size this cache: Take worst case scenario, BTCUSD hour, 60k QuoteBar entries, which are roughly 200 bytes in size -> 11 MB * CacheSize</remarks>
@@ -261,6 +219,15 @@ namespace QuantConnect.Lean.Engine.DataFeeds
                 CacheSize = megaBytesToUse / 12;
                 Log.Trace($"TextSubscriptionDataSourceReader.SetCacheSize(): Setting cache size to {CacheSize} items");
             }
+        }
+
+        /// <summary>
+        /// Will clear the data cache.
+        /// Used for testing different time zones for the same data set and allow a clean fresh start for each backtest
+        /// </summary>
+        public static void ClearCache()
+        {
+            BaseDataSourceCache = new();
         }
     }
 }

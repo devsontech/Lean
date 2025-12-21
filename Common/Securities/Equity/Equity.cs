@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -30,12 +30,12 @@ namespace QuantConnect.Securities.Equity
         /// <summary>
         /// The default number of days required to settle an equity sale
         /// </summary>
-        public const int DefaultSettlementDays = 3;
+        public static int DefaultSettlementDays { get; set; } = 1;
 
         /// <summary>
         /// The default time of day for settlement
         /// </summary>
-        public static readonly TimeSpan DefaultSettlementTime = new TimeSpan(8, 0, 0);
+        public static readonly TimeSpan DefaultSettlementTime = new TimeSpan(6, 0, 0);
 
         /// <summary>
         /// Checks if the equity is a shortable asset. Note that this does not
@@ -48,7 +48,8 @@ namespace QuantConnect.Securities.Equity
             get
             {
                 var shortableQuantity = ShortableProvider.ShortableQuantity(Symbol, LocalTime);
-                return shortableQuantity == null || shortableQuantity == 0m;
+                // null means we don't have the data
+                return shortableQuantity == null || shortableQuantity > 0m;
             }
         }
 
@@ -63,7 +64,7 @@ namespace QuantConnect.Securities.Equity
         /// <summary>
         /// Equity primary exchange.
         /// </summary>
-        public PrimaryExchange PrimaryExchange;
+        public Exchange PrimaryExchange { get; }
 
         /// <summary>
         /// Construct the Equity Object
@@ -75,7 +76,7 @@ namespace QuantConnect.Securities.Equity
             ICurrencyConverter currencyConverter,
             IRegisteredSecurityDataTypesProvider registeredTypes,
             SecurityCache securityCache,
-            PrimaryExchange primaryExchange=PrimaryExchange.UNKNOWN)
+            Exchange primaryExchange = null)
             : base(symbol,
                 quoteCurrency,
                 symbolProperties,
@@ -84,18 +85,19 @@ namespace QuantConnect.Securities.Equity
                 new SecurityPortfolioModel(),
                 new EquityFillModel(),
                 new InteractiveBrokersFeeModel(),
-                new ConstantSlippageModel(0m),
+                NullSlippageModel.Instance,
                 new ImmediateSettlementModel(),
                 Securities.VolatilityModel.Null,
                 new SecurityMarginModel(2m),
                 new EquityDataFilter(),
                 new AdjustedPriceVariationModel(),
                 currencyConverter,
-                registeredTypes
+                registeredTypes,
+                Securities.MarginInterestRateModel.Null
                 )
         {
             Holdings = new EquityHolding(this, currencyConverter);
-            PrimaryExchange = primaryExchange;
+            PrimaryExchange = primaryExchange ?? QuantConnect.Exchange.UNKNOWN;
         }
 
         /// <summary>
@@ -107,7 +109,7 @@ namespace QuantConnect.Securities.Equity
             SymbolProperties symbolProperties,
             ICurrencyConverter currencyConverter,
             IRegisteredSecurityDataTypesProvider registeredTypes,
-            PrimaryExchange primaryExchange = PrimaryExchange.UNKNOWN)
+            Exchange primaryExchange = null)
             : base(
                 config,
                 quoteCurrency,
@@ -117,18 +119,19 @@ namespace QuantConnect.Securities.Equity
                 new SecurityPortfolioModel(),
                 new EquityFillModel(),
                 new InteractiveBrokersFeeModel(),
-                new ConstantSlippageModel(0m),
+                NullSlippageModel.Instance,
                 new ImmediateSettlementModel(),
                 Securities.VolatilityModel.Null,
                 new SecurityMarginModel(2m),
                 new EquityDataFilter(),
                 new AdjustedPriceVariationModel(),
                 currencyConverter,
-                registeredTypes
+                registeredTypes,
+                Securities.MarginInterestRateModel.Null
                 )
         {
             Holdings = new EquityHolding(this, currencyConverter);
-            PrimaryExchange = primaryExchange;
+            PrimaryExchange = primaryExchange ?? QuantConnect.Exchange.UNKNOWN;;
         }
 
         /// <summary>
@@ -147,5 +150,10 @@ namespace QuantConnect.Securities.Equity
                 PriceVariationModel = new EquityPriceVariationModel();
             }
         }
+
+        /// <summary>
+        /// Returns the securities symbol
+        /// </summary>
+        public static implicit operator Symbol(Equity security) => security.Symbol;
     }
 }

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -14,72 +14,78 @@
 */
 
 using System;
-using System.Collections.Generic;
-using System.IO;
 using QuantConnect.Interfaces;
-using QuantConnect.Logging;
-using QuantConnect.Util;
+using System.Collections.Generic;
+using QuantConnect.Data.Auxiliary;
 
 namespace QuantConnect.Lean.Engine.DataFeeds
 {
     /// <summary>
     /// An implementation of <see cref="IOptionChainProvider"/> that reads the list of contracts from open interest zip data files
     /// </summary>
-    public class BacktestingOptionChainProvider : IOptionChainProvider
+    public class BacktestingOptionChainProvider : BacktestingChainProvider, IOptionChainProvider
     {
         /// <summary>
         /// Gets the list of option contracts for a given underlying symbol
         /// </summary>
-        /// <param name="underlyingSymbol">The underlying symbol</param>
+        /// <param name="symbol">The option or the underlying symbol to get the option chain for.
+        /// Providing the option allows targeting an option ticker different than the default e.g. SPXW</param>
         /// <param name="date">The date for which to request the option chain (only used in backtesting)</param>
         /// <returns>The list of option contracts</returns>
-        public IEnumerable<Symbol> GetOptionContractList(Symbol underlyingSymbol, DateTime date)
+        public virtual IEnumerable<Symbol> GetOptionContractList(Symbol symbol, DateTime date)
         {
-            if (!underlyingSymbol.SecurityType.HasOptions())
+            Symbol canonicalSymbol;
+            if (!symbol.SecurityType.HasOptions())
             {
-                throw new NotSupportedException($"BacktestingOptionChainProvider.GetOptionContractList(): SecurityType.Equity, SecurityType.Future, or SecurityType.Index is expected but was {underlyingSymbol.SecurityType}");
-            }
-
-            // build the option contract list from the open interest zip file entry names
-
-            // create a canonical option symbol for the given underlying
-            var canonicalSymbol = Symbol.CreateOption(
-                underlyingSymbol,
-                underlyingSymbol.ID.Market,
-                underlyingSymbol.SecurityType.DefaultOptionStyle(),
-                default(OptionRight),
-                0,
-                SecurityIdentifier.DefaultDate);
-
-            var fileExists = false;
-            var zipFileName = string.Empty;
-
-            // In order of trust-worthiness of containing the complete option chain, OpenInterest is guaranteed
-            // to have the complete option chain. Quotes come after open-interest
-            // because it's also likely to contain the option chain. Trades may be
-            // missing portions of the option chain, so we resort to it last.
-            foreach (var tickType in new[] { TickType.OpenInterest, TickType.Quote, TickType.Trade })
-            {
-                // build the zip file name for open interest data
-                zipFileName = LeanData.GenerateZipFilePath(Globals.DataFolder, canonicalSymbol, date, Resolution.Minute, tickType);
-                if (File.Exists(zipFileName))
+                // we got an option
+                if (symbol.SecurityType.IsOption() && symbol.Underlying != null)
                 {
-                    fileExists = true;
-                    break;
+                    canonicalSymbol = GetCanonical(symbol, date);
+                }
+                else
+                {
+                    throw new NotSupportedException($"BacktestingOptionChainProvider.GetOptionContractList(): " +
+                        $"{nameof(SecurityType.Equity)}, {nameof(SecurityType.Future)}, or {nameof(SecurityType.Index)} is expected but was {symbol.SecurityType}");
                 }
             }
-
-            if (!fileExists)
+            else
             {
-                Log.Trace($"BacktestingOptionChainProvider.GetOptionContractList(): File not found: {zipFileName}");
-                yield break;
+                // we got the underlying
+                var mappedUnderlyingSymbol = MapUnderlyingSymbol(symbol, date);
+                canonicalSymbol = Symbol.CreateCanonicalOption(mappedUnderlyingSymbol);
             }
 
-            // generate and return the contract symbol for each zip entry
-            var zipEntryNames = Compression.GetZipEntryFileNames(zipFileName);
-            foreach (var zipEntryName in zipEntryNames)
+            return GetSymbols(canonicalSymbol, date);
+        }
+
+        private Symbol GetCanonical(Symbol optionSymbol, DateTime date)
+        {
+            // Resolve any mapping before requesting option contract list for equities
+            // Needs to be done in order for the data file key to be accurate
+            if (optionSymbol.Underlying.RequiresMapping())
             {
-                yield return LeanData.ReadSymbolFromZipEntry(canonicalSymbol, Resolution.Minute, zipEntryName);
+                var mappedUnderlyingSymbol = MapUnderlyingSymbol(optionSymbol.Underlying, date);
+
+                return Symbol.CreateCanonicalOption(mappedUnderlyingSymbol);
+            }
+            else
+            {
+                return optionSymbol.Canonical;
+            }
+        }
+
+        private Symbol MapUnderlyingSymbol(Symbol underlying, DateTime date)
+        {
+            if (underlying.RequiresMapping())
+            {
+                var mapFileResolver = MapFileProvider.Get(AuxiliaryDataKey.Create(underlying));
+                var mapFile = mapFileResolver.ResolveMapFile(underlying);
+                var ticker = mapFile.GetMappedSymbol(date, underlying.Value);
+                return underlying.UpdateMappedSymbol(ticker);
+            }
+            else
+            {
+                return underlying;
             }
         }
     }

@@ -15,6 +15,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using QuantConnect.Data.Consolidators;
 using QuantConnect.Data.Market;
@@ -279,6 +280,10 @@ namespace QuantConnect.Tests.Common.Util
             public TestConsolidator(int maxCount) : base(maxCount)
             {
                 Id = maxCount;
+            }
+
+            public override void Reset()
+            {
             }
 
             protected override void AggregateBar(ref QuoteBar workingBar, QuoteBar data)

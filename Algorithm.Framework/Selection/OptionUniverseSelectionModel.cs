@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -15,6 +15,7 @@
 
 using System;
 using System.Collections.Generic;
+using Python.Runtime;
 using QuantConnect.Data.UniverseSelection;
 using QuantConnect.Interfaces;
 using QuantConnect.Securities;
@@ -27,7 +28,6 @@ namespace QuantConnect.Algorithm.Framework.Selection
     public class OptionUniverseSelectionModel : UniverseSelectionModel
     {
         private DateTime _nextRefreshTimeUtc;
-
         private readonly TimeSpan _refreshInterval;
         private readonly UniverseSettings _universeSettings;
         private readonly Func<DateTime, IEnumerable<Symbol>> _optionChainSymbolSelector;
@@ -52,16 +52,19 @@ namespace QuantConnect.Algorithm.Framework.Selection
         /// </summary>
         /// <param name="refreshInterval">Time interval between universe refreshes</param>
         /// <param name="optionChainSymbolSelector">Selects symbols from the provided option chain</param>
+        public OptionUniverseSelectionModel(TimeSpan refreshInterval, PyObject optionChainSymbolSelector)
+            : this(refreshInterval, optionChainSymbolSelector.SafeAs<Func<DateTime, IEnumerable<Symbol>>>(), null)
+        {
+        }
+
+        /// <summary>
+        /// Creates a new instance of <see cref="OptionUniverseSelectionModel"/>
+        /// </summary>
+        /// <param name="refreshInterval">Time interval between universe refreshes</param>
+        /// <param name="optionChainSymbolSelector">Selects symbols from the provided option chain</param>
         /// <param name="universeSettings">Universe settings define attributes of created subscriptions, such as their resolution and the minimum time in universe before they can be removed</param>
-        /// <param name="securityInitializer">Performs extra initialization (such as setting models) after we create a new security object</param>
-        [Obsolete("This constructor is obsolete because SecurityInitializer is obsolete and will not be used.")]
-        public OptionUniverseSelectionModel(
-            TimeSpan refreshInterval,
-            Func<DateTime, IEnumerable<Symbol>> optionChainSymbolSelector,
-            UniverseSettings universeSettings,
-            ISecurityInitializer securityInitializer
-            )
-            :this (refreshInterval,optionChainSymbolSelector,universeSettings)
+        public OptionUniverseSelectionModel(TimeSpan refreshInterval, PyObject optionChainSymbolSelector, UniverseSettings universeSettings)
+            : this(refreshInterval, optionChainSymbolSelector.SafeAs<Func<DateTime, IEnumerable<Symbol>>>(), universeSettings)
         {
         }
 
@@ -114,6 +117,12 @@ namespace QuantConnect.Algorithm.Framework.Selection
         /// </summary>
         protected virtual OptionFilterUniverse Filter(OptionFilterUniverse filter)
         {
+            // Check if this method was overridden in Python
+            if (TryInvokePythonOverride(nameof(Filter), out OptionFilterUniverse result, filter))
+            {
+                return result;
+            }
+
             // NOP
             return filter;
         }

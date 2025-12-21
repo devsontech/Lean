@@ -1,11 +1,11 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
- * 
- * Licensed under the Apache License, Version 2.0 (the "License"); 
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -15,11 +15,10 @@
 */
 
 using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using Newtonsoft.Json;
 using QuantConnect.Securities;
+using QuantConnect.Util;
 
 namespace QuantConnect.Packets
 {
@@ -35,60 +34,64 @@ namespace QuantConnect.Packets
         /// <summary>
         /// Name of the backtest as randomly defined in the IDE.
         /// </summary>
-        [JsonProperty(PropertyName = "sName")]
-        public string Name = "";
+        public string Name { get; set; } = string.Empty;
 
         /// <summary>
         /// BacktestId / Algorithm Id for this task
         /// </summary>
-        [JsonProperty(PropertyName = "sBacktestID")]
-        public string BacktestId = DefaultId;
+        public string BacktestId { get; set; } = DefaultId;
 
         /// <summary>
         /// Optimization Id for this task
         /// </summary>
-        [JsonProperty(PropertyName = "sOptimizationID")]
-        public string OptimizationId;
+        public string OptimizationId { get; set; }
 
         /// <summary>
         /// Backtest start-date as defined in the Initialize() method.
         /// </summary>
-        [JsonProperty(PropertyName = "dtPeriodStart")]
-        public DateTime? PeriodStart;
+        public DateTime? PeriodStart { get; set; }
 
         /// <summary>
         /// Backtest end date as defined in the Initialize() method.
         /// </summary>
-        [JsonProperty(PropertyName = "dtPeriodFinish")]
-        public DateTime? PeriodFinish;
+        public DateTime? PeriodFinish { get; set; }
+
+        /// <summary>
+        /// Backtest maximum end date
+        /// </summary>
+        public DateTime? OutOfSampleMaxEndDate { get; set; }
+
+        /// <summary>
+        /// The backtest out of sample day count
+        /// </summary>
+        public int OutOfSampleDays { get; set; }
 
         /// <summary>
         /// Estimated number of trading days in this backtest task based on the start-end dates.
         /// </summary>
-        [JsonProperty(PropertyName = "iTradeableDates")]
-        public int TradeableDates = 0;
-
-        /// <summary>
-        /// The initial breakpoints for debugging, if any
-        /// </summary>
-        [JsonProperty(PropertyName = "aBreakpoints")]
-        public List<Breakpoint> Breakpoints = new List<Breakpoint>();
-
-        /// <summary>
-        /// The initial Watchlist for debugging, if any
-        /// </summary>
-        [JsonProperty(PropertyName = "aWatchlist")]
-        public List<string> Watchlist = new List<string>();
+        public int TradeableDates { get; set; }
 
         /// <summary>
         /// True, if this is a debugging backtest
         /// </summary>
-        public bool IsDebugging => Breakpoints.Any();
+        public bool Debugging { get; set; }
 
         /// <summary>
         /// Optional initial cash amount if set
         /// </summary>
-        public CashAmount? CashAmount;
+        public CashAmount? CashAmount { get; set; }
+
+        /// <summary>
+        /// Algorithm running mode.
+        /// </summary>
+        [JsonIgnore]
+        public override AlgorithmMode AlgorithmMode
+        {
+            get
+            {
+                return OptimizationId.IsNullOrEmpty() ? AlgorithmMode.Backtesting : AlgorithmMode.Optimization;
+            }
+        }
 
         /// <summary>
         /// Default constructor for JSON
@@ -107,22 +110,21 @@ namespace QuantConnect.Packets
         /// <summary>
         /// Initialize the backtest task packet.
         /// </summary>
-        public BacktestNodePacket(int userId, int projectId, string sessionId, byte[] algorithmData, decimal startingCapital, string name, UserPlan userPlan = UserPlan.Free) 
-            : this (userId, projectId, sessionId, algorithmData, name, userPlan, new CashAmount(startingCapital, Currencies.USD))
+        public BacktestNodePacket(int userId, int projectId, string sessionId, byte[] algorithmData, decimal startingCapital, string name)
+            : this (userId, projectId, sessionId, algorithmData, name, new CashAmount(startingCapital, Currencies.USD))
         {
         }
 
         /// <summary>
         /// Initialize the backtest task packet.
         /// </summary>
-        public BacktestNodePacket(int userId, int projectId, string sessionId, byte[] algorithmData, string name, UserPlan userPlan = UserPlan.Free, CashAmount? startingCapital = null)
+        public BacktestNodePacket(int userId, int projectId, string sessionId, byte[] algorithmData, string name, CashAmount? startingCapital = null)
             : base(PacketType.BacktestNode)
         {
             UserId = userId;
             Algorithm = algorithmData;
             SessionId = sessionId;
             ProjectId = projectId;
-            UserPlan = userPlan;
             Name = name;
             CashAmount = startingCapital;
             Language = Language.CSharp;

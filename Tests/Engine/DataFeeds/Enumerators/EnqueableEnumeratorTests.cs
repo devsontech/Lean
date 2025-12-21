@@ -82,34 +82,10 @@ namespace QuantConnect.Tests.Engine.DataFeeds.Enumerators
             enumerator.Dispose();
         }
 
-        [Test]
-        public void RecordsMostRecentlyEnqueuedItem()
-        {
-            var enumerator = new EnqueueableEnumerator<Tick>();
-
-            var currentTime = new DateTime(2015, 12, 01);
-            var tick1 = new Tick(currentTime, Symbols.SPY, 100, 101);
-            enumerator.Enqueue(tick1);
-            Assert.AreEqual(null, enumerator.Current);
-            Assert.AreEqual(tick1, enumerator.LastEnqueued);
-
-            var tick2 = new Tick(currentTime, Symbols.SPY, 100, 101);
-            enumerator.Enqueue(tick2);
-            Assert.AreEqual(tick2, enumerator.LastEnqueued);
-
-            enumerator.MoveNext();
-            Assert.AreEqual(tick1, enumerator.Current);
-
-            enumerator.MoveNext();
-            Assert.AreEqual(tick2, enumerator.Current);
-
-            enumerator.Dispose();
-        }
-
         [Test, Category("TravisExclude")]
         public void MoveNextBlocks()
         {
-            var finished = new ManualResetEvent(false);
+            using var finished = new ManualResetEvent(false);
             var enumerator = new EnqueueableEnumerator<Tick>(true);
 
             // producer
@@ -133,7 +109,7 @@ namespace QuantConnect.Tests.Engine.DataFeeds.Enumerators
             // consumer
             int dequeuedCount = 0;
             bool encounteredError = false;
-            var consumerTaskFinished = new ManualResetEvent(false);
+            using var consumerTaskFinished = new ManualResetEvent(false);
             Task.Run(() =>
             {
                 while (enumerator.MoveNext())

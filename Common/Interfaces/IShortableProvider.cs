@@ -14,21 +14,31 @@
 */
 
 using System;
-using System.Collections.Generic;
 
 namespace QuantConnect.Interfaces
 {
     /// <summary>
     /// Defines a short list/easy-to-borrow provider
     /// </summary>
+    [StubsAvoidImplicits]
     public interface IShortableProvider
     {
         /// <summary>
-        /// Gets all shortable Symbols at the given time
+        /// Gets interest rate charged on borrowed shares for a given asset.
         /// </summary>
-        /// <param name="localTime">Local time of the algorithm</param>
-        /// <returns>All shortable Symbols including the quantity shortable as a positive number at the given time. Null if all Symbols are shortable without restrictions.</returns>
-        Dictionary<Symbol, long> AllShortableSymbols(DateTime localTime);
+        /// <param name="symbol">Symbol to lookup fee rate</param>
+        /// <param name="localTime">Time of the algorithm</param>
+        /// <returns>Fee rate. Zero if the data for the brokerage/date does not exist.</returns>
+        decimal FeeRate(Symbol symbol, DateTime localTime);
+
+        /// <summary>
+        /// Gets the Fed funds or other currency-relevant benchmark rate minus the interest rate charged on borrowed shares for a given asset.
+        /// Interest rate - borrow fee rate = borrow rebate rate: 5.32% - 0.25% = 5.07%
+        /// </summary>
+        /// <param name="symbol">Symbol to lookup rebate rate</param>
+        /// <param name="localTime">Time of the algorithm</param>
+        /// <returns>Rebate fee. Zero if the data for the brokerage/date does not exist.</returns>
+        decimal RebateRate(Symbol symbol, DateTime localTime);
 
         /// <summary>
         /// Gets the quantity shortable for a <see cref="Symbol"/>.

@@ -18,7 +18,9 @@ using System.Collections.Generic;
 using System.Globalization;
 using Newtonsoft.Json;
 using QuantConnect.Data;
+using QuantConnect.Data.UniverseSelection;
 using QuantConnect.Interfaces;
+using QuantConnect.Securities;
 
 namespace QuantConnect.Algorithm.CSharp
 {
@@ -31,13 +33,15 @@ namespace QuantConnect.Algorithm.CSharp
     /// <meta name="tag" content="regression test" />
     public class CustomDataRegressionAlgorithm : QCAlgorithm, IRegressionAlgorithmDefinition
     {
+        private bool _warmedUpChecked;
+
         /// <summary>
         /// Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. All algorithms must initialized.
         /// </summary>
         public override void Initialize()
         {
-            SetStartDate(2011, 9, 13);
-            SetEndDate(2015, 12, 01);
+            SetStartDate(2020, 01, 05);
+            SetEndDate(2020, 01, 10);
 
             //Set the cash for the strategy:
             SetCash(100000);
@@ -45,6 +49,9 @@ namespace QuantConnect.Algorithm.CSharp
             //Define the symbol and "type" of our generic data:
             var resolution = LiveMode ? Resolution.Second : Resolution.Daily;
             AddData<Bitcoin>("BTC", resolution);
+
+            var seeder = new FuncSecuritySeeder(GetLastKnownPrices);
+            SetSecurityInitializer(security => seeder.SeedSecurity(security));
         }
 
         /// <summary>
@@ -66,6 +73,30 @@ namespace QuantConnect.Algorithm.CSharp
             }
         }
 
+        public override void OnSecuritiesChanged(SecurityChanges changes)
+        {
+            changes.FilterCustomSecurities = false;
+            foreach (var addedSecurity in changes.AddedSecurities)
+            {
+                if (addedSecurity.Symbol.Value == "BTC")
+                {
+                    _warmedUpChecked = true;
+                }
+                if (!addedSecurity.HasData)
+                {
+                    throw new RegressionTestException($"Security {addedSecurity.Symbol} was not warmed up!");
+                }
+            }
+        }
+
+        public override void OnEndOfAlgorithm()
+        {
+            if (!_warmedUpChecked)
+            {
+                throw new RegressionTestException($"Security was not warmed up!");
+            }
+        }
+
         /// <summary>
         /// This is used by the regression test system to indicate if the open source Lean repository has the required data to run this algorithm.
         /// </summary>
@@ -74,54 +105,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 50;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "1"},
+            {"Total Orders", "1"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
-            {"Compounding Annual Return", "157.497%"},
-            {"Drawdown", "84.800%"},
+            {"Compounding Annual Return", "27587.925%"},
+            {"Drawdown", "4.200%"},
             {"Expectancy", "0"},
-            {"Net Profit", "5319.007%"},
-            {"Sharpe Ratio", "2.086"},
-            {"Probabilistic Sharpe Ratio", "69.456%"},
+            {"Start Equity", "100000"},
+            {"End Equity", "109685"},
+            {"Net Profit", "9.685%"},
+            {"Sharpe Ratio", "238.834"},
+            {"Sortino Ratio", "945.079"},
+            {"Probabilistic Sharpe Ratio", "81.660%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "1.736"},
-            {"Beta", "0.142"},
-            {"Annual Standard Deviation", "0.84"},
-            {"Annual Variance", "0.706"},
-            {"Information Ratio", "1.925"},
-            {"Tracking Error", "0.846"},
-            {"Treynor Ratio", "12.333"},
+            {"Alpha", "149.482"},
+            {"Beta", "-6.002"},
+            {"Annual Standard Deviation", "0.61"},
+            {"Annual Variance", "0.371"},
+            {"Information Ratio", "218.36"},
+            {"Tracking Error", "0.664"},
+            {"Treynor Ratio", "-24.253"},
             {"Total Fees", "$0.00"},
             {"Estimated Strategy Capacity", "$0"},
-            {"Fitness Score", "0"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "2.269"},
-            {"Return Over Maximum Drawdown", "1.858"},
-            {"Portfolio Turnover", "0"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "50faa37f15732bf5c24ad1eeaa335bc7"}
+            {"Lowest Capacity Asset", "BTC.Bitcoin 2S"},
+            {"Portfolio Turnover", "16.03%"},
+            {"Drawdown Recovery", "2"},
+            {"OrderListHash", "dde8821614d33c89e6e75c536447b7da"}
         };
 
         /// <summary>
@@ -130,24 +163,35 @@ namespace QuantConnect.Algorithm.CSharp
         public class Bitcoin : BaseData
         {
             [JsonProperty("timestamp")]
-            public int Timestamp = 0;
+            public int Timestamp { get; set; }
             [JsonProperty("open")]
-            public decimal Open = 0;
+            public decimal Open { get; set; }
             [JsonProperty("high")]
-            public decimal High = 0;
+            public decimal High { get; set; }
             [JsonProperty("low")]
-            public decimal Low = 0;
+            public decimal Low { get; set; }
+            public decimal Mid { get; set; }
+
             [JsonProperty("last")]
-            public decimal Close = 0;
+            public decimal Close { get; set; }
             [JsonProperty("bid")]
-            public decimal Bid = 0;
+            public decimal Bid { get; set; }
             [JsonProperty("ask")]
-            public decimal Ask = 0;
+            public decimal Ask { get; set; }
             [JsonProperty("vwap")]
-            public decimal WeightedPrice = 0;
+            public decimal WeightedPrice { get; set; }
             [JsonProperty("volume")]
-            public decimal VolumeBTC = 0;
-            public decimal VolumeUSD = 0;
+            public decimal VolumeBTC { get; set; }
+
+            /// <summary>
+            /// The end time of this data. Some data covers spans (trade bars)
+            /// and as such we want to know the entire time span covered
+            /// </summary>
+            /// <remarks>
+            /// This property is overriden to allow different values for Time and EndTime
+            /// if they are set in the Reader. In the base implementation EndTime equals Time
+            /// </remarks>
+            public override DateTime EndTime { get; set; }
 
             /// <summary>
             /// 1. DEFAULT CONSTRUCTOR: Custom data types need a default constructor.
@@ -176,7 +220,10 @@ namespace QuantConnect.Algorithm.CSharp
 
                 //return "http://my-ftp-server.com/futures-data-" + date.ToString("Ymd") + ".zip";
                 // OR simply return a fixed small data file. Large files will slow down your backtest
-                return new SubscriptionDataSource("https://www.quantconnect.com/api/v2/proxy/quandl/api/v3/datasets/BCHARTS/BITSTAMPUSD.csv?order=asc&api_key=WyAazVXnq7ATy_fefTqm", SubscriptionTransportMedium.RemoteFile);
+                return new SubscriptionDataSource("https://www.quantconnect.com/api/v2/proxy/nasdaq/api/v3/datatables/QDL/BITFINEX.csv?code=BTCUSD&api_key=qAWKpUfmSVFnU3bRQwKy")
+                {
+                    Sort = true
+                };
             }
 
             /// <summary>
@@ -207,20 +254,20 @@ namespace QuantConnect.Algorithm.CSharp
                 }
 
                 //Example Line Format:
-                //Date      Open   High    Low     Close   Volume (BTC)    Volume (Currency)   Weighted Price
-                //2011-09-13 5.8    6.0     5.65    5.97    58.37138238,    346.0973893944      5.929230648356
+                // code    date        high     low      mid      last     bid      ask      volume
+                // BTCUSD  2024-10-08  63248.0  61940.0  62246.5  62245.0  62246.0  62247.0  477.91102114
                 try
                 {
                     string[] data = line.Split(',');
-                    coin.Time = DateTime.Parse(data[0], CultureInfo.InvariantCulture);
+                    coin.Time = DateTime.Parse(data[1], CultureInfo.InvariantCulture);
                     coin.EndTime = coin.Time.AddDays(1);
-                    coin.Open = Convert.ToDecimal(data[1], CultureInfo.InvariantCulture);
                     coin.High = Convert.ToDecimal(data[2], CultureInfo.InvariantCulture);
                     coin.Low = Convert.ToDecimal(data[3], CultureInfo.InvariantCulture);
-                    coin.Close = Convert.ToDecimal(data[4], CultureInfo.InvariantCulture);
-                    coin.VolumeBTC = Convert.ToDecimal(data[5], CultureInfo.InvariantCulture);
-                    coin.VolumeUSD = Convert.ToDecimal(data[6], CultureInfo.InvariantCulture);
-                    coin.WeightedPrice = Convert.ToDecimal(data[7], CultureInfo.InvariantCulture);
+                    coin.Mid = Convert.ToDecimal(data[4], CultureInfo.InvariantCulture);
+                    coin.Close = Convert.ToDecimal(data[5], CultureInfo.InvariantCulture);
+                    coin.Bid = Convert.ToDecimal(data[6], CultureInfo.InvariantCulture);
+                    coin.Ask = Convert.ToDecimal(data[7], CultureInfo.InvariantCulture);
+                    coin.VolumeBTC = Convert.ToDecimal(data[8], CultureInfo.InvariantCulture);
                     coin.Value = coin.Close;
                 }
                 catch { /* Do nothing, skip first title row */ }

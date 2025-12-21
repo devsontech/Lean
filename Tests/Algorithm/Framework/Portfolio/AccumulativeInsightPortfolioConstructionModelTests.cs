@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -26,6 +26,7 @@ using QuantConnect.Data.Market;
 using QuantConnect.Data.UniverseSelection;
 using QuantConnect.Securities;
 using QuantConnect.Securities.Equity;
+using QuantConnect.Tests.Common.Data.UniverseSelection;
 using QuantConnect.Tests.Engine.DataFeeds;
 
 namespace QuantConnect.Tests.Algorithm.Framework.Portfolio
@@ -90,7 +91,7 @@ namespace QuantConnect.Tests.Algorithm.Framework.Portfolio
 
             var insights = _algorithm.Securities.Keys.Select(x => GetInsight(x, direction, _algorithm.UtcTime));
             var actualTargets = _algorithm.PortfolioConstruction.CreateTargets(_algorithm, insights.ToArray());
-            
+
             AssertTargets( expectedTargets, actualTargets);
         }
 
@@ -390,7 +391,7 @@ namespace QuantConnect.Tests.Algorithm.Framework.Portfolio
                 .Select(x => new PortfolioTarget(x.Key, (int)InsightDirection.Down * Math.Floor(amount / x.Value.Price)));
 
             var actualTargets = _algorithm.PortfolioConstruction.CreateTargets(_algorithm, insights).ToList();
-            
+
             AssertTargets(expectedTargets, actualTargets);
         }
 
@@ -426,9 +427,10 @@ namespace QuantConnect.Tests.Algorithm.Framework.Portfolio
                 new Insight(now, aig.Symbol, TimeSpan.FromDays(1), InsightType.Price, InsightDirection.Down, -0.1d, null),
                 new Insight(now, qqq.Symbol, TimeSpan.FromDays(1), InsightType.Price, InsightDirection.Up, 0.1d, null)
             };
-            _algorithm.PortfolioConstruction.OnSecuritiesChanged(_algorithm, SecurityChanges.Added(appl, spy, ibm, aig, qqq));
+            _algorithm.PortfolioConstruction.OnSecuritiesChanged(_algorithm, SecurityChangesTests.AddedNonInternal(appl, spy, ibm, aig, qqq));
 
             var createdValidTarget = false;
+            _algorithm.Insights.AddRange(insights);
             foreach (var target in _algorithm.PortfolioConstruction.CreateTargets(_algorithm, insights))
             {
                 QuantConnect.Logging.Log.Trace($"{target.Symbol}: {target.Quantity}");
@@ -446,10 +448,10 @@ namespace QuantConnect.Tests.Algorithm.Framework.Portfolio
 
         private Security GetSecurity(Symbol symbol)
         {
-            var config = SecurityExchangeHours.AlwaysOpen(DateTimeZone.Utc);
+            var exchangeHours = MarketHoursDatabase.FromDataFolder().GetExchangeHours(symbol.ID.Market, symbol, symbol.SecurityType);
             return new Equity(
                 symbol,
-                config,
+                exchangeHours,
                 new Cash(Currencies.USD, 0, 1),
                 SymbolProperties.GetDefault(Currencies.USD),
                 ErrorCurrencyConverter.Instance,
@@ -460,10 +462,11 @@ namespace QuantConnect.Tests.Algorithm.Framework.Portfolio
 
         private Insight GetInsight(Symbol symbol, InsightDirection direction, DateTime generatedTimeUtc, TimeSpan? period = null, double? confidence = DefaultPercent)
         {
-            period = period ?? TimeSpan.FromDays(1);
+            period ??= TimeSpan.FromDays(1);
             var insight = Insight.Price(symbol, period.Value, direction, confidence: confidence);
             insight.GeneratedTimeUtc = generatedTimeUtc;
             insight.CloseTimeUtc = generatedTimeUtc.Add(period.Value);
+            _algorithm.Insights.Add(insight);
             return insight;
         }
 
@@ -488,7 +491,7 @@ namespace QuantConnect.Tests.Algorithm.Framework.Portfolio
             _algorithm.Portfolio.SetCash(_startingCash);
             SetUtcTime(new DateTime(2018, 7, 31));
 
-            var changes = SecurityChanges.Added(_algorithm.Securities.Values.ToArray());
+            var changes = SecurityChangesTests.AddedNonInternal(_algorithm.Securities.Values.ToArray());
             algorithm.PortfolioConstruction.OnSecuritiesChanged(_algorithm, changes);
         }
 

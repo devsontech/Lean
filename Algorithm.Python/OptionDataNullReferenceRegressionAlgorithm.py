@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,31 +11,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("System")
-AddReference("QuantConnect.Algorithm")
-AddReference("QuantConnect.Common")
-
-from System import *
-from QuantConnect import *
-from QuantConnect.Algorithm import *
-from datetime import timedelta
+from AlgorithmImports import *
 
 ### <summary>
 ### This algorithm is a regression test for issue #2018 and PR #2038.
 ### </summary>
 class OptionDataNullReferenceRegressionAlgorithm(QCAlgorithm):
 
-    def Initialize(self):
-        self.SetStartDate(2016, 12, 1)
-        self.SetEndDate(2017, 1, 1)
-        self.SetCash(500000)
+    def initialize(self):
+        self.set_start_date(2016, 12, 1)
+        self.set_end_date(2017, 1, 1)
+        self.set_cash(500000)
 
-        self.AddEquity("DUST")
+        self.add_equity("DUST")
 
-        option = self.AddOption("DUST")
+        option = self.add_option("DUST")
 
-        option.SetFilter(self.UniverseFunc)
+        option.set_filter(self.universe_func)
 
-    def UniverseFunc(self, universe):
-        return universe.IncludeWeeklys().Strikes(-1, +1).Expiration(timedelta(25), timedelta(100))
+    def universe_func(self, universe):
+        return universe.include_weeklys().strikes(-1, +1).expiration(timedelta(25), timedelta(100))

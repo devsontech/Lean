@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -32,8 +32,8 @@ namespace QuantConnect.Tests.Engine.DataFeeds.Auxiliary
         [Test]
         public void ChecksFirstDate()
         {
-            var mapFileProvider = new LocalDiskMapFileProvider();
-            var mapFileResolver = mapFileProvider.Get(Market.USA);
+            var mapFileProvider = TestGlobals.MapFileProvider;
+            var mapFileResolver = mapFileProvider.Get(AuxiliaryDataKey.EquityUsa);
             // QQQ started trading on 19990310
             var mapFile = mapFileResolver.ResolveMapFile("QQQ", new DateTime(1999, 3, 9));
             Assert.IsTrue(mapFile.IsNullOrEmpty());
@@ -45,8 +45,8 @@ namespace QuantConnect.Tests.Engine.DataFeeds.Auxiliary
         [Test]
         public void ResolvesCorrectlyReUsedTicker()
         {
-            var mapFileProvider = new LocalDiskMapFileProvider();
-            var mapFileResolver = mapFileProvider.Get(Market.USA);
+            var mapFileProvider = TestGlobals.MapFileProvider;
+            var mapFileResolver = mapFileProvider.Get(AuxiliaryDataKey.EquityUsa);
 
             // FB.1 started trading on 19990929 and ended on 20030328
             var mapFile = mapFileResolver.ResolveMapFile("FB", new DateTime(1999, 9, 28));
@@ -66,9 +66,9 @@ namespace QuantConnect.Tests.Engine.DataFeeds.Auxiliary
         [Test]
         public void InitializationSpeedTest()
         {
-            var mapFileProvider = new LocalDiskMapFileProvider();
+            var mapFileProvider = TestGlobals.MapFileProvider;
             var sw = Stopwatch.StartNew();
-            var mapFileresolver = mapFileProvider.Get(Market.USA);
+            var mapFileresolver = mapFileProvider.Get(AuxiliaryDataKey.EquityUsa);
             sw.Stop();
             Log.Trace($"elapsed: {sw.Elapsed.TotalSeconds} seconds");
         }
@@ -141,6 +141,17 @@ namespace QuantConnect.Tests.Engine.DataFeeds.Auxiliary
             Assert.AreEqual("TWX", mapFile.GetMappedSymbol(new DateTime(2014, 1, 1)));
         }
 
+        [Test]
+        public void ContinuousFuturesMappingMode()
+        {
+            var date = new DateTime(2018, 7, 23);
+            var mapFile = _resolver.ResolveMapFile("NG", date);
+            Assert.IsNotNull(mapFile);
+            Assert.AreEqual("NG UNT495KXTOLD", mapFile.GetMappedSymbol(new DateTime(2010, 6, 15), dataMappingMode: DataMappingMode.LastTradingDay));
+            Assert.AreEqual("NG UOMNNYK04BEP", mapFile.GetMappedSymbol(new DateTime(2010, 6, 15), dataMappingMode: DataMappingMode.FirstDayMonth));
+            Assert.AreEqual("NG UMWMI2IDASAP", mapFile.GetMappedSymbol(new DateTime(2010, 6, 15), dataMappingMode: DataMappingMode.OpenInterest));
+        }
+
         private static MapFileResolver CreateMapFileResolver()
         {
             return new MapFileResolver(new List<MapFile>
@@ -198,6 +209,12 @@ namespace QuantConnect.Tests.Engine.DataFeeds.Auxiliary
                     new MapFileRow(new DateTime(1998, 1, 2), "aol"),
                     new MapFileRow(new DateTime(2003, 10, 15), "aol"),
                     new MapFileRow(new DateTime(2018, 6, 15), "twx")
+                }),
+                new MapFile("ng", new List<MapFileRow>
+                {
+                    new MapFileRow(new DateTime(2010, 6, 15), "ng unt495kxtold", Exchange.NYMEX, DataMappingMode.LastTradingDay),
+                    new MapFileRow(new DateTime(2010, 6, 15), "ng uomnnyk04bep", Exchange.NYMEX, DataMappingMode.FirstDayMonth),
+                    new MapFileRow(new DateTime(2010, 6, 15), "ng umwmi2idasap", Exchange.NYMEX, DataMappingMode.OpenInterest),
                 }),
             });
         }

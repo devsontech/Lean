@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -35,7 +35,16 @@ namespace QuantConnect.Lean.Engine.HistoricalData
     /// </summary>
     public abstract class SynchronizingHistoryProvider : HistoryProviderBase
     {
+        /// <summary>
+        /// The market hours database
+        /// </summary>
+        protected static readonly MarketHoursDatabase MarketHours = MarketHoursDatabase.FromDataFolder();
         private int _dataPointCount;
+
+        /// <summary>
+        /// The algorithm settings instance to use
+        /// </summary>
+        public IAlgorithmSettings AlgorithmSettings { get; set; } = new AlgorithmSettings();
 
         /// <summary>
         /// Gets the total number of data points emitted by this history provider
@@ -49,6 +58,8 @@ namespace QuantConnect.Lean.Engine.HistoricalData
         {
             // required by TimeSlice.Create, but we don't need it's behavior
             var frontier = DateTime.MinValue;
+            // never changes, there's no selection during a history request
+            var universeSelectionData = new Dictionary<Universe, BaseDataCollection>();
             var timeSliceFactory = new TimeSliceFactory(sliceTimeZone);
             while (true)
             {
@@ -63,10 +74,18 @@ namespace QuantConnect.Lean.Engine.HistoricalData
                         continue;
                     }
 
-                    var packet = new DataFeedPacket(subscription.Security, subscription.Configuration);
-
+                    DataFeedPacket packet = null;
                     while (subscription.Current.EmitTimeUtc <= frontier)
                     {
+                        if (packet == null)
+                        {
+                            // for performance, lets be selfish about creating a new instance
+                            packet = new DataFeedPacket(subscription.Security, subscription.Configuration);
+
+                            // only add if we have data
+                            data.Add(packet);
+                        }
+
                         packet.Add(subscription.Current.Data);
                         Interlocked.Increment(ref _dataPointCount);
                         if (!subscription.MoveNext())
@@ -74,8 +93,6 @@ namespace QuantConnect.Lean.Engine.HistoricalData
                             break;
                         }
                     }
-                    // only add if we have data
-                    if (packet.Count != 0) data.Add(packet);
                     // update our early bird ticks (next frontier time)
                     if (subscription.Current != null)
                     {
@@ -87,7 +104,7 @@ namespace QuantConnect.Lean.Engine.HistoricalData
                 if (data.Count != 0)
                 {
                     // reuse the slice construction code from TimeSlice.Create
-                    yield return timeSliceFactory.Create(frontier, data, SecurityChanges.None, new Dictionary<Universe, BaseDataCollection>()).Slice;
+                    yield return timeSliceFactory.Create(frontier, data, SecurityChanges.None, universeSelectionData).Slice;
                 }
 
                 // end of subscriptions, after we emit, else we might drop a data point
@@ -104,24 +121,30 @@ namespace QuantConnect.Lean.Engine.HistoricalData
         }
 
         /// <summary>
+        /// Retrieves the appropriate <see cref="SecurityExchange"/> based on the data type and symbol.
+        /// </summary>
+        /// <param name="exchange">The default exchange instance.</param>
+        /// <param name="dataType">The type of data being processed.</param>
+        /// <param name="symbol">The security symbol.</param>
+        /// <returns>The security exchange with appropriate market hours.</returns>
+        protected static SecurityExchange GetSecurityExchange(SecurityExchange exchange, Type dataType, Symbol symbol)
+        {
+            if (dataType == typeof(OpenInterest))
+            {
+                // Retrieve the original market hours, which include holidays and closed days.
+                var originalExchangeHours = MarketHours.GetExchangeHours(symbol.ID.Market, symbol, symbol.SecurityType);
+                // Use the original market hours to prevent fill-forwarding on non-trading hours.
+                return new SecurityExchange(originalExchangeHours);
+            }
+            return exchange;
+        }
+
+        /// <summary>
         /// Creates a subscription to process the history request
         /// </summary>
         protected Subscription CreateSubscription(HistoryRequest request, IEnumerable<BaseData> history)
         {
-            var config = new SubscriptionDataConfig(request.DataType,
-                request.Symbol,
-                request.Resolution,
-                request.DataTimeZone,
-                request.ExchangeHours.TimeZone,
-                request.FillForwardResolution.HasValue,
-                request.IncludeExtendedMarketHours,
-                false,
-                request.IsCustomData,
-                request.TickType,
-                true,
-                request.DataNormalizationMode
-            );
-
+            var config = request.ToSubscriptionDataConfig();
             var security = new Security(
                 request.ExchangeHours,
                 config,
@@ -133,6 +156,12 @@ namespace QuantConnect.Lean.Engine.HistoricalData
             );
 
             var reader = history.GetEnumerator();
+
+            var useDailyStrictEndTimes = LeanData.UseDailyStrictEndTimes(AlgorithmSettings, request, config.Symbol, config.Increment);
+            if (useDailyStrictEndTimes)
+            {
+                reader = new StrictDailyEndTimesEnumerator(reader, request.ExchangeHours, request.StartTimeLocal);
+            }
 
             // optionally apply fill forward behavior
             if (request.FillForwardResolution.HasValue)
@@ -148,12 +177,13 @@ namespace QuantConnect.Lean.Engine.HistoricalData
                 }
 
                 var readOnlyRef = Ref.CreateReadOnly(() => request.FillForwardResolution.Value.ToTimeSpan());
-                reader = new FillForwardEnumerator(reader, security.Exchange, readOnlyRef, request.IncludeExtendedMarketHours, end, config.Increment, config.DataTimeZone);
+                var exchange = GetSecurityExchange(security.Exchange, request.DataType, request.Symbol);
+                reader = new FillForwardEnumerator(reader, exchange, readOnlyRef, request.IncludeExtendedMarketHours, start, end, config.Increment, config.DataTimeZone, useDailyStrictEndTimes, request.DataType);
             }
 
             var subscriptionRequest = new SubscriptionRequest(false, null, security, config, request.StartTimeUtc, request.EndTimeUtc);
 
-            return SubscriptionUtils.Create(subscriptionRequest, reader);
+            return SubscriptionUtils.Create(subscriptionRequest, reader, AlgorithmSettings.DailyPreciseEndTime);
         }
     }
 }

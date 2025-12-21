@@ -36,6 +36,7 @@ namespace QuantConnect.Securities.IndexOption
         /// <param name="currencyConverter">Currency converter</param>
         /// <param name="registeredTypes">Provides all data types registered to the algorithm</param>
         /// <param name="securityCache">Cache of security objects</param>
+        /// <param name="underlying">Future underlying security</param>
         /// <param name="settlementType">Settlement type for the index option. Most index options are cash-settled.</param>
         public IndexOption(Symbol symbol,
             SecurityExchangeHours exchangeHours,
@@ -44,6 +45,7 @@ namespace QuantConnect.Securities.IndexOption
             ICurrencyConverter currencyConverter,
             IRegisteredSecurityDataTypesProvider registeredTypes,
             SecurityCache securityCache,
+            Security underlying,
             SettlementType settlementType = SettlementType.Cash)
             : base(symbol,
                 quoteCurrency,
@@ -53,14 +55,15 @@ namespace QuantConnect.Securities.IndexOption
                 new OptionPortfolioModel(),
                 new ImmediateFillModel(),
                 new InteractiveBrokersFeeModel(),
-                new ConstantSlippageModel(0),
+                NullSlippageModel.Instance,
                 new ImmediateSettlementModel(),
                 Securities.VolatilityModel.Null,
                 new OptionMarginModel(),
                 new OptionDataFilter(),
-                new SecurityPriceVariationModel(),
+                new IndexOptionPriceVariationModel(),
                 currencyConverter,
-                registeredTypes
+                registeredTypes,
+                underlying
             )
         {
             ExerciseSettlement = settlementType;
@@ -80,5 +83,21 @@ namespace QuantConnect.Securities.IndexOption
             base.UpdateConsumersMarketPrice(data);
             ((IndexOptionSymbolProperties)SymbolProperties).UpdateMarketPrice(data);
         }
+
+        /// <summary>
+        /// Updates the symbol properties of this security
+        /// </summary>
+        internal override void UpdateSymbolProperties(SymbolProperties symbolProperties)
+        {
+            if (symbolProperties != null)
+            {
+                SymbolProperties = new IndexOptionSymbolProperties(symbolProperties);
+            }
+        }
+
+        /// <summary>
+        /// Returns the securities symbol
+        /// </summary>
+        public static implicit operator Symbol(IndexOption security) => security.Symbol;
     }
 }

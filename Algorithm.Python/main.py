@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 # 
 # Licensed under the Apache License, Version 2.0 (the "License"); 
@@ -11,33 +11,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import clr
-clr.AddReference("System")
-clr.AddReference("QuantConnect.Algorithm")
-clr.AddReference("QuantConnect.Common")
-
-from System import *
-from QuantConnect import *
-from QuantConnect.Algorithm import *
-
+from AlgorithmImports import *
 
 class BasicTemplateAlgorithm(QCAlgorithm):
     '''Basic template algorithm simply initializes the date range and cash'''
 
-    def Initialize(self):
+    def initialize(self):
         '''Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. All algorithms must initialized.'''
         
-        self.SetStartDate(2013,10,7)   #Set Start Date
-        self.SetEndDate(2013,10,11)    #Set End Date
-        self.SetCash(100000)           #Set Strategy Cash
+        self.set_start_date(2013,10,7)   #Set Start Date
+        self.set_end_date(2013,10,11)    #Set End Date
+        self.set_cash(100000)           #Set Strategy Cash
         # Find more symbols here: http://quantconnect.com/data
-        self.AddEquity("SPY", Resolution.Second)
+        self.add_equity("SPY", Resolution.SECOND)
 
-    def OnData(self, data):
-        '''OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
+    def on_data(self, data):
+        '''on_data event is the primary entry point for your algorithm. Each new data point will be pumped in here.
         
         Arguments:
             data: Slice object keyed by symbol containing the stock data
         '''
-        if not self.Portfolio.Invested:
-            self.SetHoldings("SPY", 1)
+        if not self.portfolio.invested:
+            self.set_holdings("SPY", 1)

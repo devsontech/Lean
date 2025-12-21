@@ -36,7 +36,7 @@ namespace QuantConnect.Algorithm.CSharp
             UniverseSettings.Resolution = Resolution.Minute;
 
             SetStartDate(2014, 06, 05);
-            SetEndDate(2014, 06, 06);
+            SetEndDate(2014, 06, 09);
             SetCash(100000);
 
             // set framework models
@@ -134,54 +134,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 17487;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "4"},
-            {"Average Win", "0%"},
-            {"Average Loss", "0%"},
-            {"Compounding Annual Return", "0%"},
-            {"Drawdown", "0%"},
-            {"Expectancy", "0"},
-            {"Net Profit", "0%"},
-            {"Sharpe Ratio", "0"},
-            {"Probabilistic Sharpe Ratio", "0%"},
+            {"Total Orders", "5"},
+            {"Average Win", "0.13%"},
+            {"Average Loss", "-0.30%"},
+            {"Compounding Annual Return", "-46.395%"},
+            {"Drawdown", "1.600%"},
+            {"Expectancy", "0.429"},
+            {"Start Equity", "100000"},
+            {"End Equity", "99149.50"},
+            {"Net Profit", "-0.850%"},
+            {"Sharpe Ratio", "-4.298"},
+            {"Sortino Ratio", "0"},
+            {"Probabilistic Sharpe Ratio", "15.319%"},
             {"Loss Rate", "0%"},
-            {"Win Rate", "0%"},
-            {"Profit-Loss Ratio", "0"},
-            {"Alpha", "0"},
-            {"Beta", "0"},
-            {"Annual Standard Deviation", "0"},
-            {"Annual Variance", "0"},
-            {"Information Ratio", "0"},
-            {"Tracking Error", "0"},
-            {"Treynor Ratio", "0"},
-            {"Total Fees", "$3.00"},
-            {"Estimated Strategy Capacity", "$74000.00"},
-            {"Fitness Score", "0"},
-            {"Kelly Criterion Estimate", "0.327"},
-            {"Kelly Criterion Probability Value", "1"},
-            {"Sortino Ratio", "79228162514264337593543950335"},
-            {"Return Over Maximum Drawdown", "79228162514264337593543950335"},
-            {"Portfolio Turnover", "0"},
-            {"Total Insights Generated", "26"},
-            {"Total Insights Closed", "24"},
-            {"Total Insights Analysis Completed", "24"},
-            {"Long Insight Count", "26"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$31.01809"},
-            {"Total Accumulated Estimated Alpha Value", "$1.89555"},
-            {"Mean Population Estimated Insight Value", "$0.07898125"},
-            {"Mean Population Direction", "50%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "50.0482%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "ce06ddfa4b2ffeb666a8910ac8836992"}
+            {"Win Rate", "100%"},
+            {"Profit-Loss Ratio", "0.43"},
+            {"Alpha", "-0.84"},
+            {"Beta", "0.986"},
+            {"Annual Standard Deviation", "0.098"},
+            {"Annual Variance", "0.01"},
+            {"Information Ratio", "-9.299"},
+            {"Tracking Error", "0.091"},
+            {"Treynor Ratio", "-0.428"},
+            {"Total Fees", "$4.00"},
+            {"Estimated Strategy Capacity", "$0"},
+            {"Lowest Capacity Asset", "AAPL R735QTJ8XC9X"},
+            {"Portfolio Turnover", "13.50%"},
+            {"Drawdown Recovery", "2"},
+            {"OrderListHash", "2ab4ffc0944a2888a3be0568c2570a79"}
         };
     }
 }

@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,20 +11,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("QuantConnect.Algorithm")
-AddReference("QuantConnect.Algorithm.Framework")
-AddReference("QuantConnect.Indicators")
-AddReference("QuantConnect.Logging")
-AddReference("QuantConnect.Common")
-
-from QuantConnect import *
-from QuantConnect.Indicators import *
-from QuantConnect.Logging import Log
-from QuantConnect.Algorithm import *
-from QuantConnect.Algorithm.Framework import *
-from QuantConnect.Algorithm.Framework.Alphas import *
-from datetime import timedelta
+from AlgorithmImports import *
+from QuantConnect.Logging import *
 from enum import Enum
 
 class RsiAlphaModel(AlphaModel):
@@ -33,19 +21,18 @@ class RsiAlphaModel(AlphaModel):
 
     def __init__(self,
                  period = 14,
-                 resolution = Resolution.Daily):
+                 resolution = Resolution.DAILY):
         '''Initializes a new instance of the RsiAlphaModel class
         Args:
             period: The RSI indicator period'''
         self.period = period
         self.resolution = resolution
-        self.insightPeriod = Time.Multiply(Extensions.ToTimeSpan(resolution), period)
-        self.symbolDataBySymbol ={}
+        self.insight_period = Time.multiply(Extensions.to_time_span(resolution), period)
+        self.symbol_data_by_symbol ={}
 
-        resolutionString = Extensions.GetEnumString(resolution, Resolution)
-        self.Name = '{}({},{})'.format(self.__class__.__name__, period, resolutionString)
+        self.name = '{}({},{})'.format(self.__class__.__name__, period, resolution)
 
-    def Update(self, algorithm, data):
+    def update(self, algorithm, data):
         '''Updates this alpha model with the latest data from the algorithm.
         This is called each time the algorithm receives data for subscribed securities
         Args:
@@ -54,87 +41,87 @@ class RsiAlphaModel(AlphaModel):
         Returns:
             The new insights generated'''
         insights = []
-        for symbol, symbolData in self.symbolDataBySymbol.items():
-            rsi = symbolData.RSI
-            previous_state = symbolData.State
-            state = self.GetState(rsi, previous_state)
+        for symbol, symbol_data in self.symbol_data_by_symbol.items():
+            rsi = symbol_data.rsi
+            previous_state = symbol_data.state
+            state = self.get_state(rsi, previous_state)
 
-            if state != previous_state and rsi.IsReady:
-                if state == State.TrippedLow:
-                    insights.append(Insight.Price(symbol, self.insightPeriod, InsightDirection.Up))
-                if state == State.TrippedHigh:
-                    insights.append(Insight.Price(symbol, self.insightPeriod, InsightDirection.Down))
+            if state != previous_state and rsi.is_ready:
+                if state == State.TRIPPED_LOW:
+                    insights.append(Insight.price(symbol, self.insight_period, InsightDirection.UP))
+                if state == State.TRIPPED_HIGH:
+                    insights.append(Insight.price(symbol, self.insight_period, InsightDirection.DOWN))
 
-            symbolData.State = state
+            symbol_data.state = state
 
         return insights
 
 
-    def OnSecuritiesChanged(self, algorithm, changes):
+    def on_securities_changed(self, algorithm, changes):
         '''Cleans out old security data and initializes the RSI for any newly added securities.
         Event fired each time the we add/remove securities from the data feed
         Args:
             algorithm: The algorithm instance that experienced the change in securities
             changes: The security additions and removals from the algorithm'''
-
         # clean up data for removed securities
-        symbols = [ x.Symbol for x in changes.RemovedSecurities ]
-        if len(symbols) > 0:
-            for subscription in algorithm.SubscriptionManager.Subscriptions:
-                if subscription.Symbol in symbols:
-                    self.symbolDataBySymbol.pop(subscription.Symbol, None)
-                    subscription.Consolidators.Clear()
+        for security in changes.removed_securities:
+            symbol_data = self.symbol_data_by_symbol.pop(security.symbol, None)
+            if symbol_data:
+                symbol_data.dispose()
 
         # initialize data for added securities
+        added_symbols = []
+        for security in changes.added_securities:
+            symbol = security.symbol
+            if symbol not in self.symbol_data_by_symbol:
+                symbol_data = SymbolData(algorithm, symbol, self.period, self.resolution)
+                self.symbol_data_by_symbol[symbol] = symbol_data
+                added_symbols.append(symbol)
 
-        addedSymbols = [ x.Symbol for x in changes.AddedSecurities if x.Symbol not in self.symbolDataBySymbol]
-        if len(addedSymbols) == 0: return
-
-        history = algorithm.History(addedSymbols, self.period, self.resolution)
-
-        for symbol in addedSymbols:
-            rsi = algorithm.RSI(symbol, self.period, MovingAverageType.Wilders, self.resolution)
-
-            if not history.empty:
-                ticker = SymbolCache.GetTicker(symbol)
-
-                if ticker not in history.index.levels[0]:
-                    Log.Trace(f'RsiAlphaModel.OnSecuritiesChanged: {ticker} not found in history data frame.')
-                    continue
-
-                for tuple in history.loc[ticker].itertuples():
-                    rsi.Update(tuple.Index, tuple.close)
-
-            self.symbolDataBySymbol[symbol] = SymbolData(symbol, rsi)
+        if added_symbols:
+            history = algorithm.history[TradeBar](added_symbols, self.period, self.resolution)
+            for trade_bars in history:
+                for bar in trade_bars.values():
+                    self.symbol_data_by_symbol[bar.symbol].update(bar)
 
 
-    def GetState(self, rsi, previous):
+    def get_state(self, rsi, previous):
         ''' Determines the new state. This is basically cross-over detection logic that
         includes considerations for bouncing using the configured bounce tolerance.'''
-        if rsi.Current.Value > 70:
-            return State.TrippedHigh
-        if rsi.Current.Value < 30:
-            return State.TrippedLow
-        if previous == State.TrippedLow:
-            if rsi.Current.Value > 35:
-                return State.Middle
-        if previous == State.TrippedHigh:
-            if rsi.Current.Value < 65:
-                return State.Middle
+        if rsi.current.value > 70:
+            return State.TRIPPED_HIGH
+        if rsi.current.value < 30:
+            return State.TRIPPED_LOW
+        if previous == State.TRIPPED_LOW:
+            if rsi.current.value > 35:
+                return State.MIDDLE
+        if previous == State.TRIPPED_HIGH:
+            if rsi.current.value < 65:
+                return State.MIDDLE
 
         return previous
 
 
 class SymbolData:
     '''Contains data specific to a symbol required by this model'''
-    def __init__(self, symbol, rsi):
-        self.Symbol = symbol
-        self.RSI = rsi
-        self.State = State.Middle
+    def __init__(self, algorithm, symbol, period, resolution):
+        self.algorithm = algorithm
+        self.symbol = symbol
+        self.state = State.MIDDLE
+
+        self.rsi = RelativeStrengthIndex(period, MovingAverageType.WILDERS)
+        self.consolidator = algorithm.resolve_consolidator(symbol, resolution)
+        algorithm.register_indicator(symbol, self.rsi, self.consolidator)
+
+    def update(self, bar):
+        self.consolidator.update(bar)
+
+    def dispose(self):
+        self.algorithm.subscription_manager.remove_consolidator(self.symbol, self.consolidator)
 
 
 class State(Enum):
     '''Defines the state. This is used to prevent signal spamming and aid in bounce detection.'''
-    TrippedLow = 0
-    Middle = 1
-    TrippedHigh = 2
+    TRIPPED_LOW = 0
+    MIDDLE = 1
+    TRIPPED_HIGH = 2

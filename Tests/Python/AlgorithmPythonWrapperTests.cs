@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -35,7 +35,7 @@ namespace QuantConnect.Tests.Python
             _baseCode = File.ReadAllText(Path.Combine("./RegressionAlgorithms", "Test_AlgorithmPythonWrapper.py"));
         }
 
-        [Test]
+        [TestCase("")]
         [TestCase("def OnEndOfDay(self): pass")]
         [TestCase("def OnEndOfDay(self, symbol): pass")]
         public void CallOnEndOfDayDoesNotThrow(string code)
@@ -155,7 +155,7 @@ namespace QuantConnect.Tests.Python
 
             using (Py.GIL())
             {
-                 PythonEngine.ModuleFromString("Test_AlgorithmPythonWrapper", code);
+                PyModule.FromString("Test_AlgorithmPythonWrapper", code);
                 return new AlgorithmPythonWrapper("Test_AlgorithmPythonWrapper");
             }
         }

@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,15 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("System")
-AddReference("QuantConnect.Algorithm")
-AddReference("QuantConnect.Indicators")
-AddReference("QuantConnect.Common")
-
-from System import *
-from QuantConnect import *
-from QuantConnect.Data import *
+from AlgorithmImports import *
 
 ### <summary>
 ### Benchmark Algorithm: Pure processing of 1 equity second resolution with the same benchmark.
@@ -29,11 +21,11 @@ from QuantConnect.Data import *
 ### </remarks>
 class EmptySingleSecuritySecondEquityBenchmark(QCAlgorithm):
 
-    def Initialize(self):
-        self.SetStartDate(2008, 1, 1)
-        self.SetEndDate(2009, 1, 1)    
-        self.SetBenchmark(lambda x: 1)
-        self.AddEquity("SPY", Resolution.Second)
+    def initialize(self):
+        self.set_start_date(2008, 1, 1)
+        self.set_end_date(2008, 6, 1)
+        self.set_benchmark(lambda x: 1)
+        self.add_equity("SPY", Resolution.SECOND)
     
-    def OnData(self, data):
+    def on_data(self, data):
         pass

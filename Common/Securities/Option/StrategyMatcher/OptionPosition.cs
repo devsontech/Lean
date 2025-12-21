@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -29,7 +29,7 @@ namespace QuantConnect.Securities.Option.StrategyMatcher
         /// <summary>
         /// Gets a new <see cref="OptionPosition"/> with zero <see cref="Quantity"/>
         /// </summary>
-        public static OptionPosition None(Symbol symbol)
+        public static OptionPosition Empty(Symbol symbol)
             => new OptionPosition(symbol, 0);
 
         /// <summary>

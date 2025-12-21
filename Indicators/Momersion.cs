@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -25,7 +25,7 @@ namespace QuantConnect.Indicators
     /// Source: Harris, Michael. "Momersion Indicator." Price Action Lab.,
     ///             13 Aug. 2015. Web. http://www.priceactionlab.com/Blog/2015/08/momersion-indicator/.
     /// </summary>
-    public class MomersionIndicator : WindowIndicator<IndicatorDataPoint>, IIndicatorWarmUpPeriodProvider
+    public class Momersion : WindowIndicator<IndicatorDataPoint>, IIndicatorWarmUpPeriodProvider
     {
         /// <summary>
         /// The minimum observations needed to consider the indicator ready. After that observation
@@ -39,18 +39,18 @@ namespace QuantConnect.Indicators
         private readonly RollingWindow<decimal> _multipliedDiffWindow;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="MomersionIndicator"/> class.
+        /// Initializes a new instance of the <see cref="Momersion"/> class.
         /// </summary>
         /// <param name="name">The name.</param>
         /// <param name="minPeriod">The minimum period.</param>
         /// <param name="fullPeriod">The full period.</param>
         /// <exception cref="System.ArgumentException">The minimum period should be greater of 3.;minPeriod</exception>
-        public MomersionIndicator(string name, int? minPeriod, int fullPeriod)
+        public Momersion(string name, int? minPeriod, int fullPeriod)
             : base(name, fullPeriod)
         {
             if (minPeriod < 4)
             {
-                throw new ArgumentException("The minimum period should be 4.", "minPeriod");
+                throw new ArgumentException("The minimum period should be 4.", nameof(minPeriod));
             }
             _minPeriod = minPeriod;
             _multipliedDiffWindow = new RollingWindow<decimal>(fullPeriod);
@@ -58,20 +58,20 @@ namespace QuantConnect.Indicators
         }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="MomersionIndicator"/> class.
+        /// Initializes a new instance of the <see cref="Momersion"/> class.
         /// </summary>
         /// <param name="minPeriod">The minimum period.</param>
         /// <param name="fullPeriod">The full period.</param>
-        public MomersionIndicator(int? minPeriod, int fullPeriod)
+        public Momersion(int? minPeriod, int fullPeriod)
             : this($"Momersion({minPeriod},{fullPeriod})", minPeriod, fullPeriod)
         {
         }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="MomersionIndicator"/> class.
+        /// Initializes a new instance of the <see cref="Momersion"/> class.
         /// </summary>
         /// <param name="fullPeriod">The full period.</param>
-        public MomersionIndicator(int fullPeriod)
+        public Momersion(int fullPeriod)
             : this(null, fullPeriod)
         {
         }

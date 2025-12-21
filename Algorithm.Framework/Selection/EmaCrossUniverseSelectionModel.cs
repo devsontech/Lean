@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -43,15 +43,13 @@ namespace QuantConnect.Algorithm.Framework.Selection
         /// <param name="fastPeriod">Fast EMA period</param>
         /// <param name="slowPeriod">Slow EMA period</param>
         /// <param name="universeCount">Maximum number of members of this universe selection</param>
-        /// <param name="universeSettings">The settings used when adding symbols to the algorithm, specify null to use algorthm.UniverseSettings</param>
-        /// <param name="securityInitializer">Optional security initializer invoked when creating new securities, specify null to use algorithm.SecurityInitializer</param>
+        /// <param name="universeSettings">The settings used when adding symbols to the algorithm, specify null to use algorithm.UniverseSettings</param>
         public EmaCrossUniverseSelectionModel(
             int fastPeriod = 100,
             int slowPeriod = 300,
             int universeCount = 500,
-            UniverseSettings universeSettings = null,
-            ISecurityInitializer securityInitializer = null)
-            : base(false, universeSettings, securityInitializer)
+            UniverseSettings universeSettings = null)
+            : base(false, universeSettings)
         {
             _fastPeriod = fastPeriod;
             _slowPeriod = slowPeriod;
@@ -67,17 +65,23 @@ namespace QuantConnect.Algorithm.Framework.Selection
         /// <returns>An enumerable of symbols passing the filter</returns>
         public override IEnumerable<Symbol> SelectCoarse(QCAlgorithm algorithm, IEnumerable<CoarseFundamental> coarse)
         {
+            // Check if this method was overridden in Python
+            if (TryInvokePythonOverride(nameof(SelectCoarse), out IEnumerable<Symbol> result, algorithm, coarse))
+            {
+                return result;
+            }
+
             return (from cf in coarse
                         // grab th SelectionData instance for this symbol
-                        let avg = _averages.GetOrAdd(cf.Symbol, sym => new SelectionData(_fastPeriod, _slowPeriod))
-                        // Update returns true when the indicators are ready, so don't accept until they are
-                        where avg.Update(cf.EndTime, cf.AdjustedPrice)
-                        // only pick symbols who have their _fastPeriod-day ema over their _slowPeriod-day ema
-                        where avg.Fast > avg.Slow * (1 + _tolerance)
-                        // prefer symbols with a larger delta by percentage between the two averages
-                        orderby avg.ScaledDelta descending
-                        // we only need to return the symbol and return 'Count' symbols
-                        select cf.Symbol).Take(_universeCount);
+                    let avg = _averages.GetOrAdd(cf.Symbol, sym => new SelectionData(_fastPeriod, _slowPeriod))
+                    // Update returns true when the indicators are ready, so don't accept until they are
+                    where avg.Update(cf.EndTime, cf.AdjustedPrice)
+                    // only pick symbols who have their _fastPeriod-day ema over their _slowPeriod-day ema
+                    where avg.Fast > avg.Slow * (1 + _tolerance)
+                    // prefer symbols with a larger delta by percentage between the two averages
+                    orderby avg.ScaledDelta descending
+                    // we only need to return the symbol and return 'Count' symbols
+                    select cf.Symbol).Take(_universeCount);
         }
 
         // class used to improve readability of the coarse selection function

@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,32 +11,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("System")
-AddReference("QuantConnect.Algorithm")
-AddReference("QuantConnect.Common")
-
-from System import *
-from QuantConnect import *
-from QuantConnect.Algorithm import *
-from QuantConnect.Data import *
-from datetime import timedelta
+from AlgorithmImports import *
 
 class ScheduledEventsBenchmark(QCAlgorithm):
 
-    def Initialize(self):
+    def initialize(self):
 
-        self.SetStartDate(2011, 1, 1)
-        self.SetEndDate(2018, 1, 1)
-        self.SetCash(100000)
-        self.AddEquity("SPY")
+        self.set_start_date(2011, 1, 1)
+        self.set_end_date(2022, 1, 1)
+        self.set_cash(100000)
+        self.add_equity("SPY")
 
         for i in range(300):
-            self.Schedule.On(self.DateRules.EveryDay("SPY"), self.TimeRules.AfterMarketOpen("SPY", i), self.Rebalance)
-            self.Schedule.On(self.DateRules.EveryDay("SPY"), self.TimeRules.BeforeMarketClose("SPY", i), self.Rebalance)
+            self.schedule.on(self.date_rules.every_day("SPY"), self.time_rules.after_market_open("SPY", i), self.rebalance)
+            self.schedule.on(self.date_rules.every_day("SPY"), self.time_rules.before_market_close("SPY", i), self.rebalance)
 
-    def OnData(self, data):
+    def on_data(self, data):
         pass
 
-    def Rebalance(self):
+    def rebalance(self):
         pass

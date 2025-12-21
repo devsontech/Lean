@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -15,6 +15,7 @@
 
 using System;
 using System.Globalization;
+using System.Text;
 
 namespace QuantConnect
 {
@@ -53,7 +54,7 @@ namespace QuantConnect
             {
                 // these cases are purposefully ordered to ensure the compiler can generate a jump table vs a binary tree
                 case TypeCode.Empty:
-                    throw new ArgumentException("StringExtensions.ConvertInvariant does not support converting to TypeCode.Empty");
+                    throw new ArgumentException(Messages.StringExtensions.ConvertInvariantCannotConvertTo(TypeCode.Empty));
 
                 case TypeCode.Object:
                     var convertible = value as IConvertible;
@@ -65,7 +66,7 @@ namespace QuantConnect
                     return Convert.ChangeType(value, conversionType, FormatProvider);
 
                 case TypeCode.DBNull:
-                    throw new ArgumentException("StringExtensions.ConvertInvariant does not support converting to TypeCode.DBNull");
+                    throw new ArgumentException(Messages.StringExtensions.ConvertInvariantCannotConvertTo(TypeCode.DBNull));
 
                 case TypeCode.Boolean:
                     return Convert.ToBoolean(value, FormatProvider);
@@ -309,6 +310,24 @@ namespace QuantConnect
             }
 
             return value.Substring(startIndex, Math.Min(length, value.Length - startIndex));
+        }
+
+        /// <summary>
+        /// Truncates a string to the specified maximum length
+        /// </summary>
+        /// <param name="value">The string</param>
+        /// <param name="maxLength">The maximum allowed string</param>
+        /// <returns>
+        /// A new string with <paramref name="maxLength"/> characters if the original one's length was greater than the maximum allowed length.
+        /// Otherwise, the original string is returned.
+        /// </returns>
+        public static string Truncate(this string value, int maxLength)
+        {
+            if (value.Length > maxLength)
+            {
+                return value.Substring(0, maxLength);
+            }
+            return value;
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,66 +11,51 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("System")
-AddReference("QuantConnect.Algorithm")
-AddReference("QuantConnect.Algorithm.Framework")
-AddReference("QuantConnect.Common")
-
-from System import *
-from QuantConnect import *
-from QuantConnect.Orders import *
-from QuantConnect.Algorithm import *
-from QuantConnect.Algorithm.Framework import *
-from QuantConnect.Algorithm.Framework.Alphas import *
-from QuantConnect.Algorithm.Framework.Execution import *
-from QuantConnect.Algorithm.Framework.Portfolio import *
-from QuantConnect.Algorithm.Framework.Selection import *
-
+from AlgorithmImports import *
 from queue import Queue
 
 class ScheduledQueuingAlgorithm(QCAlgorithm):
 
-    def Initialize(self):
-        self.SetStartDate(2020, 9, 1)
-        self.SetEndDate(2020, 9, 2)
-        self.SetCash(100000)
-        
-        self.__numberOfSymbols = 2000
-        self.__numberOfSymbolsFine = 1000
-        self.SetUniverseSelection(FineFundamentalUniverseSelectionModel(self.CoarseSelectionFunction, self.FineSelectionFunction, None, None))
-        
-        self.SetPortfolioConstruction(EqualWeightingPortfolioConstructionModel())
-        
-        self.SetExecution(ImmediateExecutionModel())
-        
-        self.queue = Queue()
-        self.dequeue_size = 100
-        
-        self.AddEquity("SPY", Resolution.Minute)
-        self.Schedule.On(self.DateRules.EveryDay("SPY"), self.TimeRules.At(0, 0), self.FillQueue)
-        self.Schedule.On(self.DateRules.EveryDay("SPY"), self.TimeRules.Every(timedelta(minutes=60)), self.TakeFromQueue)
+    def initialize(self) -> None:
+        self.set_start_date(2020, 9, 1)
+        self.set_end_date(2020, 9, 2)
+        self.set_cash(100000)
 
-    def CoarseSelectionFunction(self, coarse):
-        has_fundamentals = [security for security in coarse if security.HasFundamentalData]
-        sorted_by_dollar_volume = sorted(has_fundamentals, key=lambda x: x.DollarVolume, reverse=True)
-        return [ x.Symbol for x in sorted_by_dollar_volume[:self.__numberOfSymbols] ]
-    
-    def FineSelectionFunction(self, fine):
-        sorted_by_pe_ratio = sorted(fine, key=lambda x: x.ValuationRatios.PERatio, reverse=True)
-        return [ x.Symbol for x in sorted_by_pe_ratio[:self.__numberOfSymbolsFine] ]
-        
-    def FillQueue(self):
-        securities = [security for security in self.ActiveSecurities.Values if security.Fundamentals is not None]
-        
+        self.__number_of_symbols = 2000
+        self.__number_of_symbols_fine = 1000
+        self.set_universe_selection(FineFundamentalUniverseSelectionModel(self.coarse_selection_function, self.fine_selection_function, None))
+
+        self.set_portfolio_construction(EqualWeightingPortfolioConstructionModel())
+
+        self.set_execution(ImmediateExecutionModel())
+
+        self._queue = Queue()
+        self._dequeue_size = 100
+
+        self.add_equity("SPY", Resolution.MINUTE)
+        self.schedule.on(self.date_rules.every_day("SPY"), self.time_rules.at(0, 0), self.fill_queue)
+        self.schedule.on(self.date_rules.every_day("SPY"), self.time_rules.every(timedelta(minutes=60)), self.take_from_queue)
+
+    def coarse_selection_function(self, coarse: list[CoarseFundamental]) -> list[Symbol]:
+        has_fundamentals = [security for security in coarse if security.has_fundamental_data]
+        sorted_by_dollar_volume = sorted(has_fundamentals, key=lambda x: x.dollar_volume, reverse=True)
+        return [ x.symbol for x in sorted_by_dollar_volume[:self.__number_of_symbols] ]
+
+    def fine_selection_function(self, fine: list[FineFundamental]) -> list[Symbol]:
+        sorted_by_pe_ratio = sorted(fine, key=lambda x: x.valuation_ratios.pe_ratio, reverse=True)
+        return [ x.symbol for x in sorted_by_pe_ratio[:self.__number_of_symbols_fine] ]
+
+    def fill_queue(self) -> None:
+        securities = [security for security in self.active_securities.values() if security.fundamentals]
+
         # Fill queue with symbols sorted by PE ratio (decreasing order)
-        self.queue.queue.clear()
-        sorted_by_pe_ratio = sorted(securities, key=lambda x: x.Fundamentals.ValuationRatios.PERatio, reverse=True)
+        self._queue.queue.clear()
+        sorted_by_pe_ratio = sorted(securities, key=lambda x: x.fundamentals.valuation_ratios.pe_ratio, reverse=True)
         for security in sorted_by_pe_ratio:
-            self.queue.put(security.Symbol)
-        
-    def TakeFromQueue(self):
-        symbols = [self.queue.get() for _ in range(min(self.dequeue_size, self.queue.qsize()))]
-        self.History(symbols, 10, Resolution.Daily)
-        
-        self.Log(f"Symbols at {self.Time}: {[str(symbol) for symbol in symbols]}")
+            self._queue.put(security.symbol)
+
+    def take_from_queue(self) -> None:
+        symbols = [self._queue.get() for _ in range(min(self._dequeue_size, self._queue.qsize()))]
+        self.history(symbols, 10, Resolution.DAILY)
+
+        self.log(f"Symbols at {self.time}: {[str(symbol) for symbol in symbols]}")

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -37,11 +37,11 @@ namespace QuantConnect.Securities
         Order GetOrderById(int orderId);
 
         /// <summary>
-        /// Gets the order by its brokerage id
+        /// Gets the Lean orders by its brokerage id
         /// </summary>
         /// <param name="brokerageId">The brokerage id to fetch</param>
-        /// <returns>The first order matching the brokerage id, or null if no match is found</returns>
-        Order GetOrderByBrokerageId(string brokerageId);
+        /// <returns>The orders matching the brokerage id, or null if no match is found</returns>
+        List<Order> GetOrdersByBrokerageId(string brokerageId);
 
         /// <summary>
         /// Gets and enumerable of <see cref="OrderTicket"/> matching the specified <paramref name="filter"/>
@@ -79,6 +79,16 @@ namespace QuantConnect.Securities
         /// <param name="filter">Delegate used to filter the orders</param>
         /// <returns>All filtered open orders this order provider currently holds</returns>
         List<Order> GetOpenOrders(Func<Order, bool> filter = null);
+
+        /// <summary>
+        /// Calculates the projected holdings for the specified security based on the current open orders.
+        /// </summary>
+        /// <param name="security">The security</param>
+        /// <returns>
+        /// The projected holdings for the specified security, which is the sum of the current holdings
+        /// plus the sum of the open orders quantity.
+        /// </returns>
+        ProjectedHoldings GetProjectedHoldings(Security security);
     }
 
     /// <summary>
@@ -92,9 +102,9 @@ namespace QuantConnect.Securities
         /// <param name="orderProvider">The order provider to search</param>
         /// <param name="brokerageId">The brokerage id to fetch</param>
         /// <returns>The first order matching the brokerage id, or null if no match is found</returns>
-        public static Order GetOrderByBrokerageId(this IOrderProvider orderProvider, long brokerageId)
+        public static List<Order> GetOrdersByBrokerageId(this IOrderProvider orderProvider, long brokerageId)
         {
-            return orderProvider.GetOrderByBrokerageId(brokerageId.ToStringInvariant());
+            return orderProvider.GetOrdersByBrokerageId(brokerageId.ToStringInvariant());
         }
 
         /// <summary>
@@ -103,9 +113,9 @@ namespace QuantConnect.Securities
         /// <param name="orderProvider">The order provider to search</param>
         /// <param name="brokerageId">The brokerage id to fetch</param>
         /// <returns>The first order matching the brokerage id, or null if no match is found</returns>
-        public static Order GetOrderByBrokerageId(this IOrderProvider orderProvider, int brokerageId)
+        public static List<Order> GetOrdersByBrokerageId(this IOrderProvider orderProvider, int brokerageId)
         {
-            return orderProvider.GetOrderByBrokerageId(brokerageId.ToStringInvariant());
+            return orderProvider.GetOrdersByBrokerageId(brokerageId.ToStringInvariant());
         }
     }
 }

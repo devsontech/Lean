@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -29,11 +29,11 @@ namespace QuantConnect.Tests.Optimizer.Strategies
 {
     public abstract class OptimizationStrategyTests
     {
-        protected IOptimizationStrategy Strategy;
-        protected static Func<ParameterSet, decimal> _profit = parameterSet => parameterSet.Value.Where(pair => pair.Key != "skipFromResultSum").Sum(arg => arg.Value.ToDecimal());
-        protected static Func<ParameterSet, decimal> _drawdown = parameterSet => parameterSet.Value.Where(pair => pair.Key != "skipFromResultSum").Sum(arg => arg.Value.ToDecimal()) / 100.0m;
-        protected static Func<string, string, decimal> _parse = (dump, parameter) => JObject.Parse(dump).SelectToken($"Statistics.{parameter}").Value<decimal>();
-        protected static Func<decimal, decimal, string> _stringify = (profit, drawdown) => BacktestResult.Create(profit, drawdown).ToJson();
+        protected IOptimizationStrategy Strategy { get; set; }
+        protected static Func<ParameterSet, decimal> _profit { get; } = parameterSet => parameterSet.Value.Where(pair => pair.Key != "skipFromResultSum").Sum(arg => arg.Value.ToDecimal());
+        protected static Func<ParameterSet, decimal> _drawdown { get; } = parameterSet => parameterSet.Value.Where(pair => pair.Key != "skipFromResultSum").Sum(arg => arg.Value.ToDecimal()) / 100.0m;
+        protected static Func<string, string, decimal> _parse { get; } = (dump, parameter) => JObject.Parse(dump).SelectToken($"Statistics.{parameter}").Value<decimal>();
+        protected static Func<decimal, decimal, string> _stringify { get; } = (profit, drawdown) => BacktestResult.Create(profit, drawdown).ToJson();
 
         private Queue<OptimizationResult> _pendingOptimizationResults;
 
@@ -111,9 +111,9 @@ namespace QuantConnect.Tests.Optimizer.Strategies
 
             Strategy.PushNewResults(OptimizationResult.Initial);
 
-            while (_pendingOptimizationResults.Count > 0)
+            while (_pendingOptimizationResults.TryDequeue(out var item))
             {
-                Strategy.PushNewResults(_pendingOptimizationResults.Dequeue());
+                Strategy.PushNewResults(item);
             }
 
             Assert.AreEqual(_profit(solution), _parse(Strategy.Solution.JsonBacktestResult, "Profit"));
@@ -133,9 +133,9 @@ namespace QuantConnect.Tests.Optimizer.Strategies
 
             Strategy.PushNewResults(OptimizationResult.Initial);
 
-            while (_pendingOptimizationResults.Count > 0)
+            while (_pendingOptimizationResults.TryDequeue(out var item))
             {
-                Strategy.PushNewResults(_pendingOptimizationResults.Dequeue());
+                Strategy.PushNewResults(item);
             }
 
             Assert.AreEqual(_profit(solution), _parse(Strategy.Solution.JsonBacktestResult, "Profit"));
@@ -164,9 +164,9 @@ namespace QuantConnect.Tests.Optimizer.Strategies
 
             Strategy.PushNewResults(OptimizationResult.Initial);
 
-            while (!reached && _pendingOptimizationResults.Count > 0)
+            while (!reached && _pendingOptimizationResults.TryDequeue(out var item))
             {
-                Strategy.PushNewResults(_pendingOptimizationResults.Dequeue());
+                Strategy.PushNewResults(item);
             }
 
             Assert.IsTrue(reached);
@@ -195,9 +195,9 @@ namespace QuantConnect.Tests.Optimizer.Strategies
 
             Strategy.PushNewResults(OptimizationResult.Initial);
 
-            while (!reached && _pendingOptimizationResults.Count > 0)
+            while (!reached && _pendingOptimizationResults.TryDequeue(out var item))
             {
-                Strategy.PushNewResults(_pendingOptimizationResults.Dequeue());
+                Strategy.PushNewResults(item);
             }
 
             Assert.IsFalse(reached);

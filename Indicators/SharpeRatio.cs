@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -12,6 +12,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
 */
+
+using Python.Runtime;
+using QuantConnect.Data;
+using QuantConnect.Python;
 
 namespace QuantConnect.Indicators
 {
@@ -27,17 +31,35 @@ namespace QuantConnect.Indicators
     /// </summary>
     public class SharpeRatio : IndicatorBase<IndicatorDataPoint>, IIndicatorWarmUpPeriodProvider
     {
+        /// <summary>
+        /// Length of lookback period for the Sharpe ratio calculation
+        /// </summary>
         private readonly int _period;
+
+        /// <summary>
+        /// Risk-free rate model
+        /// </summary>
+        private readonly IRiskFreeInterestRateModel _riskFreeInterestRateModel;
 
         /// <summary>
         /// RateOfChange indicator for calculating the sharpe ratio
         /// </summary>
-        private readonly RateOfChange _roc;
+        protected RateOfChange RateOfChange { get; }
+
+        /// <summary>
+        /// RiskFreeRate indicator for calculating the sharpe ratio
+        /// </summary>
+        protected Identity RiskFreeRate { get; }
 
         /// <summary>
         /// Indicator to store the calculation of the sharpe ratio
         /// </summary>
-        private readonly CompositeIndicator<IndicatorDataPoint> _sharpeRatio;
+        protected IndicatorBase Ratio { get; set; }
+
+        /// <summary>
+        /// Indicator to store the numerator of the Sharpe ratio calculation
+        /// </summary>
+        protected IndicatorBase Numerator { get; }
 
         /// <summary>
         /// Required period, in data points, for the indicator to be ready and fully initialized.
@@ -47,7 +69,61 @@ namespace QuantConnect.Indicators
         /// <summary>
         /// Returns whether the indicator is properly initialized with data
         /// </summary>
-        public override bool IsReady => _sharpeRatio.Samples > _period + 1;
+        public override bool IsReady => Ratio.Samples > _period;
+
+        /// <summary>
+        /// Creates a new Sharpe Ratio indicator using the specified periods
+        /// </summary>
+        /// <param name="name">The name of this indicator</param>
+        /// <param name="period">Period of historical observation for sharpe ratio calculation</param>
+        /// <param name="riskFreeRateModel">Risk-free rate model</param>
+        public SharpeRatio(string name, int period, IRiskFreeInterestRateModel riskFreeRateModel)
+            : base(name)
+        {
+            _period = period;
+            _riskFreeInterestRateModel = riskFreeRateModel;
+
+            // calculate sharpe ratio using indicators
+            RateOfChange = new RateOfChange(1);
+            RiskFreeRate = new Identity(name + "_RiskFreeRate");
+            Numerator = RateOfChange.SMA(period).Minus(RiskFreeRate);
+            var denominator = new StandardDeviation(period).Of(RateOfChange);
+            Ratio = Numerator.Over(denominator);
+
+            // define warmup value;
+            // _roc is the base of our indicator chain + period of STD and SMA
+            WarmUpPeriod = RateOfChange.WarmUpPeriod + period;
+        }
+
+        /// <summary>
+        /// Creates a new Sharpe Ratio indicator using the specified periods
+        /// </summary>
+        /// <param name="period">Period of historical observation for sharpe ratio calculation</param>
+        /// <param name="riskFreeRateModel">Risk-free rate model</param>
+        public SharpeRatio(int period, IRiskFreeInterestRateModel riskFreeRateModel)
+            : this($"SR({period})", period, riskFreeRateModel)
+        {
+        }
+
+        /// <summary>
+        /// Creates a new Sharpe Ratio indicator using the specified period using a Python risk free rate model
+        /// </summary>
+        /// <param name="period">Period of historical observation for sharpe ratio calculation</param>
+        /// <param name="riskFreeRateModel">Risk-free rate model</param>
+        public SharpeRatio(string name, int period, PyObject riskFreeRateModel)
+            : this(name, period, RiskFreeInterestRateModelPythonWrapper.FromPyObject(riskFreeRateModel))
+        {
+        }
+
+        /// <summary>
+        /// Creates a new Sharpe Ratio indicator using the specified period using a Python risk free rate model
+        /// </summary>
+        /// <param name="period">Period of historical observation for sharpe ratio calculation</param>
+        /// <param name="riskFreeRateModel">Risk-free rate model</param>
+        public SharpeRatio(int period, PyObject riskFreeRateModel)
+            : this(period, RiskFreeInterestRateModelPythonWrapper.FromPyObject(riskFreeRateModel))
+        {
+        }
 
         /// <summary>
         /// Creates a new Sharpe Ratio indicator using the specified periods
@@ -56,18 +132,8 @@ namespace QuantConnect.Indicators
         /// <param name="period">Period of historical observation for sharpe ratio calculation</param>
         /// <param name="riskFreeRate">Risk-free rate for sharpe ratio calculation</param>
         public SharpeRatio(string name, int period, decimal riskFreeRate = 0.0m)
-            : base(name)
+            : this(name, period, new ConstantRiskFreeRateInterestRateModel(riskFreeRate))
         {
-            _period = period;
-
-            // calculate sharpe ratio using indicators
-            _roc = new RateOfChange(1);
-            var std = new StandardDeviation(period).Of(_roc);
-            var sma = _roc.SMA(period);
-            _sharpeRatio = sma.Minus(riskFreeRate).Over(std);
-
-            // define warmup value
-            WarmUpPeriod = _period + 2;
         }
 
         /// <summary>
@@ -87,8 +153,9 @@ namespace QuantConnect.Indicators
         /// <returns>A new value for this indicator</returns>
         protected override decimal ComputeNextValue(IndicatorDataPoint input)
         {
-            _roc.Update(input);
-            return _sharpeRatio;
+            RiskFreeRate.Update(input.EndTime, _riskFreeInterestRateModel.GetInterestRate(input.EndTime));
+            RateOfChange.Update(input);
+            return Ratio;
         }
 
         /// <summary>
@@ -96,8 +163,8 @@ namespace QuantConnect.Indicators
         /// </summary>
         public override void Reset()
         {
-            _sharpeRatio.Reset();
-            _roc.Reset();
+            Ratio.Reset();
+            RateOfChange.Reset();
             base.Reset();
         }
     }

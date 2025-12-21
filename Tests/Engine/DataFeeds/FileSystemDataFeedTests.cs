@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -15,11 +15,12 @@
 */
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using NUnit.Framework;
-using QuantConnect.Data.Auxiliary;
+using QuantConnect.Data.Market;
 using QuantConnect.Data.UniverseSelection;
 using QuantConnect.Lean.Engine.DataFeeds;
 using QuantConnect.Lean.Engine.DataFeeds.Enumerators.Factories;
@@ -27,11 +28,12 @@ using QuantConnect.Lean.Engine.Results;
 using QuantConnect.Logging;
 using QuantConnect.Packets;
 using QuantConnect.Securities;
+using QuantConnect.Tests.Common.Securities;
 using QuantConnect.Util;
 
 namespace QuantConnect.Tests.Engine.DataFeeds
 {
-    [TestFixture, Category("TravisExclude")]
+    [TestFixture]
     public class FileSystemDataFeedTests
     {
         [Test]
@@ -39,9 +41,6 @@ namespace QuantConnect.Tests.Engine.DataFeeds
         {
             var job = new BacktestNodePacket();
             var resultHandler = new BacktestingResultHandler();
-            var mapFileProvider = new LocalDiskMapFileProvider();
-            var factorFileProvider = new LocalDiskFactorFileProvider(mapFileProvider);
-            var dataProvider = new DefaultDataProvider();
 
             var algorithm = PerformanceBenchmarkAlgorithms.SingleSecurity_Second;
             var feed = new FileSystemDataFeed();
@@ -51,9 +50,9 @@ namespace QuantConnect.Tests.Engine.DataFeeds
             var dataManager = new DataManager(feed,
                 new UniverseSelection(
                     algorithm,
-                    new SecurityService(algorithm.Portfolio.CashBook, marketHoursDatabase, symbolPropertiesDataBase, algorithm, RegisteredSecurityDataTypesProvider.Null, new SecurityCacheProvider(algorithm.Portfolio)),
+                    new SecurityService(algorithm.Portfolio.CashBook, marketHoursDatabase, symbolPropertiesDataBase, algorithm, RegisteredSecurityDataTypesProvider.Null, new SecurityCacheProvider(algorithm.Portfolio), algorithm: algorithm),
                     dataPermissionManager,
-                    new DefaultDataProvider()),
+                    TestGlobals.DataProvider),
                 algorithm,
                 algorithm.TimeKeeper,
                 marketHoursDatabase,
@@ -61,14 +60,14 @@ namespace QuantConnect.Tests.Engine.DataFeeds
                 RegisteredSecurityDataTypesProvider.Null,
                 dataPermissionManager);
             algorithm.SubscriptionManager.SetDataManager(dataManager);
-            var synchronizer = new Synchronizer();
-            synchronizer.Initialize(algorithm, dataManager);
+            using var synchronizer = new Synchronizer();
+            synchronizer.Initialize(algorithm, dataManager, new());
 
-            feed.Initialize(algorithm, job, resultHandler, mapFileProvider, factorFileProvider, dataProvider, dataManager, synchronizer, dataPermissionManager.DataChannelProvider);
+            feed.Initialize(algorithm, job, resultHandler, TestGlobals.MapFileProvider, TestGlobals.FactorFileProvider, TestGlobals.DataProvider, dataManager, synchronizer, dataPermissionManager.DataChannelProvider);
             algorithm.Initialize();
             algorithm.PostInitialize();
 
-            var cancellationTokenSource = new CancellationTokenSource();
+            using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             var count = 0;
             var stopwatch = Stopwatch.StartNew();
             var lastMonth = algorithm.StartDate.Month;
@@ -97,17 +96,15 @@ namespace QuantConnect.Tests.Engine.DataFeeds
             algorithm.Initialize();
             algorithm.PostInitialize();
 
-            var dataProvider = new DefaultDataProvider();
             var resultHandler = new BacktestingResultHandler();
-            var mapFileProvider = new LocalDiskMapFileProvider();
-            var factorFileProvider = new LocalDiskFactorFileProvider(mapFileProvider);
-            var factory = new SubscriptionDataReaderSubscriptionEnumeratorFactory(resultHandler, mapFileProvider, factorFileProvider, dataProvider, enablePriceScaling: false);
+            using var factory = new SubscriptionDataReaderSubscriptionEnumeratorFactory(resultHandler, TestGlobals.MapFileProvider,
+                TestGlobals.FactorFileProvider, TestGlobals.DataCacheProvider, algorithm, enablePriceScaling: false);
 
             var universe = algorithm.UniverseManager.Single().Value;
             var security = algorithm.Securities.Single().Value;
             var securityConfig = security.Subscriptions.First();
             var subscriptionRequest = new SubscriptionRequest(false, universe, security, securityConfig, algorithm.StartDate, algorithm.EndDate);
-            var enumerator = factory.CreateEnumerator(subscriptionRequest, dataProvider);
+            var enumerator = factory.CreateEnumerator(subscriptionRequest, TestGlobals.DataProvider);
 
             var count = 0;
             var stopwatch = Stopwatch.StartNew();
@@ -145,11 +142,9 @@ namespace QuantConnect.Tests.Engine.DataFeeds
             algorithm.Initialize();
             algorithm.PostInitialize();
 
-            var dataProvider = new DefaultDataProvider();
             var resultHandler = new TestResultHandler();
-            var mapFileProvider = new LocalDiskMapFileProvider();
-            var factorFileProvider = new LocalDiskFactorFileProvider(mapFileProvider);
-            var factory = new SubscriptionDataReaderSubscriptionEnumeratorFactory(resultHandler, mapFileProvider, factorFileProvider, dataProvider, enablePriceScaling: false);
+            using var factory = new SubscriptionDataReaderSubscriptionEnumeratorFactory(resultHandler, TestGlobals.MapFileProvider,
+                TestGlobals.FactorFileProvider, TestGlobals.DataCacheProvider, algorithm, enablePriceScaling: false);
 
             var universe = algorithm.UniverseManager.Single().Value;
             var security = algorithm.AddEquity("AAA", Resolution.Daily);
@@ -157,7 +152,7 @@ namespace QuantConnect.Tests.Engine.DataFeeds
             // start date is before the first date in the map file
             var subscriptionRequest = new SubscriptionRequest(false, universe, security, securityConfig, new DateTime(2001, 12, 1),
                 new DateTime(2016, 11, 1));
-            var enumerator = factory.CreateEnumerator(subscriptionRequest, dataProvider);
+            var enumerator = factory.CreateEnumerator(subscriptionRequest, TestGlobals.DataProvider);
             // should initialize the data source reader
             enumerator.MoveNext();
 
@@ -165,9 +160,248 @@ namespace QuantConnect.Tests.Engine.DataFeeds
             factory.DisposeSafely();
             resultHandler.Exit();
 
-            var message = ((DebugPacket) resultHandler.Messages.Single()).Message;
+            var message = ((DebugPacket)resultHandler.Messages.Single()).Message;
             Assert.IsTrue(message.Equals(
-                "The starting date for symbol AAA, 2001-11-30, has been adjusted to match map file first date 2020-09-09."));
+                "The starting dates for the following symbols have been adjusted to match their map files first date: [AAA, 2020-09-09]"));
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void OptionChainEnumerator(bool fillForward)
+        {
+            var job = new BacktestNodePacket();
+            var resultHandler = new BacktestingResultHandler();
+            var feed = new FileSystemDataFeed();
+            var algorithm = new AlgorithmStub(feed);
+            algorithm.Transactions.SetOrderProcessor(new FakeOrderProcessor());
+            algorithm.SetStartDate(new DateTime(2014, 06, 06));
+            algorithm.SetEndDate(new DateTime(2014, 06, 09));
+
+            var optionChainProvider = new BacktestingOptionChainProvider();
+            optionChainProvider.Initialize(new(TestGlobals.MapFileProvider, TestGlobals.HistoryProvider));
+            algorithm.SetOptionChainProvider(optionChainProvider);
+
+            var dataPermissionManager = new DataPermissionManager();
+            using var synchronizer = new Synchronizer();
+            synchronizer.Initialize(algorithm, algorithm.DataManager, new());
+
+            feed.Initialize(algorithm, job, resultHandler, TestGlobals.MapFileProvider, TestGlobals.FactorFileProvider, TestGlobals.DataProvider, algorithm.DataManager, synchronizer, dataPermissionManager.DataChannelProvider);
+            var option = algorithm.AddOption("AAPL", fillForward: fillForward);
+            option.SetFilter(filter => filter.FrontMonth());
+            algorithm.PostInitialize();
+
+            using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var count = 0;
+            var lastMonth = algorithm.StartDate.Month;
+            foreach (var timeSlice in synchronizer.StreamData(cancellationTokenSource.Token))
+            {
+                if (!timeSlice.IsTimePulse && timeSlice.UniverseData?.Count > 0 && timeSlice.Time.Date <= algorithm.EndDate)
+                {
+                    var baseDataCollection = timeSlice.UniverseData.Where(x => x.Key is OptionChainUniverse).SingleOrDefault().Value;
+                    if (baseDataCollection != null)
+                    {
+                        var nyTime = timeSlice.Time.ConvertFromUtc(algorithm.TimeZone);
+                        Assert.AreEqual(new TimeSpan(0, 0, 0), nyTime.TimeOfDay, $"Failed on: {nyTime}");
+
+                        Assert.AreEqual(nyTime.TimeOfDay, baseDataCollection.EndTime.ConvertFromUtc(algorithm.TimeZone).TimeOfDay);
+                        Assert.IsNotNull(baseDataCollection.FilteredContracts);
+                        CollectionAssert.IsNotEmpty(baseDataCollection.FilteredContracts);
+                        count++;
+                    }
+                }
+            }
+            feed.Exit();
+            algorithm.DataManager.RemoveAllSubscriptions();
+
+            // 2 tradable dates between 2014-06-06 and 2014-06-09 (the 6th and 9th)
+            Assert.AreEqual(2, count);
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void FutureChainEnumerator(bool fillForward)
+        {
+            var job = new BacktestNodePacket();
+            var resultHandler = new BacktestingResultHandler();
+            var feed = new FileSystemDataFeed();
+            var algorithm = new AlgorithmStub(feed);
+            algorithm.Transactions.SetOrderProcessor(new FakeOrderProcessor());
+            algorithm.SetStartDate(new DateTime(2013, 10, 07));
+            algorithm.SetEndDate(new DateTime(2013, 10, 08));
+
+            var optionChainProvider = new BacktestingOptionChainProvider();
+            optionChainProvider.Initialize(new(TestGlobals.MapFileProvider, TestGlobals.HistoryProvider));
+            algorithm.SetOptionChainProvider(optionChainProvider);
+
+            var dataPermissionManager = new DataPermissionManager();
+            using var synchronizer = new Synchronizer();
+            synchronizer.Initialize(algorithm, algorithm.DataManager, new());
+
+            feed.Initialize(algorithm, job, resultHandler, TestGlobals.MapFileProvider, TestGlobals.FactorFileProvider, TestGlobals.DataProvider,
+                algorithm.DataManager, synchronizer, dataPermissionManager.DataChannelProvider);
+            var future = algorithm.AddFuture("ES", fillForward: fillForward, extendedMarketHours: true);
+            future.SetFilter(0, 300);
+            algorithm.PostInitialize();
+
+            using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var count = 0L;
+            var lastMonth = algorithm.StartDate.Month;
+            foreach (var timeSlice in synchronizer.StreamData(cancellationTokenSource.Token))
+            {
+                if (!timeSlice.IsTimePulse && timeSlice.UniverseData?.Count > 0 && timeSlice.Time.Date <= algorithm.EndDate)
+                {
+                    var nyTime = timeSlice.Time.ConvertFromUtc(algorithm.TimeZone);
+                    var universeData = timeSlice.UniverseData;
+                    var chainData = universeData.Where(x => x.Key is FuturesChainUniverse).Single().Value;
+
+                    Log.Trace($"{nyTime}. Count: {count}. Universe Data Count {universeData.Count}");
+                    Assert.AreEqual(TimeSpan.Zero, nyTime.TimeOfDay, $"Failed on: {nyTime}. Count: {count}");
+                    Assert.IsTrue(timeSlice.UniverseData.All(kvp => kvp.Value.EndTime.ConvertFromUtc(algorithm.TimeZone).TimeOfDay == nyTime.TimeOfDay));
+                    if (chainData.FilteredContracts.IsNullOrEmpty())
+                    {
+                        Assert.AreEqual(new DateTime(2013, 10, 09), nyTime, $"Unexpected chain FilteredContracts was empty on {nyTime}");
+                    }
+
+                    if (universeData.Count == 1)
+                    {
+                        // the chain
+                        Assert.IsTrue(universeData.Any(kvp => kvp.Key.Configuration.Symbol == future.Symbol));
+                    }
+                    else
+                    {
+                        // we have 2 universe data, the chain and the continuous future
+                        Assert.AreEqual(2, universeData.Count);
+                        Assert.IsTrue(universeData.All(kvp => kvp.Key.Configuration.Symbol.SecurityType == SecurityType.Future));
+                        Assert.IsTrue(universeData.Any(kvp => kvp.Key.Configuration.Symbol == future.Symbol));
+                        Assert.IsTrue(universeData.Any(kvp => kvp.Key.Configuration.Symbol.ID.Symbol.Contains("CONTINUOUS", StringComparison.InvariantCultureIgnoreCase)));
+
+                        var continuousData = universeData.Where(x => x.Key is ContinuousContractUniverse).Single().Value;
+                        Assert.AreEqual(TimeSpan.Zero, nyTime.TimeOfDay, $"Failed on: {nyTime}");
+                        Assert.IsTrue(!chainData.FilteredContracts.IsNullOrEmpty());
+                    }
+
+                    count++;
+                }
+            }
+            feed.Exit();
+            algorithm.DataManager.RemoveAllSubscriptions();
+
+            // 2 tradable days
+            Assert.AreEqual(2, count);
+        }
+
+        [Test]
+        public void ContinuousFutureUniverseSelectionIsPerformedOnExtendedMarketHoursDates([Values] bool extendedMarketHours)
+        {
+            var job = new BacktestNodePacket();
+            var resultHandler = new BacktestingResultHandler();
+            var feed = new FileSystemDataFeed();
+            var algorithm = new AlgorithmStub(feed);
+            algorithm.Transactions.SetOrderProcessor(new FakeOrderProcessor());
+            algorithm.SetStartDate(new DateTime(2019, 08, 01));
+            algorithm.SetEndDate(new DateTime(2019, 08, 08));
+
+            var dataPermissionManager = new DataPermissionManager();
+            using var synchronizer = new Synchronizer();
+            synchronizer.Initialize(algorithm, algorithm.DataManager, new());
+
+            feed.Initialize(algorithm, job, resultHandler, TestGlobals.MapFileProvider, TestGlobals.FactorFileProvider, TestGlobals.DataProvider,
+                algorithm.DataManager, synchronizer, dataPermissionManager.DataChannelProvider);
+            var future = algorithm.AddFuture("GC", Resolution.Daily, extendedMarketHours: extendedMarketHours);
+            algorithm.PostInitialize();
+
+            var addedSecurities = new HashSet<Symbol>();
+            var mappingCounts = 0;
+
+            using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            foreach (var timeSlice in synchronizer.StreamData(cancellationTokenSource.Token))
+            {
+                if (timeSlice.IsTimePulse) continue;
+
+                var addedSymbols = timeSlice.SecurityChanges.AddedSecurities.Select(x => x.Symbol).ToHashSet();
+
+                if (timeSlice.Slice.SymbolChangedEvents.TryGetValue(future.Symbol, out var symbolChangedEvent))
+                {
+                    mappingCounts++;
+                    var oldSymbol = algorithm.Symbol(symbolChangedEvent.OldSymbol);
+                    var newSymbol = algorithm.Symbol(symbolChangedEvent.NewSymbol);
+
+                    Assert.IsTrue(addedSecurities.Contains(oldSymbol));
+
+                    Assert.IsTrue(addedSymbols.Contains(newSymbol));
+                }
+
+                addedSecurities.UnionWith(addedSymbols);
+            }
+
+            feed.Exit();
+            algorithm.DataManager.RemoveAllSubscriptions();
+
+            var expectedMappingCounts = extendedMarketHours ? 2 : 1;
+            Assert.AreEqual(expectedMappingCounts, mappingCounts);
+        }
+
+        [Test]
+        public void DataIsFillForwardedFromWarmupToNormalFeed()
+        {
+            var job = new BacktestNodePacket();
+            var resultHandler = new BacktestingResultHandler();
+            var feed = new FileSystemDataFeed();
+            var algorithm = new AlgorithmStub(feed);
+            algorithm.Transactions.SetOrderProcessor(new FakeOrderProcessor());
+            algorithm.SetStartDate(new DateTime(2013, 10, 15));
+            algorithm.SetEndDate(new DateTime(2013, 10, 16));
+
+            var dataPermissionManager = new DataPermissionManager();
+            using var synchronizer = new Synchronizer();
+            synchronizer.Initialize(algorithm, algorithm.DataManager, new());
+
+            feed.Initialize(algorithm, job, resultHandler, TestGlobals.MapFileProvider, TestGlobals.FactorFileProvider, TestGlobals.DataProvider, algorithm.DataManager, synchronizer, dataPermissionManager.DataChannelProvider);
+            var equity = algorithm.AddEquity("SPY", fillForward: true, dataNormalizationMode: DataNormalizationMode.Raw);
+            algorithm.SetWarmup(1000);
+            algorithm.PostInitialize();
+
+            QuoteBar lastWarmupQuoteBar = null;
+            TradeBar lastWarmupTradeBar = null;
+            QuoteBar lastQuoteBar = null;
+            TradeBar lastTradeBar = null;
+
+            using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+            foreach (var timeSlice in synchronizer.StreamData(cancellationTokenSource.Token))
+            {
+                if (!timeSlice.IsTimePulse && timeSlice.Time.Date <= algorithm.EndDate)
+                {
+                    Assert.IsTrue(timeSlice.Slice.QuoteBars.TryGetValue(equity.Symbol, out var quoteBar));
+                    Assert.IsTrue(timeSlice.Slice.Bars.TryGetValue(equity.Symbol, out var tradeBar));
+
+                    if (timeSlice.Slice.Time <= algorithm.StartDate)
+                    {
+                        lastWarmupQuoteBar = quoteBar;
+                        lastWarmupTradeBar = tradeBar;
+                    }
+                    else
+                    {
+                        lastQuoteBar = quoteBar;
+                        lastTradeBar = tradeBar;
+
+                        // We don't have local data for the start-end range, so we expect all data to be fill-forwarded
+                        Assert.IsTrue(lastQuoteBar.IsFillForward);
+                        Assert.IsTrue(lastTradeBar.IsFillForward);
+                    }
+
+                }
+            }
+            feed.Exit();
+            algorithm.DataManager.RemoveAllSubscriptions();
+
+            // Assert we actually got warmup data
+            Assert.IsNotNull(lastWarmupQuoteBar);
+            Assert.IsNotNull(lastWarmupTradeBar);
+
+            // Assert we got normal data
+            Assert.IsNotNull(lastQuoteBar);
+            Assert.IsNotNull(lastTradeBar);
         }
     }
 }

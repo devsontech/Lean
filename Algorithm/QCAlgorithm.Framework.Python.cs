@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -19,6 +19,7 @@ using QuantConnect.Algorithm.Framework.Execution;
 using QuantConnect.Algorithm.Framework.Portfolio;
 using QuantConnect.Algorithm.Framework.Risk;
 using QuantConnect.Algorithm.Framework.Selection;
+using QuantConnect.Util;
 
 namespace QuantConnect.Algorithm
 {
@@ -28,95 +29,83 @@ namespace QuantConnect.Algorithm
         /// Sets the alpha model
         /// </summary>
         /// <param name="alpha">Model that generates alpha</param>
+        [DocumentationAttribute(AlgorithmFramework)]
         public void SetAlpha(PyObject alpha)
         {
-            IAlphaModel model;
-            if (alpha.TryConvert(out model))
-            {
-                SetAlpha(model);
-            }
-            else
-            {
-                Alpha = new AlphaModelPythonWrapper(alpha);
-            }
+            Alpha = PythonUtil.CreateInstanceOrWrapper<IAlphaModel>(
+                alpha,
+                py => new AlphaModelPythonWrapper(py)
+            );
         }
 
         /// <summary>
         /// Adds a new alpha model
         /// </summary>
         /// <param name="alpha">Model that generates alpha to add</param>
+        [DocumentationAttribute(AlgorithmFramework)]
         public void AddAlpha(PyObject alpha)
         {
-            IAlphaModel model;
-            if (alpha.TryConvert(out model))
-            {
-                AddAlpha(model);
-            }
-            else
-            {
-                AddAlpha(new AlphaModelPythonWrapper(alpha));
-            }
+            var model = PythonUtil.CreateInstanceOrWrapper<IAlphaModel>(
+                alpha,
+                py => new AlphaModelPythonWrapper(py)
+            );
+            AddAlpha(model);
         }
 
         /// <summary>
         /// Sets the execution model
         /// </summary>
         /// <param name="execution">Model defining how to execute trades to reach a portfolio target</param>
+        [DocumentationAttribute(AlgorithmFramework)]
+        [DocumentationAttribute(TradingAndOrders)]
         public void SetExecution(PyObject execution)
         {
-            IExecutionModel model;
-            if (execution.TryConvert(out model))
-            {
-                SetExecution(model);
-            }
-            else
-            {
-                Execution = new ExecutionModelPythonWrapper(execution);
-            }
+            Execution = PythonUtil.CreateInstanceOrWrapper<IExecutionModel>(
+                execution,
+                py => new ExecutionModelPythonWrapper(py)
+            );
         }
 
         /// <summary>
         /// Sets the portfolio construction model
         /// </summary>
         /// <param name="portfolioConstruction">Model defining how to build a portfolio from alphas</param>
+        [DocumentationAttribute(AlgorithmFramework)]
+        [DocumentationAttribute(TradingAndOrders)]
         public void SetPortfolioConstruction(PyObject portfolioConstruction)
         {
-            IPortfolioConstructionModel model;
-            if (portfolioConstruction.TryConvert(out model))
-            {
-                SetPortfolioConstruction(model);
-            }
-            else
-            {
-                PortfolioConstruction = new PortfolioConstructionModelPythonWrapper(portfolioConstruction);
-            }
+            PortfolioConstruction = PythonUtil.CreateInstanceOrWrapper<IPortfolioConstructionModel>(
+                portfolioConstruction,
+                py => new PortfolioConstructionModelPythonWrapper(py)
+            );
         }
 
         /// <summary>
         /// Sets the universe selection model
         /// </summary>
         /// <param name="universeSelection">Model defining universes for the algorithm</param>
+        [DocumentationAttribute(AlgorithmFramework)]
+        [DocumentationAttribute(Universes)]
         public void SetUniverseSelection(PyObject universeSelection)
         {
-            IUniverseSelectionModel model;
-            if (!universeSelection.TryConvert(out model))
-            {
-                model = new UniverseSelectionModelPythonWrapper(universeSelection);
-            }
-            SetUniverseSelection(model);
+            UniverseSelection = PythonUtil.CreateInstanceOrWrapper<IUniverseSelectionModel>(
+                universeSelection,
+                py => new UniverseSelectionModelPythonWrapper(py)
+            );
         }
 
         /// <summary>
         /// Adds a new universe selection model
         /// </summary>
         /// <param name="universeSelection">Model defining universes for the algorithm to add</param>
+        [DocumentationAttribute(AlgorithmFramework)]
+        [DocumentationAttribute(Universes)]
         public void AddUniverseSelection(PyObject universeSelection)
         {
-            IUniverseSelectionModel model;
-            if (!universeSelection.TryConvert(out model))
-            {
-                model = new UniverseSelectionModelPythonWrapper(universeSelection);
-            }
+            var model = PythonUtil.CreateInstanceOrWrapper<IUniverseSelectionModel>(
+                universeSelection,
+                py => new UniverseSelectionModelPythonWrapper(py)
+            );
             AddUniverseSelection(model);
         }
 
@@ -124,30 +113,28 @@ namespace QuantConnect.Algorithm
         /// Sets the risk management model
         /// </summary>
         /// <param name="riskManagement">Model defining how risk is managed</param>
+        [DocumentationAttribute(AlgorithmFramework)]
+        [DocumentationAttribute(TradingAndOrders)]
         public void SetRiskManagement(PyObject riskManagement)
         {
-            IRiskManagementModel model;
-            if (riskManagement.TryConvert(out model))
-            {
-                SetRiskManagement(model);
-            }
-            else
-            {
-                RiskManagement = new RiskManagementModelPythonWrapper(riskManagement);
-            }
+            RiskManagement = PythonUtil.CreateInstanceOrWrapper<IRiskManagementModel>(
+                riskManagement,
+                py => new RiskManagementModelPythonWrapper(py)
+            );
         }
 
         /// <summary>
         /// Adds a new risk management model
         /// </summary>
         /// <param name="riskManagement">Model defining how risk is managed to add</param>
+        [DocumentationAttribute(AlgorithmFramework)]
+        [DocumentationAttribute(TradingAndOrders)]
         public void AddRiskManagement(PyObject riskManagement)
         {
-            IRiskManagementModel model;
-            if (!riskManagement.TryConvert(out model))
-            {
-                model = new RiskManagementModelPythonWrapper(riskManagement);
-            }
+            var model = PythonUtil.CreateInstanceOrWrapper<IRiskManagementModel>(
+                riskManagement,
+                py => new RiskManagementModelPythonWrapper(py)
+            );
             AddRiskManagement(model);
         }
     }

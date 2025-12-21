@@ -58,9 +58,9 @@ namespace QuantConnect.Algorithm.CSharp
         {
             foreach (var dividend in slice.Dividends.Values)
             {
-                if (dividend.ReferencePrice != 32.59m || dividend.Distribution != 3.82m)
+                if (dividend.ReferencePrice != 32.6m || dividend.Distribution != 3.82m)
                 {
-                    throw new Exception($"{Time} - Invalid dividend {dividend}");
+                    throw new RegressionTestException($"{Time} - Invalid dividend {dividend}");
                 }
             }
             if (!Portfolio.Invested)
@@ -87,7 +87,7 @@ namespace QuantConnect.Algorithm.CSharp
                             // checks
                             if (contract.AskPrice != 1.1m)
                             {
-                                throw new Exception("Regression test failed: current ask price was not loaded from NWSA backtest file and is not $1.1");
+                                throw new RegressionTestException("Regression test failed: current ask price was not loaded from NWSA backtest file and is not $1.1");
                             }
                         }
                     }
@@ -111,7 +111,7 @@ namespace QuantConnect.Algorithm.CSharp
 
                         if (contract.BidPrice != 0.05m)
                         {
-                            throw new Exception("Regression test failed: current bid price was not loaded from FOXA file and is not $0.05");
+                            throw new RegressionTestException("Regression test failed: current bid price was not loaded from FOXA file and is not $0.05");
                         }
                     }
                 }
@@ -121,7 +121,7 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// Order fill event handler. On an order fill update the resulting information is passed to this method.
         /// </summary>
-        /// <param name="orderEvent">Order event details containing details of the evemts</param>
+        /// <param name="orderEvent">Order event details containing details of the events</param>
         /// <remarks>This method can be called asynchronously and so should only be used by seasoned C# experts. Ensure you use proper locks on thread-unsafe objects</remarks>
         public override void OnOrderEvent(OrderEvent orderEvent)
         {
@@ -136,54 +136,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 19290;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "4"},
+            {"Total Orders", "4"},
             {"Average Win", "0%"},
             {"Average Loss", "-0.02%"},
             {"Compounding Annual Return", "-0.492%"},
             {"Drawdown", "0.000%"},
             {"Expectancy", "-1"},
+            {"Start Equity", "1000000"},
+            {"End Equity", "999937"},
             {"Net Profit", "-0.006%"},
-            {"Sharpe Ratio", "-3.943"},
-            {"Probabilistic Sharpe Ratio", "0%"},
+            {"Sharpe Ratio", "-9.182"},
+            {"Sortino Ratio", "0"},
+            {"Probabilistic Sharpe Ratio", "29.496%"},
             {"Loss Rate", "100%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
             {"Alpha", "0"},
             {"Beta", "0"},
-            {"Annual Standard Deviation", "0.002"},
+            {"Annual Standard Deviation", "0.001"},
             {"Annual Variance", "0"},
-            {"Information Ratio", "-3.943"},
-            {"Tracking Error", "0.002"},
+            {"Information Ratio", "-3.318"},
+            {"Tracking Error", "0.001"},
             {"Treynor Ratio", "0"},
             {"Total Fees", "$4.00"},
-            {"Estimated Strategy Capacity", "$760000.00"},
-            {"Fitness Score", "0"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "79228162514264337593543950335"},
-            {"Return Over Maximum Drawdown", "-2.808"},
-            {"Portfolio Turnover", "0.001"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "bc96f0b98a0865ad88b6b995a26bfd9b"}
+            {"Estimated Strategy Capacity", "$8600000.00"},
+            {"Lowest Capacity Asset", "NWSA VJ5IKAXUC6NA|NWSA T3MO1488O0H1"},
+            {"Portfolio Turnover", "0.13%"},
+            {"Drawdown Recovery", "2"},
+            {"OrderListHash", "9e6589151844ae971e04a44a72fb80cd"}
         };
     }
 }

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -54,7 +54,7 @@ namespace QuantConnect.AlgorithmFactory
         /// <summary>
         /// Memory space of the user algorithm
         /// </summary>
-        public AppDomain appDomain;
+        public AppDomain appDomain { get; set; }
 
         /// <summary>
         /// The algorithm's interface type that we'll be trying to load
@@ -102,7 +102,7 @@ namespace QuantConnect.AlgorithmFactory
             _workerThread = workerThread;
             if (multipleTypeNameResolverFunction == null)
             {
-                throw new ArgumentNullException("multipleTypeNameResolverFunction");
+                throw new ArgumentNullException(nameof(multipleTypeNameResolverFunction));
             }
 
             _loaderTimeLimit = loaderTimeLimit;
@@ -382,12 +382,13 @@ logging.captureWarnings(True)"
             return complete && success && algorithmInstance != null;
         }
 
-
+        #pragma warning disable CS1574
         /// <summary>
         /// Unload this factory's appDomain.
         /// </summary>
         /// <remarks>Not used in lean engine. Running the library in an app domain is 10x slower.</remarks>
         /// <seealso cref="AppDomain.CreateDomain(string, Evidence, string, string, bool, AppDomainInitializer, string[])"/>
+        #pragma warning restore CS1574
         public void Unload() {
             if (appDomain != null)
             {

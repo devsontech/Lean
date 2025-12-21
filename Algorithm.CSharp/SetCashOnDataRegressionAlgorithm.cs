@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using System.Linq;
 using QuantConnect.Data;
 using QuantConnect.Interfaces;
+using QuantConnect.Securities.CurrencyConversion;
 
 namespace QuantConnect.Algorithm.CSharp
 {
@@ -46,8 +47,8 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
         /// </summary>
-        /// <param name="data">Slice object keyed by symbol containing the stock data</param>
-        public override void OnData(Slice data)
+        /// <param name="slice">Slice object keyed by symbol containing the stock data</param>
+        public override void OnData(Slice slice)
         {
             if (!_added)
             {
@@ -59,10 +60,12 @@ namespace QuantConnect.Algorithm.CSharp
             else
             {
                 var cash = Portfolio.CashBook["EUR"];
-                if (cash.ConversionRateSecurity == null
-                    || cash.ConversionRate == 0)
+                if (Time > new DateTime(2014, 12, 2, 16, 0, 0))
                 {
-                    throw new Exception("Expected 'EUR' Cash to be fully set");
+                    if (cash.CurrencyConversion.GetType() == typeof(ConstantCurrencyConversion) || cash.ConversionRate == 0)
+                    {
+                        throw new RegressionTestException("Expected 'EUR' Cash to be fully set");
+                    }
                 }
 
                 var eurUsdSubscription = SubscriptionManager.SubscriptionDataConfigService
@@ -71,7 +74,7 @@ namespace QuantConnect.Algorithm.CSharp
                     .Single();
                 if (!eurUsdSubscription.IsInternalFeed)
                 {
-                    throw new Exception("Unexpected not internal 'EURUSD' Subscription");
+                    throw new RegressionTestException("Unexpected not internal 'EURUSD' Subscription");
                 }
             }
 
@@ -90,54 +93,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp };
+        public List<Language> Languages { get; } = new() { Language.CSharp };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 144;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "1"},
+            {"Total Orders", "1"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
             {"Compounding Annual Return", "14.647%"},
             {"Drawdown", "4.800%"},
             {"Expectancy", "0"},
+            {"Start Equity", "100000"},
+            {"End Equity", "100819.38"},
             {"Net Profit", "0.819%"},
-            {"Sharpe Ratio", "0.81"},
-            {"Probabilistic Sharpe Ratio", "47.420%"},
+            {"Sharpe Ratio", "0.717"},
+            {"Sortino Ratio", "1.053"},
+            {"Probabilistic Sharpe Ratio", "46.877%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "0.104"},
-            {"Beta", "0.183"},
-            {"Annual Standard Deviation", "0.157"},
-            {"Annual Variance", "0.025"},
-            {"Information Ratio", "0.004"},
-            {"Tracking Error", "0.201"},
-            {"Treynor Ratio", "0.697"},
+            {"Alpha", "0.001"},
+            {"Beta", "0.996"},
+            {"Annual Standard Deviation", "0.149"},
+            {"Annual Variance", "0.022"},
+            {"Information Ratio", "1.091"},
+            {"Tracking Error", "0.001"},
+            {"Treynor Ratio", "0.108"},
             {"Total Fees", "$2.75"},
-            {"Estimated Strategy Capacity", "$460000000.00"},
-            {"Fitness Score", "0.04"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "1.44"},
-            {"Return Over Maximum Drawdown", "3.028"},
-            {"Portfolio Turnover", "0.052"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "96a8985ed6c3b95ddb3ac6c7b12a725e"}
+            {"Estimated Strategy Capacity", "$690000000.00"},
+            {"Lowest Capacity Asset", "SPY R735QTJ8XC9X"},
+            {"Portfolio Turnover", "4.50%"},
+            {"Drawdown Recovery", "2"},
+            {"OrderListHash", "a87b5796613e060569335f95ec560bdc"}
         };
     }
 }

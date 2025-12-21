@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -185,6 +185,30 @@ namespace QuantConnect
         public static bool TryParse(string input, NumberStyles numberStyle, out long value)
         {
             return long.TryParse(input, numberStyle, CultureInfo.InvariantCulture, out value);
+        }
+
+        /// <summary>
+        /// Parses the provided value as a an enumeration type <typeparamref name="T"/>
+        /// </summary>
+        public static T Enum<T>(string input, bool ignoreCase = true)
+            where T : struct, IConvertible
+        {
+            T value;
+            if (!TryParse(input, out value, ignoreCase))
+            {
+                throw new ArgumentException(Messages.Parse.ValueIsNotParseable(input, typeof(T)));
+            }
+
+            return value;
+        }
+
+        /// <summary>
+        /// Parses the provided value as a an enumeration type <typeparamref name="T"/>
+        /// </summary>
+        public static bool TryParse<T>(string input, out T value, bool ignoreCase = true)
+            where T : struct, IConvertible
+        {
+            return System.Enum.TryParse<T>(input, ignoreCase, out value);
         }
     }
 }

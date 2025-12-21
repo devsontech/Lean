@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -14,6 +14,10 @@
 */
 
 using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using QuantConnect.Securities.Future;
+using QuantConnect.Securities.IndexOption;
 
 namespace QuantConnect.Securities.Option
 {
@@ -22,6 +26,8 @@ namespace QuantConnect.Securities.Option
     /// </summary>
     public static class OptionSymbol
     {
+        private static readonly Dictionary<string, byte> _optionExpirationErrorLog = new();
+
         /// <summary>
         /// Returns true if the option is a standard contract that expires 3rd Friday of the month
         /// </summary>
@@ -63,6 +69,26 @@ namespace QuantConnect.Securities.Option
         }
 
         /// <summary>
+        /// Maps the option ticker to it's underlying
+        /// </summary>
+        /// <param name="optionTicker">The option ticker to map</param>
+        /// <param name="securityType">The security type of the option or underlying</param>
+        /// <returns>The underlying ticker</returns>
+        public static string MapToUnderlying(string optionTicker, SecurityType securityType)
+        {
+            if(securityType == SecurityType.FutureOption || securityType == SecurityType.Future)
+            {
+                return FuturesOptionsSymbolMappings.MapFromOption(optionTicker);
+            }
+            else if (securityType == SecurityType.IndexOption || securityType == SecurityType.Index)
+            {
+                return IndexOptionSymbol.MapToUnderlying(optionTicker);
+            }
+
+            return optionTicker;
+        }
+
+        /// <summary>
         /// Returns the last trading date for the option contract
         /// </summary>
         /// <param name="symbol">Option symbol</param>
@@ -96,6 +122,27 @@ namespace QuantConnect.Securities.Option
         }
 
         /// <summary>
+        /// Returns the settlement date time of the option contract.
+        /// </summary>
+        /// <param name="symbol">The option contract symbol</param>
+        /// <returns>The settlement date time</returns>
+        public static DateTime GetSettlementDateTime(Symbol symbol)
+        {
+            if (!TryGetExpirationDateTime(symbol, out var expiryTime, out var exchangeHours))
+            {
+                throw new ArgumentException($"The symbol {symbol} is not an option type");
+            }
+
+            // Standard index options are AM-settled, which means they settle on market open of the expiration date
+            if (expiryTime.Date == symbol.ID.Date.Date && symbol.SecurityType == SecurityType.IndexOption && IsStandard(symbol))
+            {
+                expiryTime = exchangeHours.GetNextMarketOpen(expiryTime.Date, false);
+            }
+
+            return expiryTime;
+        }
+
+        /// <summary>
         /// Returns true if the option contract is expired at the specified time
         /// </summary>
         /// <param name="symbol">The option contract symbol</param>
@@ -103,19 +150,53 @@ namespace QuantConnect.Securities.Option
         /// <returns>True if the option contract is expired at the specified time, false otherwise</returns>
         public static bool IsOptionContractExpired(Symbol symbol, DateTime currentTimeUtc)
         {
-            if (symbol.SecurityType != SecurityType.Option)
+            if (TryGetExpirationDateTime(symbol, out var expiryTime, out var exchangeHours))
             {
+                var currentTime = currentTimeUtc.ConvertFromUtc(exchangeHours.TimeZone);
+                return currentTime >= expiryTime;
+            }
+
+            return false;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool TryGetExpirationDateTime(Symbol symbol, out DateTime expiryTime, out SecurityExchangeHours exchangeHours)
+        {
+            if (!symbol.SecurityType.IsOption())
+            {
+                expiryTime = default;
+                exchangeHours = null;
                 return false;
             }
 
-            var exchangeHours = MarketHoursDatabase.FromDataFolder()
-                .GetExchangeHours(symbol.ID.Market, symbol, symbol.SecurityType);
+            exchangeHours = MarketHoursDatabase.FromDataFolder().GetExchangeHours(symbol.ID.Market, symbol, symbol.SecurityType);
 
-            var currentTime = currentTimeUtc.ConvertFromUtc(exchangeHours.TimeZone);
-            var expiryTime = exchangeHours.GetNextMarketClose(symbol.ID.Date, false);
+            // Ideally we can calculate expiry on the date of the symbol ID, but if that exchange is not open on that day we
+            // will consider expired on the last trading day close before this; Example in AddOptionContractExpiresRegressionAlgorithm
+            var lastTradingDay = exchangeHours.IsDateOpen(symbol.ID.Date)
+                ? symbol.ID.Date
+                : exchangeHours.GetPreviousTradingDay(symbol.ID.Date);
 
-            return currentTime >= expiryTime;
+            expiryTime = exchangeHours.GetLastDailyMarketClose(lastTradingDay, false);
+
+            // Once bug 6189 was solved in ´GetNextMarketClose()´ there was found possible bugs on some futures symbol.ID.Date or delisting/liquidation handle event.
+            // Specifically see 'DelistingFutureOptionRegressionAlgorithm' where Symbol.ID.Date: 4/1/2012 00:00 ExpiryTime: 4/2/2012 16:00 for Milk 3 futures options.
+            // See 'bug-milk-class-3-future-options-expiration' branch. So let's limit the expiry time to up to end of day of expiration
+            if (expiryTime >= symbol.ID.Date.AddDays(1).Date)
+            {
+                lock (_optionExpirationErrorLog)
+                {
+                    if (symbol.ID.Underlying != null
+                        // let's log this once per underlying and expiration date: avoiding the same log for multiple option contracts with different strikes/rights
+                        && _optionExpirationErrorLog.TryAdd($"{symbol.ID.Underlying}-{symbol.ID.Date}", 1))
+                    {
+                        Logging.Log.Error($"OptionSymbol.IsOptionContractExpired(): limiting unexpected option expiration time for symbol {symbol.ID}. Symbol.ID.Date {symbol.ID.Date}. ExpiryTime: {expiryTime}");
+                    }
+                }
+                expiryTime = symbol.ID.Date.AddDays(1).Date;
+            }
+
+            return true;
         }
-
     }
 }

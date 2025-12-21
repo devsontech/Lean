@@ -16,7 +16,6 @@
 using System;
 using System.Collections.Generic;
 using QuantConnect.Data;
-using QuantConnect.Data.Custom;
 using QuantConnect.Data.Market;
 using QuantConnect.Indicators;
 using QuantConnect.Interfaces;
@@ -34,9 +33,11 @@ namespace QuantConnect.Algorithm.CSharp
     public class IndicatorSuiteAlgorithm : QCAlgorithm, IRegressionAlgorithmDefinition
     {
         private string _ticker = "SPY";
-        private string _customTicker = "WIKI/FB";
+        private string _ticker2 = "GOOG";
+        private string _customTicker = "IBM";
 
         private Symbol _symbol;
+        private Symbol _symbol2;
         private Symbol _customSymbol;
 
         private Indicators _indicators;
@@ -62,9 +63,10 @@ namespace QuantConnect.Algorithm.CSharp
 
             //Add as many securities as you like. All the data will be passed into the event handler:
             _symbol = AddSecurity(SecurityType.Equity, _ticker, Resolution.Daily).Symbol;
+            _symbol2 = AddSecurity(SecurityType.Equity, _ticker2, Resolution.Daily).Symbol;
 
             //Add the Custom Data:
-            _customSymbol = AddData<Quandl>(_customTicker, Resolution.Daily).Symbol;
+            _customSymbol = AddData<CustomData>(_customTicker, Resolution.Daily).Symbol;
 
             //Set up default Indicators, these indicators are defined on the Value property of incoming data (except ATR and AROON which use the full TradeBar object)
             _indicators = new Indicators
@@ -80,7 +82,8 @@ namespace QuantConnect.Algorithm.CSharp
                 MOMP = MOMP(_symbol, 20, Resolution.Daily),
                 STD = STD(_symbol, 20, Resolution.Daily),
                 MIN = MIN(_symbol, 14, Resolution.Daily), // by default if the symbol is a tradebar type then it will be the min of the low property
-                MAX = MAX(_symbol, 14, Resolution.Daily)  // by default if the symbol is a tradebar type then it will be the max of the high property
+                MAX = MAX(_symbol, 14, Resolution.Daily),  // by default if the symbol is a tradebar type then it will be the max of the high property
+                B = B(_symbol, _symbol2, 14),
             };
 
             // Here we're going to define indicators using 'selector' functions. These 'selector' functions will define what data gets sent into the indicator
@@ -118,30 +121,26 @@ namespace QuantConnect.Algorithm.CSharp
             // these are indicators that require multiple inputs. the most common of which is a ratio.
             // suppose we seek the ratio of BTC to SPY, we could write the following:
             var spyClose = Identity(_symbol);
-            var fbClose = Identity(_customSymbol);
+            var ibmClose = Identity(_customSymbol);
             // this will create a new indicator whose value is FB/SPY
-            _ratio = fbClose.Over(spyClose);
+            _ratio = ibmClose.Over(spyClose);
             // we can also easily plot our indicators each time they update using th PlotIndicator function
             PlotIndicator("Ratio", _ratio);
         }
 
         /// <summary>
-        /// Custom data event handler:
-        /// </summary>
-        /// <param name="data">Quandl - dictionary Bars of Quandl Data</param>
-        public void OnData(Quandl data)
-        {
-        }
-
-        /// <summary>
         /// OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
         /// </summary>
-        /// <param name="data">TradeBars IDictionary object with your stock data</param>
-        public void OnData(TradeBars data)
+        /// <param name="slice">TradeBars IDictionary object with your stock data</param>
+        public override void OnData(Slice slice)
         {
             if (!_indicators.BB.IsReady || !_indicators.RSI.IsReady) return;
 
-            _price = data[_symbol].Close;
+            if (!slice.Bars.ContainsKey(_symbol))
+            {
+                return;
+            }
+            _price = slice[_symbol].Close;
 
             if (!Portfolio.HoldStock)
             {
@@ -205,6 +204,7 @@ namespace QuantConnect.Algorithm.CSharp
             public MovingAverageConvergenceDivergence MACD;
             public Minimum MIN;
             public Maximum MAX;
+            public Beta B;
         }
 
         /// <summary>
@@ -236,54 +236,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 4732;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "1"},
+            {"Total Orders", "1"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
-            {"Compounding Annual Return", "19.058%"},
+            {"Compounding Annual Return", "19.346%"},
             {"Drawdown", "7.300%"},
             {"Expectancy", "0"},
-            {"Net Profit", "41.748%"},
-            {"Sharpe Ratio", "1.596"},
-            {"Probabilistic Sharpe Ratio", "76.886%"},
+            {"Start Equity", "25000"},
+            {"End Equity", "35608.77"},
+            {"Net Profit", "42.435%"},
+            {"Sharpe Ratio", "1.387"},
+            {"Sortino Ratio", "1.521"},
+            {"Probabilistic Sharpe Ratio", "73.548%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "0.171"},
-            {"Beta", "-0.064"},
-            {"Annual Standard Deviation", "0.1"},
-            {"Annual Variance", "0.01"},
-            {"Information Ratio", "-0.186"},
-            {"Tracking Error", "0.147"},
-            {"Treynor Ratio", "-2.51"},
+            {"Alpha", "-0.015"},
+            {"Beta", "0.963"},
+            {"Annual Standard Deviation", "0.092"},
+            {"Annual Variance", "0.008"},
+            {"Information Ratio", "-1.17"},
+            {"Tracking Error", "0.018"},
+            {"Treynor Ratio", "0.132"},
             {"Total Fees", "$1.00"},
-            {"Estimated Strategy Capacity", "$500000000.00"},
-            {"Fitness Score", "0.001"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "2.283"},
-            {"Return Over Maximum Drawdown", "2.627"},
-            {"Portfolio Turnover", "0.001"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "ee33b931de5b59dfa930cbcacdaa2c9b"}
+            {"Estimated Strategy Capacity", "$680000000.00"},
+            {"Lowest Capacity Asset", "SPY R735QTJ8XC9X"},
+            {"Portfolio Turnover", "0.14%"},
+            {"Drawdown Recovery", "50"},
+            {"OrderListHash", "7d49829d56cb3055b5f609a91b85fe4d"}
         };
     }
 }

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -16,11 +16,26 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
-using static QuantConnect.StringExtensions;
+using Python.Runtime;
 
 namespace QuantConnect.Indicators
 {
+    /// <summary>
+    /// This is generic rolling window.
+    /// </summary>
+    public class RollingWindow : RollingWindow<object>
+    {
+        /// <summary>
+        /// Initializes a new RollingWindow with the specified size.
+        /// </summary>
+        /// <param name="size">The number of elements to store in the window</param>
+        public RollingWindow(int size) : base(size)
+        {
+        }
+    }
+
     /// <summary>
     ///     This is a window that allows for list access semantics,
     ///     where this[0] refers to the most recent item in the
@@ -36,9 +51,11 @@ namespace QuantConnect.Indicators
         // the most recently removed item from the window (fell off the back)
         private T _mostRecentlyRemoved;
         // the total number of samples taken by this indicator
-        private decimal _samples;
+        private int _samples;
         // used to locate the last item in the window as an indexer into the _list
         private int _tail;
+        // the size or capacity of the window
+        private int _size;
 
         /// <summary>
         ///     Initializes a new instance of the RollwingWindow class with the specified window size.
@@ -46,18 +63,36 @@ namespace QuantConnect.Indicators
         /// <param name="size">The number of items to hold in the window</param>
         public RollingWindow(int size)
         {
-            if (size < 1)
+            if (size < 0)
             {
-                throw new ArgumentException("RollingWindow must have size of at least 1.", nameof(size));
+                throw new ArgumentException(Messages.RollingWindow.InvalidSize(0), nameof(size));
             }
             _list = new List<T>(size);
-            Size = size;
+            _size = size;
         }
 
         /// <summary>
         ///     Gets the size of this window
         /// </summary>
-        public int Size { get; }
+        public virtual int Size
+        {
+            get
+            {
+                try
+                {
+                    _listLock.EnterReadLock();
+                    return _size;
+                }
+                finally
+                {
+                    _listLock.ExitReadLock();
+                }
+            }
+            set
+            {
+                Resize(value);
+            }
+        }
 
         /// <summary>
         ///     Gets the current number of elements in this window
@@ -81,7 +116,7 @@ namespace QuantConnect.Indicators
         /// <summary>
         ///     Gets the number of samples that have been added to this window over its lifetime
         /// </summary>
-        public decimal Samples
+        public int Samples
         {
             get
             {
@@ -110,9 +145,9 @@ namespace QuantConnect.Indicators
                 {
                     _listLock.EnterReadLock();
 
-                    if (Samples <= Size)
+                    if (_samples <= _size)
                     {
-                        throw new InvalidOperationException("No items have been removed yet!");
+                        throw new InvalidOperationException(Messages.RollingWindow.NoItemsRemovedYet);
                     }
                     return _mostRecentlyRemoved;
                 }
@@ -130,7 +165,7 @@ namespace QuantConnect.Indicators
         /// </summary>
         /// <param name="i">the index, i</param>
         /// <returns>the ith most recent entry</returns>
-        public T this [int i]
+        public T this[int i]
         {
             get
             {
@@ -138,24 +173,33 @@ namespace QuantConnect.Indicators
                 {
                     _listLock.EnterReadLock();
 
-                    if (Count == 0)
+                    if (i < 0)
                     {
-                        throw new ArgumentOutOfRangeException(nameof(i), "Rolling window is empty");
-                    }
-                    else if (i > Size - 1 || i < 0)
-                    {
-                        throw new ArgumentOutOfRangeException(nameof(i), i,
-                            Invariant($"Index must be between 0 and {Size - 1} (rolling window is of size {Size})")
-                        );
-                    }
-                    else if (i > Count - 1)
-                    {
-                        throw new ArgumentOutOfRangeException(nameof(i), i,
-                            Invariant($"Index must be between 0 and {Count - 1} (entry {i} does not exist yet)")
-                        );
+                        if (_size + i < 0)
+                        {
+                            throw new ArgumentOutOfRangeException(nameof(i), i, Messages.RollingWindow.IndexOutOfSizeRange);
+                        }
+                        i = _list.Count + i;
+
+                        if (i < 0)
+                        {
+                            return default;
+                        }
                     }
 
-                    return _list[(Count + _tail - i - 1) % Count];
+                    if (i > _list.Count - 1)
+                    {
+                        if (i > _size - 1)
+                        {
+                            _listLock.ExitReadLock();
+                            Resize(i + 1);
+                            _listLock.EnterReadLock();
+                        }
+
+                        return default;
+                    }
+
+                    return _list[GetListIndex(i, _list.Count, _tail)];
                 }
                 finally
                 {
@@ -168,11 +212,30 @@ namespace QuantConnect.Indicators
                 {
                     _listLock.EnterWriteLock();
 
-                    if (i < 0 || i > Count - 1)
+                    if (i < 0)
                     {
-                        throw new ArgumentOutOfRangeException(nameof(i), i, Invariant($"Must be between 0 and {Count - 1}"));
+                        if (_size + i < 0)
+                        {
+                            throw new ArgumentOutOfRangeException(nameof(i), i, Messages.RollingWindow.IndexOutOfSizeRange);
+                        }
+                        i = _size + i;
                     }
-                    _list[(Count + _tail - i - 1) % Count] = value;
+
+                    if (i > _list.Count - 1)
+                    {
+                        if (i > _size - 1)
+                        {
+                            Resize(i + 1);
+                        }
+
+                        var count = _list.Count;
+                        for (var j = 0; j < i - count + 1; j++)
+                        {
+                            Add(default);
+                        }
+                    }
+
+                    _list[GetListIndex(i, _list.Count, _tail)] = value;
                 }
                 finally
                 {
@@ -192,7 +255,7 @@ namespace QuantConnect.Indicators
                 try
                 {
                     _listLock.EnterReadLock();
-                    return Samples >= Size;
+                    return _samples >= _size;
                 }
                 finally
                 {
@@ -210,18 +273,20 @@ namespace QuantConnect.Indicators
         /// <filterpriority>1</filterpriority>
         public IEnumerator<T> GetEnumerator()
         {
-            // we make a copy on purpose so the enumerator isn't tied
-            // to a mutable object, well it is still mutable but out of scope
-            var temp = new List<T>(Count);
             try
             {
                 _listLock.EnterReadLock();
 
-                for (int i = 0; i < Count; i++)
+                // we make a copy on purpose so the enumerator isn't tied
+                // to a mutable object, well it is still mutable but out of scope
+                var count = _list.Count;
+                var temp = new T[count];
+                for (int i = 0; i < count; i++)
                 {
-                    temp.Add(this[i]);
+                    temp[i] = _list[GetListIndex(i, count, _tail)];
                 }
-                return temp.GetEnumerator();
+
+                return ((IEnumerable<T>)temp).GetEnumerator();
             }
             finally
             {
@@ -253,13 +318,13 @@ namespace QuantConnect.Indicators
                 _listLock.EnterWriteLock();
 
                 _samples++;
-                if (Size == Count)
+                if (_size == _list.Count)
                 {
                     // keep track of what's the last element
                     // so we can reindex on this[ int ]
                     _mostRecentlyRemoved = _list[_tail];
                     _list[_tail] = item;
-                    _tail = (_tail + 1) % Size;
+                    _tail = (_tail + 1) % _size;
                 }
                 else
                 {
@@ -275,7 +340,7 @@ namespace QuantConnect.Indicators
         /// <summary>
         ///     Clears this window of all data
         /// </summary>
-        public void Reset()
+        public virtual void Reset()
         {
             try
             {
@@ -284,6 +349,31 @@ namespace QuantConnect.Indicators
                 _samples = 0;
                 _list.Clear();
                 _tail = 0;
+            }
+            finally
+            {
+                _listLock.ExitWriteLock();
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int GetListIndex(int index, int listCount, int tail)
+        {
+            return (listCount + tail - index - 1) % listCount;
+        }
+
+        private void Resize(int size)
+        {
+            try
+            {
+                _listLock.EnterWriteLock();
+
+                _list.EnsureCapacity(size);
+                if (size < _list.Count)
+                {
+                    _list.RemoveRange(0, _list.Count - size);
+                }
+                _size = size;
             }
             finally
             {

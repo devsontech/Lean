@@ -40,7 +40,7 @@ namespace QuantConnect.Algorithm.CSharp
             AddUniverseSelection(new DailyUniverseSelectionModel("MyCustomSelectionModel", time => new[] { "AAPL" }, this));
         }
 
-        public override void OnData(Slice data)
+        public override void OnData(Slice slice)
         {
             if (!Portfolio.Invested)
             {
@@ -53,11 +53,11 @@ namespace QuantConnect.Algorithm.CSharp
             var config = SubscriptionManager.Subscriptions.ToList();
             if (config.All(dataConfig => dataConfig.Symbol != "AAPL"))
             {
-                throw new Exception("Was expecting configurations for AAPL");
+                throw new RegressionTestException("Was expecting configurations for AAPL");
             }
             if (config.All(dataConfig => dataConfig.Symbol.SecurityType != SecurityType.Option))
             {
-                throw new Exception($"Was expecting configurations for {_aaplOption}");
+                throw new RegressionTestException($"Was expecting configurations for {_aaplOption}");
             }
         }
 
@@ -90,54 +90,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp };
+        public List<Language> Languages { get; } = new() { Language.CSharp };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 19701;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "1"},
+            {"Total Orders", "1"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
-            {"Compounding Annual Return", "0.678%"},
-            {"Drawdown", "3.700%"},
+            {"Compounding Annual Return", "0.524%"},
+            {"Drawdown", "0.000%"},
             {"Expectancy", "0"},
-            {"Net Profit", "0.009%"},
-            {"Sharpe Ratio", "7.969"},
-            {"Probabilistic Sharpe Ratio", "0%"},
+            {"Start Equity", "100000"},
+            {"End Equity", "100007.16"},
+            {"Net Profit", "0.007%"},
+            {"Sharpe Ratio", "-3.983"},
+            {"Sortino Ratio", "0"},
+            {"Probabilistic Sharpe Ratio", "79.393%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "0.042"},
-            {"Beta", "-0.03"},
+            {"Alpha", "-0"},
+            {"Beta", "-0.007"},
             {"Annual Standard Deviation", "0.001"},
             {"Annual Variance", "0"},
-            {"Information Ratio", "-22.099"},
-            {"Tracking Error", "0.047"},
-            {"Treynor Ratio", "-0.364"},
+            {"Information Ratio", "-11.436"},
+            {"Tracking Error", "0.037"},
+            {"Treynor Ratio", "0.431"},
             {"Total Fees", "$1.00"},
-            {"Estimated Strategy Capacity", "$3600000000.00"},
-            {"Fitness Score", "0.003"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "79228162514264337593543950335"},
-            {"Return Over Maximum Drawdown", "79228162514264337593543950335"},
-            {"Portfolio Turnover", "0.003"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "e2718d95499fcbdb51cabc32d6e28202"}
+            {"Estimated Strategy Capacity", "$4200000000.00"},
+            {"Lowest Capacity Asset", "AAPL R735QTJ8XC9X"},
+            {"Portfolio Turnover", "0.13%"},
+            {"Drawdown Recovery", "2"},
+            {"OrderListHash", "87f55de4577d35a6ff70a7fd335e14a4"}
         };
     }
 }

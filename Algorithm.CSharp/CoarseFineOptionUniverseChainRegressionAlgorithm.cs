@@ -35,14 +35,30 @@ namespace QuantConnect.Algorithm.CSharp
         private Symbol _aapl;
         private Symbol _twx;
 
+        private Dictionary<string, decimal> _rawPrices = new()
+        {
+            { "AOL", 70  },
+            { "AAPL", 650 }
+        };
+
         public override void Initialize()
         {
             _twx = QuantConnect.Symbol.Create("TWX", SecurityType.Equity, Market.USA);
             _aapl = QuantConnect.Symbol.Create("AAPL", SecurityType.Equity, Market.USA);
             UniverseSettings.Resolution = Resolution.Minute;
 
-            SetStartDate(2014, 06, 05);
-            SetEndDate(2014, 06, 06);
+            // Let's disable initial price seeding, the algorithm will wait until both equity
+            // and options are added an have prices to do the tests, we don't want the equity
+            // having prices before the options are added.
+            Settings.SeedInitialPrices = false;
+
+            SetStartDate(2014, 06, 04);
+            // TWX is selected the 4th and 5th and aapl after that.
+            // If the algo ends on the 6th, TWX subscriptions will not be removed before OnEndOfAlgorithm is called:
+            //   - 6th: AAPL is selected, TWX is removed but subscriptions are not removed because the securities are invested.
+            //      - TWX and its options are liquidated.
+            //   - 7th: Since options universe selection is daily now, TWX subscriptions are removed the next day (7th)
+            SetEndDate(2014, 06, 07);
 
             var selectionUniverse = AddUniverse(enumerable => new[] { Time.Date <= new DateTime(2014, 6, 5) ? _twx : _aapl },
                 enumerable => new[] { Time.Date <= new DateTime(2014, 6, 5) ? _twx : _aapl });
@@ -51,7 +67,7 @@ namespace QuantConnect.Algorithm.CSharp
             {
                 if (universe.Underlying == null)
                 {
-                    throw new Exception("Underlying data point is null! This shouldn't happen, each OptionChainUniverse handles and should provide this");
+                    throw new RegressionTestException("Underlying data point is null! This shouldn't happen, each OptionChainUniverse handles and should provide this");
                 }
                 return universe.IncludeWeeklys()
                     .FrontMonth()
@@ -59,7 +75,7 @@ namespace QuantConnect.Algorithm.CSharp
             });
         }
 
-        public override void OnData(Slice data)
+        public override void OnData(Slice slice)
         {
             // if we have no changes, do nothing
             if (_changes == SecurityChanges.None ||
@@ -88,7 +104,7 @@ namespace QuantConnect.Algorithm.CSharp
                     // options added should all match prev added security
                     if (security.Symbol.Underlying != _lastEquityAdded)
                     {
-                        throw new Exception($"Unexpected symbol added {security.Symbol}");
+                        throw new RegressionTestException($"Unexpected symbol added {security.Symbol}");
                     }
 
                     _optionCount++;
@@ -100,11 +116,20 @@ namespace QuantConnect.Algorithm.CSharp
 
                 if (!config.Any())
                 {
-                    throw new Exception($"Was expecting configurations for {security.Symbol}");
+                    throw new RegressionTestException($"Was expecting configurations for {security.Symbol}");
                 }
                 if (config.Any(dataConfig => dataConfig.DataNormalizationMode != DataNormalizationMode.Raw))
                 {
-                    throw new Exception($"Was expecting DataNormalizationMode.Raw configurations for {security.Symbol}");
+                    throw new RegressionTestException($"Was expecting DataNormalizationMode.Raw configurations for {security.Symbol}");
+                }
+
+                if (security.Symbol.SecurityType == SecurityType.Equity)
+                {
+                    var expectedPrice = _rawPrices[security.Symbol.ID.Symbol];
+                    if (Math.Abs(security.Price - expectedPrice) > expectedPrice * 0.1m)
+                    {
+                        throw new RegressionTestException($"Unexpected raw prices for symbol {security.Symbol}");
+                    }
                 }
             }
             _changes = SecurityChanges.None;
@@ -120,12 +145,12 @@ namespace QuantConnect.Algorithm.CSharp
             var config = SubscriptionManager.Subscriptions.ToList();
             if (config.Any(dataConfig => dataConfig.Symbol == _twx || dataConfig.Symbol.Underlying == _twx))
             {
-                throw new Exception($"Was NOT expecting any configurations for {_twx} or it's options, since coarse/fine should have deselected it");
+                throw new RegressionTestException($"Was NOT expecting any configurations for {_twx} or it's options, since coarse/fine should have deselected it");
             }
 
             if (_optionCount == 0)
             {
-                throw new Exception("Option universe chain did not add any option!");
+                throw new RegressionTestException("Option universe chain did not add any option!");
             }
         }
 
@@ -137,54 +162,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 18993;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "13"},
-            {"Average Win", "0.65%"},
+            {"Total Orders", "13"},
+            {"Average Win", "0.04%"},
             {"Average Loss", "-0.05%"},
-            {"Compounding Annual Return", "3216040423556140000000000%"},
+            {"Compounding Annual Return", "-24.719%"},
             {"Drawdown", "0.500%"},
-            {"Expectancy", "1.393"},
-            {"Net Profit", "32.840%"},
-            {"Sharpe Ratio", "7.14272222483913E+15"},
+            {"Expectancy", "-0.685"},
+            {"Start Equity", "100000"},
+            {"End Equity", "99766.89"},
+            {"Net Profit", "-0.233%"},
+            {"Sharpe Ratio", "-9.078"},
+            {"Sortino Ratio", "0"},
             {"Probabilistic Sharpe Ratio", "0%"},
             {"Loss Rate", "83%"},
             {"Win Rate", "17%"},
-            {"Profit-Loss Ratio", "13.36"},
-            {"Alpha", "2.59468989671647E+16"},
-            {"Beta", "66.241"},
-            {"Annual Standard Deviation", "3.633"},
-            {"Annual Variance", "13.196"},
-            {"Information Ratio", "7.25220453625048E+15"},
-            {"Tracking Error", "3.578"},
-            {"Treynor Ratio", "391705233723350"},
-            {"Total Fees", "$13.00"},
-            {"Estimated Strategy Capacity", "$3000000.00"},
-            {"Fitness Score", "0.232"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "79228162514264337593543950335"},
-            {"Return Over Maximum Drawdown", "79228162514264337593543950335"},
-            {"Portfolio Turnover", "0.232"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "12470afd9a74ad9c9802361f6f092777"}
+            {"Profit-Loss Ratio", "0.89"},
+            {"Alpha", "4.632"},
+            {"Beta", "-1.524"},
+            {"Annual Standard Deviation", "0.029"},
+            {"Annual Variance", "0.001"},
+            {"Information Ratio", "-72.647"},
+            {"Tracking Error", "0.048"},
+            {"Treynor Ratio", "0.172"},
+            {"Total Fees", "$16.10"},
+            {"Estimated Strategy Capacity", "$5000000.00"},
+            {"Lowest Capacity Asset", "AOL R735QTJ8XC9X"},
+            {"Portfolio Turnover", "17.64%"},
+            {"Drawdown Recovery", "0"},
+            {"OrderListHash", "228e694280e05c8aa24246a5866b5a83"}
         };
     }
 }

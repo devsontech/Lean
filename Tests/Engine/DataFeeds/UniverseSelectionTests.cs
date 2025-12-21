@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -38,8 +38,8 @@ namespace QuantConnect.Tests.Engine.DataFeeds
         {
             SymbolCache.Clear();
             var algorithm = new AlgorithmStub(new MockDataFeed());
-            algorithm.SetEndDate(Time.EndOfTime);
-            algorithm.SetStartDate(DateTime.UtcNow.Subtract(TimeSpan.FromDays(10)));
+            algorithm.SetEndDate(new DateTime(2024, 12, 13));
+            algorithm.SetStartDate(algorithm.EndDate.Subtract(TimeSpan.FromDays(10)));
             algorithm.AddUniverse(CoarseSelectionFunction, FineSelectionFunction);
             // OnEndOfTimeStep will add all pending universe additions
             algorithm.OnEndOfTimeStep();
@@ -55,12 +55,12 @@ namespace QuantConnect.Tests.Engine.DataFeeds
                         new CoarseFundamental
                         {
                             Symbol = Symbols.AAPL,
-                            HasFundamentalData = true
+                            Time = DateTime.UtcNow
                         },
                         new CoarseFundamental
                         {
                             Symbol = Symbols.SPY,
-                            HasFundamentalData = false
+                            Time = DateTime.UtcNow
                         }
                     }
                 )
@@ -125,12 +125,12 @@ namespace QuantConnect.Tests.Engine.DataFeeds
         public void CoarseFundamentalHasFundamentalDataFalseExcludedInFineUniverseSelection()
         {
             var algorithm = new AlgorithmStub(new MockDataFeed());
-            algorithm.SetEndDate(Time.EndOfTime);
-            algorithm.SetStartDate(DateTime.UtcNow.Subtract(TimeSpan.FromDays(10)));
+            algorithm.SetEndDate(new DateTime(2024, 12, 13));
+            algorithm.SetStartDate(algorithm.EndDate.Subtract(TimeSpan.FromDays(10)));
 
             algorithm.AddUniverse(
                 coarse => coarse.Select(c => c.Symbol),
-                fine => fine.Select(f => f.Symbol)
+                fine => fine.Select(f => f.Symbol).Where(x => x.ID.Symbol == "AAPL")
             );
             // OnEndOfTimeStep will add all pending universe additions
             algorithm.OnEndOfTimeStep();
@@ -147,12 +147,12 @@ namespace QuantConnect.Tests.Engine.DataFeeds
                         new CoarseFundamental
                         {
                             Symbol = Symbols.AAPL,
-                            HasFundamentalData = true
+                            Time = DateTime.UtcNow
                         },
                         new CoarseFundamental
                         {
                             Symbol = Symbols.SPY,
-                            HasFundamentalData = false
+                            Time = DateTime.UtcNow
                         }
                     }
                 )
@@ -160,6 +160,59 @@ namespace QuantConnect.Tests.Engine.DataFeeds
 
             Assert.AreEqual(1, securityChanges.Count);
             Assert.AreEqual(Symbols.AAPL, securityChanges.AddedSecurities.First().Symbol);
+        }
+
+        [Test]
+        public void DoesNotAddSelectedSecuritiesIfNoTradableDates()
+        {
+            var algorithm = new AlgorithmStub(new MockDataFeed());
+            algorithm.SetStartDate(2023, 12, 01);
+            algorithm.SetEndDate(2023, 12, 30); // Sunday
+
+            algorithm.AddUniverse(
+                coarse => coarse.Select(c => c.Symbol),
+                fine => fine.Select(f => f.Symbol));
+            algorithm.OnEndOfTimeStep();
+
+            var universe = algorithm.UniverseManager.Values.First();
+
+            var getUniverseData = (DateTime dt) => new BaseDataCollection(
+                dt,
+                Symbols.AAPL,
+                [
+                    new CoarseFundamental
+                    {
+                        Symbol = Symbols.AAPL,
+                        Time = dt
+                    },
+                    new CoarseFundamental
+                    {
+                        Symbol = Symbols.SPY,
+                        Time = dt
+                    }
+                ]
+            );
+
+            // Friday, one tradeale day left before end date
+            var dateTime = new DateTime(2023, 12, 29).ConvertToUtc(algorithm.TimeZone);
+            var universeData = getUniverseData(dateTime);
+
+            var securityChanges = algorithm.DataManager.UniverseSelection.ApplyUniverseSelection(
+                universe,
+                dateTime,
+                universeData);
+            Assert.AreEqual(2, securityChanges.AddedSecurities.Count);
+            CollectionAssert.AreEquivalent(universeData.Select(x => x.Symbol), securityChanges.AddedSecurities.Select(x => x.Symbol));
+
+            // Saturday, no tradable days left before end date
+            dateTime += TimeSpan.FromDays(1);
+            universeData = getUniverseData(dateTime);
+
+            securityChanges = algorithm.DataManager.UniverseSelection.ApplyUniverseSelection(
+                universe,
+                dateTime,
+                universeData);
+            Assert.AreEqual(0, securityChanges.AddedSecurities.Count);
         }
 
         private IEnumerable<Symbol> CoarseSelectionFunction(IEnumerable<CoarseFundamental> coarse)
@@ -185,7 +238,7 @@ namespace QuantConnect.Tests.Engine.DataFeeds
                 IDataProvider dataProvider,
                 IDataFeedSubscriptionManager subscriptionManager,
                 IDataFeedTimeProvider dataFeedTimeProvider,
-                IDataChannelProvider channelProvider
+                IDataChannelProvider dataChannelProvider
             )
             {
             }

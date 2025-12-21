@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -107,7 +107,8 @@ namespace QuantConnect.Tests.Common.Orders.Fees
                 new OptionSymbolProperties(SymbolProperties.GetDefault("USD")),
                 ErrorCurrencyConverter.Instance,
                 RegisteredSecurityDataTypesProvider.Null,
-                new SecurityCache()
+                new SecurityCache(),
+                null
             );
             security.SetMarketPrice(new Tick(DateTime.UtcNow, security.Symbol, 100, 100));
 
@@ -135,7 +136,8 @@ namespace QuantConnect.Tests.Common.Orders.Fees
                 new OptionSymbolProperties(SymbolProperties.GetDefault("USD")),
                 ErrorCurrencyConverter.Instance,
                 RegisteredSecurityDataTypesProvider.Null,
-                new SecurityCache()
+                new SecurityCache(),
+                null
             );
             security.SetMarketPrice(new Tick(DateTime.UtcNow, security.Symbol, 100, 100));
 
@@ -160,6 +162,7 @@ namespace QuantConnect.Tests.Common.Orders.Fees
             var security = new Forex(
                 SecurityExchangeHours.AlwaysOpen(tz),
                 new Cash("USD", 0, 1),
+                new Cash("EUR", 0, 0),
                 new SubscriptionDataConfig(typeof(TradeBar), Symbols.EURUSD, Resolution.Minute, tz, tz, true, false, false),
                 new SymbolProperties("EURUSD", "USD", 1, 0.01m, 0.00000001m, string.Empty),
                 ErrorCurrencyConverter.Instance,
@@ -189,6 +192,7 @@ namespace QuantConnect.Tests.Common.Orders.Fees
             var security = new Forex(
                 SecurityExchangeHours.AlwaysOpen(tz),
                 new Cash("GBP", 0, conversionRate),
+                new Cash("EUR", 0, 0),
                 new SubscriptionDataConfig(typeof(TradeBar), Symbols.EURGBP, Resolution.Minute, tz, tz, true, false, false),
                 new SymbolProperties("EURGBP", "GBP", 1, 0.01m, 0.00000001m, string.Empty),
                 ErrorCurrencyConverter.Instance,
@@ -215,6 +219,7 @@ namespace QuantConnect.Tests.Common.Orders.Fees
             Crypto btcusd = new Crypto(
                 SecurityExchangeHours.AlwaysOpen(TimeZones.NewYork),
                     new Cash(Currencies.USD, 0, 1),
+                    new Cash("BTC", 0, 0),
                     new SubscriptionDataConfig(typeof(TradeBar), Symbols.BTCUSD, Resolution.Minute, TimeZones.NewYork, TimeZones.NewYork, true, false, false),
                     new SymbolProperties("BTCUSD", Currencies.USD, 1, 0.01m, 0.00000001m, string.Empty),
                     ErrorCurrencyConverter.Instance,
@@ -241,6 +246,7 @@ namespace QuantConnect.Tests.Common.Orders.Fees
             Crypto btceur = new Crypto(
                 SecurityExchangeHours.AlwaysOpen(TimeZones.NewYork),
                 new Cash("EUR", 0, 10),
+                new Cash("BTC", 0, 0),
                 new SubscriptionDataConfig(typeof(TradeBar), Symbols.BTCEUR, Resolution.Minute, TimeZones.NewYork, TimeZones.NewYork, true, false, false),
                 new SymbolProperties("BTCEUR", "EUR", 1, 0.01m, 0.00000001m, string.Empty),
                 ErrorCurrencyConverter.Instance,

@@ -14,8 +14,9 @@
 */
 
 using System;
-using System.Collections.Generic;
 using Newtonsoft.Json;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 namespace QuantConnect.Securities
 {
@@ -90,15 +91,15 @@ namespace QuantConnect.Securities
             // perform some sanity checks
             if (marketOpen < extendedMarketOpen)
             {
-                throw new ArgumentException("Extended market open time must be less than or equal to market open time.");
+                throw new ArgumentException(Messages.MarketHoursSegment.InvalidExtendedMarketOpenTime);
             }
             if (marketClose < marketOpen)
             {
-                throw new ArgumentException("Market close time must be after market open time.");
+                throw new ArgumentException(Messages.MarketHoursSegment.InvalidMarketCloseTime);
             }
             if (extendedMarketClose < marketClose)
             {
-                throw new ArgumentException("Extended market close time must be greater than or equal to market close time.");
+                throw new ArgumentException(Messages.MarketHoursSegment.InvalidExtendedMarketCloseTime);
             }
 
             var segments = new List<MarketHoursSegment>();
@@ -126,6 +127,7 @@ namespace QuantConnect.Securities
         /// </summary>
         /// <param name="time">The time to check</param>
         /// <returns>True if this segment contains the specified time, false otherwise</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Contains(TimeSpan time)
         {
             return time >= Start && time < End;
@@ -137,6 +139,7 @@ namespace QuantConnect.Securities
         /// <param name="start">The start of the range</param>
         /// <param name="end">The end of the range</param>
         /// <returns>True if the specified range overlaps this time segment, false otherwise</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Overlaps(TimeSpan start, TimeSpan end)
         {
             return Start < end && End > start;
@@ -150,7 +153,7 @@ namespace QuantConnect.Securities
         /// </returns>
         public override string ToString()
         {
-            return $"{State}: {Start.ToStringInvariant(null)}-{End.ToStringInvariant(null)}";
+            return Messages.MarketHoursSegment.ToString(this);
         }
     }
 }

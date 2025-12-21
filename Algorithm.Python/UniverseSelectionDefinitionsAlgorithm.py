@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,17 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("System.Core")
-AddReference("QuantConnect.Common")
-AddReference("QuantConnect.Algorithm")
-
-from System import *
-from QuantConnect import *
-from QuantConnect.Algorithm import QCAlgorithm
-from QuantConnect.Data.Market import *
-from QuantConnect.Data.UniverseSelection import *
-from datetime import timedelta
+from AlgorithmImports import *
 
 ### <summary>
 ### This algorithm shows some of the various helper methods available when defining universes
@@ -31,46 +21,40 @@ from datetime import timedelta
 ### <meta name="tag" content="coarse universes" />
 class UniverseSelectionDefinitionsAlgorithm(QCAlgorithm):
 
-    def Initialize(self):
+    def initialize(self):
         # subscriptions added via universe selection will have this resolution
-        self.UniverseSettings.Resolution = Resolution.Hour
-        # force securities to remain in the universe for a minimm of 30 minutes
-        self.UniverseSettings.MinimumTimeInUniverse = timedelta(minutes=30)
+        self.universe_settings.resolution = Resolution.DAILY
 
-        self.SetStartDate(2013,10,7)    # Set Start Date
-        self.SetEndDate(2013,10,11)     # Set End Date
-        self.SetCash(100000)            # Set Strategy Cash
+        self.set_start_date(2014,3,24)    # Set Start Date
+        self.set_end_date(2014,3,28)     # Set End Date
+        self.set_cash(100000)            # Set Strategy Cash
 
-        # add universe for the top 50 stocks by dollar volume
-        self.AddUniverse(self.Universe.DollarVolume.Top(50))
-
-        # add universe for the bottom 50 stocks by dollar volume
-        self.AddUniverse(self.Universe.DollarVolume.Bottom(50))
-
-        # add universe for the 90th dollar volume percentile
-        self.AddUniverse(self.Universe.DollarVolume.Percentile(90.0))
-
-        # add universe for stocks between the 70th and 80th dollar volume percentile
-        self.AddUniverse(self.Universe.DollarVolume.Percentile(70.0, 80.0))
+        # add universe for the top 3 stocks by dollar volume
+        self.add_universe(self.universe.top(3))
 
         self.changes = None
+        self.on_securities_changed_was_called = False
 
-    def OnData(self, data):
+    def on_data(self, data):
         if self.changes is None: return
 
         # liquidate securities that fell out of our universe
-        for security in self.changes.RemovedSecurities:
-            if security.Invested:
-                self.Liquidate(security.Symbol)
+        for security in self.changes.removed_securities:
+            if security.invested:
+                self.liquidate(security.symbol)
 
         # invest in securities just added to our universe
-        for security in self.changes.AddedSecurities:
-            if not security.Invested:
-                self.MarketOrder(security.Symbol, 10)
+        for security in self.changes.added_securities:
+            if not security.invested:
+                self.market_order(security.symbol, 10)
 
         self.changes = None
 
-
     # this event fires whenever we have changes to our universe
-    def OnSecuritiesChanged(self, changes):
+    def on_securities_changed(self, changes):
         self.changes = changes
+        self.on_securities_changed_was_called = True
+
+    def on_end_of_algorithm(self):
+        if not self.on_securities_changed_was_called:
+            raise AssertionError("OnSecuritiesChanged() method was never called!")

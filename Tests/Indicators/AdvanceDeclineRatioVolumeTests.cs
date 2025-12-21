@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -16,23 +16,32 @@
 using NUnit.Framework;
 using QuantConnect.Data.Market;
 using QuantConnect.Indicators;
+using System.Linq;
 
 namespace QuantConnect.Tests.Indicators
 {
     [TestFixture]
-    public class AdvanceDeclineVolumeRatioTests : CommonIndicatorTests<TradeBar>
+    public class AdvanceDeclineVolumeRatioTests : AdvanceDeclineDifferenceTests
     {
         protected override IndicatorBase<TradeBar> CreateIndicator()
         {
             var advr = new AdvanceDeclineVolumeRatio("test_name");
-            advr.AddStock(Symbols.AAPL);
-            advr.AddStock(Symbols.IBM);
-            advr.AddStock(Symbols.GOOG);
+            if (SymbolList.Count > 2)
+            {
+                SymbolList.Take(3).ToList().ForEach(advr.AddStock);
+            }
+            else
+            {
+                advr.Add(Symbols.AAPL);
+                advr.Add(Symbols.IBM);
+                advr.Add(Symbols.GOOG);
+                RenkoBarSize = 5000000;
+            }
             return advr;
         }
 
         [Test]
-        public virtual void ShouldIgnoreRemovedStocks()
+        public override void ShouldIgnoreRemovedStocks()
         {
             var advr = (AdvanceDeclineVolumeRatio)CreateIndicator();
             var reference = System.DateTime.Today;
@@ -50,7 +59,7 @@ namespace QuantConnect.Tests.Indicators
 
             Assert.AreEqual(2m, advr.Current.Value);
             advr.Reset();
-            advr.RemoveStock(Symbols.AAPL);
+            advr.Remove(Symbols.AAPL);
 
             advr.Update(new TradeBar() { Symbol = Symbols.AAPL, Close = 1, Volume = 100, Time = reference.AddMinutes(1) });
             advr.Update(new TradeBar() { Symbol = Symbols.IBM, Close = 1, Volume = 100, Time = reference.AddMinutes(1) });
@@ -67,10 +76,10 @@ namespace QuantConnect.Tests.Indicators
         }
 
         [Test]
-        public virtual void IgnorePeriodIfAnyStockMissed()
+        public override void IgnorePeriodIfAnyStockMissed()
         {
             var adr = (AdvanceDeclineVolumeRatio)CreateIndicator();
-            adr.AddStock(Symbols.MSFT);
+            adr.Add(Symbols.MSFT);
             var reference = System.DateTime.Today;
 
             adr.Update(new TradeBar() { Symbol = Symbols.AAPL, Close = 1, Volume = 100, Time = reference.AddMinutes(1) });
@@ -135,7 +144,7 @@ namespace QuantConnect.Tests.Indicators
         }
 
         [Test]
-        public void WarmsUpOrdered()
+        public override void WarmsUpOrdered()
         {
             var indicator = CreateIndicator();
             var reference = System.DateTime.Today;
@@ -158,5 +167,15 @@ namespace QuantConnect.Tests.Indicators
         protected override string TestFileName => "arms_data.txt";
 
         protected override string TestColumnName => "A/D Volume Ratio";
+
+        /// <summary>
+        /// The final value of this indicator is zero because it uses the Volume of the bars it receives.
+        /// Since RenkoBar's don't always have Volume, the final current value is zero. Therefore we
+        /// skip this test
+        /// </summary>
+        /// <param name="indicator"></param>
+        protected override void IndicatorValueIsNotZeroAfterReceiveRenkoBars(IndicatorBase indicator)
+        {
+        }
     }
 }

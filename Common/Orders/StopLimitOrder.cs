@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -14,9 +14,9 @@
 */
 
 using System;
+using Newtonsoft.Json;
 using QuantConnect.Interfaces;
 using QuantConnect.Securities;
-using static QuantConnect.StringExtensions;
 
 namespace QuantConnect.Orders
 {
@@ -28,16 +28,19 @@ namespace QuantConnect.Orders
         /// <summary>
         /// Stop price for this stop market order.
         /// </summary>
+        [JsonProperty(PropertyName = "stopPrice")]
         public decimal StopPrice { get; internal set; }
 
         /// <summary>
         /// Signal showing the "StopLimitOrder" has been converted into a Limit Order
         /// </summary>
+        [JsonProperty(PropertyName = "stopTriggered")]
         public bool StopTriggered { get; internal set; }
 
         /// <summary>
         /// Limit price for the stop limit order
         /// </summary>
+        [JsonProperty(PropertyName = "limitPrice")]
         public decimal LimitPrice { get; internal set; }
 
         /// <summary>
@@ -70,12 +73,15 @@ namespace QuantConnect.Orders
         {
             StopPrice = stopPrice;
             LimitPrice = limitPrice;
+        }
 
-            if (string.IsNullOrEmpty(tag))
-            {
-                //Default tag values to display stop price in GUI.
-                Tag = Invariant($"Stop Price: {stopPrice:C} Limit Price: {limitPrice:C}");
-            }
+        /// <summary>
+        /// Gets the default tag for this order
+        /// </summary>
+        /// <returns>The default tag</returns>
+        public override string GetDefaultTag()
+        {
+            return Messages.StopLimitOrder.Tag(this);
         }
 
         /// <summary>
@@ -87,13 +93,13 @@ namespace QuantConnect.Orders
             // selling, so higher price will be used
             if (Quantity < 0)
             {
-                return Quantity*Math.Max(LimitPrice, security.Price);
+                return Quantity * Math.Max(LimitPrice, security.Price);
             }
 
             // buying, so lower price will be used
             if (Quantity > 0)
             {
-                return Quantity*Math.Min(LimitPrice, security.Price);
+                return Quantity * Math.Min(LimitPrice, security.Price);
             }
 
             return 0m;
@@ -125,7 +131,7 @@ namespace QuantConnect.Orders
         /// <filterpriority>2</filterpriority>
         public override string ToString()
         {
-            return Invariant($"{base.ToString()} at stop {StopPrice.SmartRounding()} limit {LimitPrice.SmartRounding()}");
+            return Messages.StopLimitOrder.ToString(this);
         }
 
         /// <summary>
@@ -134,7 +140,7 @@ namespace QuantConnect.Orders
         /// <returns>A copy of this order</returns>
         public override Order Clone()
         {
-            var order = new StopLimitOrder {StopPrice = StopPrice, LimitPrice = LimitPrice};
+            var order = new StopLimitOrder { StopPrice = StopPrice, LimitPrice = LimitPrice, StopTriggered = StopTriggered };
             CopyTo(order);
             return order;
         }

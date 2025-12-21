@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -13,9 +13,12 @@
  * limitations under the License.
 */
 
-using QuantConnect.Interfaces;
-using QuantConnect.Lean.Engine.DataFeeds.Transport;
+using QuantConnect.Util;
 using QuantConnect.Packets;
+using QuantConnect.Commands;
+using QuantConnect.Interfaces;
+using QuantConnect.Data.UniverseSelection;
+using QuantConnect.Lean.Engine.DataFeeds.Transport;
 
 namespace QuantConnect.Lean.Engine.Server
 {
@@ -24,7 +27,23 @@ namespace QuantConnect.Lean.Engine.Server
     /// </summary>
     public class LocalLeanManager : ILeanManager
     {
-        private LeanEngineSystemHandlers _systemHandlers;
+        /// <summary>
+        /// The current algorithm
+        /// </summary>
+        protected IAlgorithm Algorithm { get; set; }
+
+        private AlgorithmNodePacket _job;
+        private ICommandHandler _commandHandler;
+
+        /// <summary>
+        /// The system handlers
+        /// </summary>
+        protected LeanEngineSystemHandlers SystemHandlers { get; set; }
+
+        /// <summary>
+        /// The algorithm handlers
+        /// </summary>
+        protected LeanEngineAlgorithmHandlers AlgorithmHandlers { get; set; }
 
         /// <summary>
         /// Empty implementation of the ILeanManager interface
@@ -33,41 +52,61 @@ namespace QuantConnect.Lean.Engine.Server
         /// <param name="algorithmHandlers">Exposes the lean algorithm handlers running lean</param>
         /// <param name="job">The job packet representing either a live or backtest Lean instance</param>
         /// <param name="algorithmManager">The Algorithm manager</param>
-        public void Initialize(LeanEngineSystemHandlers systemHandlers, LeanEngineAlgorithmHandlers algorithmHandlers, AlgorithmNodePacket job, AlgorithmManager algorithmManager)
+        public virtual void Initialize(LeanEngineSystemHandlers systemHandlers, LeanEngineAlgorithmHandlers algorithmHandlers, AlgorithmNodePacket job, AlgorithmManager algorithmManager)
         {
-            _systemHandlers = systemHandlers;
+            AlgorithmHandlers = algorithmHandlers;
+            SystemHandlers = systemHandlers;
+            _job = job;
         }
 
         /// <summary>
         /// Sets the IAlgorithm instance in the ILeanManager
         /// </summary>
         /// <param name="algorithm">The IAlgorithm instance being run</param>
-        public void SetAlgorithm(IAlgorithm algorithm)
+        public virtual void SetAlgorithm(IAlgorithm algorithm)
         {
-            algorithm.SetApi(_systemHandlers.Api);
-            RemoteFileSubscriptionStreamReader.SetDownloadProvider((Api.Api)_systemHandlers.Api);
+            Algorithm = algorithm;
+            algorithm.SetApi(SystemHandlers.Api);
+            RemoteFileSubscriptionStreamReader.SetDownloadProvider((Api.Api)SystemHandlers.Api);
         }
 
         /// <summary>
-        /// Update ILeanManager with the IAlgorithm instance
+        /// Execute the commands using the IAlgorithm instance
         /// </summary>
-        public void Update()
+        public virtual void Update()
         {
-            // NOP
+            if(_commandHandler != null)
+            {
+                foreach (var commandResultPacket in _commandHandler.ProcessCommands())
+                {
+                    AlgorithmHandlers.Results.Messages.Enqueue(commandResultPacket);
+                }
+            }
         }
 
         /// <summary>
         /// This method is called after algorithm initialization
         /// </summary>
-        public void OnAlgorithmStart()
+        public virtual void OnAlgorithmStart()
         {
-            // NOP
+            if (Algorithm.LiveMode)
+            {
+                SetCommandHandler();
+            }
         }
 
         /// <summary>
         /// This method is called before algorithm termination
         /// </summary>
-        public void OnAlgorithmEnd()
+        public virtual void OnAlgorithmEnd()
+        {
+            // NOP
+        }
+
+        /// <summary>
+        /// Callback fired each time that we add/remove securities from the data feed
+        /// </summary>
+        public virtual void OnSecuritiesChanged(SecurityChanges changes)
         {
             // NOP
         }
@@ -75,9 +114,18 @@ namespace QuantConnect.Lean.Engine.Server
         /// <summary>
         /// Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.
         /// </summary>
-        public void Dispose()
+        public virtual void Dispose()
         {
-            // NOP
+            _commandHandler.DisposeSafely();
+        }
+
+        /// <summary>
+        /// Set the command handler to use, protected for testing purposes
+        /// </summary>
+        protected virtual void SetCommandHandler()
+        {
+            _commandHandler = new FileCommandHandler();
+            _commandHandler.Initialize(_job, Algorithm);
         }
     }
 }

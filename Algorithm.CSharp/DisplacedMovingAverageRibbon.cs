@@ -14,11 +14,11 @@
 */
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using QuantConnect.Data.Market;
+using QuantConnect.Data;
 using QuantConnect.Indicators;
 using QuantConnect.Interfaces;
+using System.Collections.Generic;
 
 namespace QuantConnect.Algorithm.CSharp
 {
@@ -64,7 +64,7 @@ namespace QuantConnect.Algorithm.CSharp
                 // define an indicator that takes the output of the sma and pipes it into our delay indicator
                 var delayedSma = delay.Of(sma);
 
-                // register our new 'delayedSma' for automaic updates on a daily resolution
+                // register our new 'delayedSma' for automatic updates on a daily resolution
                 RegisterIndicator(_spy, delayedSma, Resolution.Daily, data => data.Value);
 
                 return delayedSma;
@@ -77,7 +77,7 @@ namespace QuantConnect.Algorithm.CSharp
         /// OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
         /// </summary>
         /// <param name="data">TradeBars IDictionary object with your stock data</param>
-        public void OnData(TradeBars data)
+        public override void OnData(Slice slice)
         {
             // wait for our entire ribbon to be ready
             if (!_ribbon.All(x => x.IsReady)) return;
@@ -85,7 +85,13 @@ namespace QuantConnect.Algorithm.CSharp
             // only once per day
             if (_previous.Date == Time.Date) return;
 
-            Plot("Ribbon", "Price", data[_spy].Price);
+            var data = slice[_spy];
+            if (data == null)
+            {
+                // at midnight we can get dividend call, not price data
+                return;
+            }
+            Plot("Ribbon", "Price", data.Price);
             Plot("Ribbon", _ribbon);
 
 
@@ -159,54 +165,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 12073;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "7"},
-            {"Average Win", "19.18%"},
+            {"Total Orders", "7"},
+            {"Average Win", "19.17%"},
             {"Average Loss", "0%"},
-            {"Compounding Annual Return", "16.740%"},
+            {"Compounding Annual Return", "16.731%"},
             {"Drawdown", "12.400%"},
             {"Expectancy", "0"},
-            {"Net Profit", "153.224%"},
-            {"Sharpe Ratio", "1.233"},
-            {"Probabilistic Sharpe Ratio", "65.906%"},
+            {"Start Equity", "100000"},
+            {"End Equity", "253075.04"},
+            {"Net Profit", "153.075%"},
+            {"Sharpe Ratio", "1.05"},
+            {"Sortino Ratio", "1.078"},
+            {"Probabilistic Sharpe Ratio", "56.405%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "100%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "0.146"},
-            {"Beta", "-0.016"},
-            {"Annual Standard Deviation", "0.117"},
-            {"Annual Variance", "0.014"},
-            {"Information Ratio", "-0.052"},
-            {"Tracking Error", "0.204"},
-            {"Treynor Ratio", "-8.847"},
-            {"Total Fees", "$49.43"},
-            {"Estimated Strategy Capacity", "$630000000.00"},
-            {"Fitness Score", "0.002"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "1.609"},
-            {"Return Over Maximum Drawdown", "1.351"},
-            {"Portfolio Turnover", "0.003"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "44481c3d7eeb5acd5e3bccfec501a132"}
+            {"Alpha", "0.051"},
+            {"Beta", "0.507"},
+            {"Annual Standard Deviation", "0.107"},
+            {"Annual Variance", "0.011"},
+            {"Information Ratio", "-0.083"},
+            {"Tracking Error", "0.105"},
+            {"Treynor Ratio", "0.221"},
+            {"Total Fees", "$49.40"},
+            {"Estimated Strategy Capacity", "$1100000000.00"},
+            {"Lowest Capacity Asset", "SPY R735QTJ8XC9X"},
+            {"Portfolio Turnover", "0.32%"},
+            {"Drawdown Recovery", "268"},
+            {"OrderListHash", "1ea790ca8afdcad02b98c70e89652562"}
         };
     }
 }

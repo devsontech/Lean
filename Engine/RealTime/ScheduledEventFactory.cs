@@ -67,7 +67,7 @@ namespace QuantConnect.Lean.Engine.RealTime
         {
             if (endOfDayDelta >= Time.OneDay)
             {
-                throw new ArgumentException("Delta must be less than a day", "endOfDayDelta");
+                throw new ArgumentException("Delta must be less than a day", nameof(endOfDayDelta));
             }
 
             // set up an event to fire every tradeable date for the algorithm as a whole
@@ -117,18 +117,22 @@ namespace QuantConnect.Lean.Engine.RealTime
         {
             if (endOfDayDelta >= Time.OneDay)
             {
-                throw new ArgumentException("Delta must be less than a day", "endOfDayDelta");
+                throw new ArgumentException("Delta must be less than a day", nameof(endOfDayDelta));
             }
+
+            var isMarketAlwaysOpen = security.Exchange.Hours.IsMarketAlwaysOpen;
 
             // define all the times we want this event to be fired, every tradeable day for the securtiy
             // at the delta time before market close expressed in UTC
             var times =
                 // for every date the exchange is open for this security
                 from date in Time.EachTradeableDay(security, start, end)
-                // get the next market close for the specified date
-                let marketClose = security.Exchange.Hours.GetNextMarketClose(date, security.IsExtendedMarketHours)
+                // get the next market close for the specified date if the market closes at some point.
+                // Otherwise, use the given date at midnight
+                let marketClose = isMarketAlwaysOpen ?
+                    date.Date.AddDays(1) : security.Exchange.Hours.GetLastDailyMarketClose(date, security.IsExtendedMarketHours)
                 // define the time of day we want the event to fire before marketclose
-                let eventTime = marketClose.Subtract(endOfDayDelta)
+                let eventTime = isMarketAlwaysOpen ? marketClose : marketClose.Subtract(endOfDayDelta)
                 // convert the event time into UTC
                 let eventUtcTime = eventTime.ConvertToUtc(security.Exchange.TimeZone)
                 // perform filter to verify it's not before the current time

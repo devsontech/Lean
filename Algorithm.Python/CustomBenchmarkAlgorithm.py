@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,14 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("System")
-AddReference("QuantConnect.Algorithm")
-AddReference("QuantConnect.Common")
-
-from System import *
-from QuantConnect import *
-from QuantConnect.Algorithm import *
+from AlgorithmImports import *
 
 ### <summary>
 ### Shows how to set a custom benchmark for you algorithms
@@ -27,27 +20,27 @@ from QuantConnect.Algorithm import *
 ### <meta name="tag" content="benchmarks" />
 class CustomBenchmarkAlgorithm(QCAlgorithm):
 
-    def Initialize(self):
+    def initialize(self):
         '''Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. All algorithms must initialized.'''
 
-        self.SetStartDate(2013,10,7)   #Set Start Date
-        self.SetEndDate(2013,10,11)    #Set End Date
-        self.SetCash(100000)           #Set Strategy Cash
+        self.set_start_date(2013,10,7)   #Set Start Date
+        self.set_end_date(2013,10,11)    #Set End Date
+        self.set_cash(100000)           #Set Strategy Cash
         # Find more symbols here: http://quantconnect.com/data
-        self.AddEquity("SPY", Resolution.Second)
+        self.add_equity("SPY", Resolution.SECOND)
         
         # Disabling the benchmark / setting to a fixed value 
-        # self.SetBenchmark(lambda x: 0)
+        # self.set_benchmark(lambda x: 0)
         
         # Set the benchmark to AAPL US Equity
-        self.SetBenchmark(Symbol.Create("AAPL", SecurityType.Equity, Market.USA))
+        self.set_benchmark(Symbol.create("AAPL", SecurityType.EQUITY, Market.USA))
 
-    def OnData(self, data):
+    def on_data(self, data):
         '''OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.'''
-        if not self.Portfolio.Invested:
-            self.SetHoldings("SPY", 1)
-            self.Debug("Purchased Stock")
+        if not self.portfolio.invested:
+            self.set_holdings("SPY", 1)
+            self.debug("Purchased Stock")
 
-        tupleResult = SymbolCache.TryGetSymbol("AAPL", None)
-        if tupleResult[0]:
-            raise Exception("Benchmark Symbol is not expected to be added to the Symbol cache")
+        tuple_result = SymbolCache.try_get_symbol("AAPL", None)
+        if tuple_result[0]:
+            raise AssertionError("Benchmark Symbol is not expected to be added to the Symbol cache")

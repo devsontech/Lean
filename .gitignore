@@ -1,3 +1,6 @@
+# OS Files
+.DS_Store
+
 # Object files
 *.o
 *.ko
@@ -277,3 +280,4 @@ Research/Notebooks
 
 #Docker result files
 Results/
+QuantConnect.Lean.sln.DotSettings

@@ -15,7 +15,6 @@
 
 using System;
 using QuantConnect.Interfaces;
-using static QuantConnect.StringExtensions;
 
 namespace QuantConnect.Orders
 {
@@ -89,11 +88,44 @@ namespace QuantConnect.Orders
         }
 
         /// <summary>
+        /// Trailing amount for a trailing stop order
+        /// </summary>
+        public decimal TrailingAmount
+        {
+            get; private set;
+        }
+
+        /// <summary>
+        /// Determines whether the <see cref="TrailingAmount"/> is a percentage or an absolute currency value
+        /// </summary>
+        public bool TrailingAsPercentage
+        {
+            get; private set;
+        }
+
+        /// <summary>
         /// Gets the order properties for this request
         /// </summary>
         public IOrderProperties OrderProperties
         {
             get; private set;
+        }
+
+        /// <summary>
+        /// Gets the manager for the combo order. If null, the order is not a combo order.
+        /// </summary>
+        public GroupOrderManager GroupOrderManager
+        {
+            get; private set;
+        }
+
+        /// <summary>
+        /// Whether this request should be asynchronous,
+        /// which means the ticket will be returned to the algorithm without waiting for submission
+        /// </summary>
+        public bool Asynchronous
+        {
+            get;
         }
 
         /// <summary>
@@ -104,12 +136,66 @@ namespace QuantConnect.Orders
         /// <param name="securityType">The symbol's <see cref="SecurityType"/></param>
         /// <param name="symbol">The symbol to be traded</param>
         /// <param name="quantity">The number of units to be ordered</param>
-        /// <param name="stopPrice">The stop price for stop orders, non-stop orers this value is ignored</param>
+        /// <param name="stopPrice">The stop price for stop orders, non-stop orders this value is ignored</param>
+        /// <param name="limitPrice">The limit price for limit orders, non-limit orders this value is ignored</param>
+        /// <param name="triggerPrice">The trigger price for limit if touched orders, for non-limit if touched orders this value is ignored</param>
+        /// <param name="trailingAmount">The trailing amount to be used to update the stop price</param>
+        /// <param name="trailingAsPercentage">Whether the <paramref name="trailingAmount"/> is a percentage or an absolute currency value</param>
+        /// <param name="time">The time this request was created</param>
+        /// <param name="tag">A custom tag for this request</param>
+        /// <param name="properties">The order properties for this request</param>
+        /// <param name="groupOrderManager">The manager for this combo order</param>
+        /// <param name="asynchronous">True if this request should be asynchronous,
+        /// which means the ticket will be returned to the algorithm without waiting for submission</param>
+        public SubmitOrderRequest(
+            OrderType orderType,
+            SecurityType securityType,
+            Symbol symbol,
+            decimal quantity,
+            decimal stopPrice,
+            decimal limitPrice,
+            decimal triggerPrice,
+            decimal trailingAmount,
+            bool trailingAsPercentage,
+            DateTime time,
+            string tag,
+            IOrderProperties properties = null,
+            GroupOrderManager groupOrderManager = null,
+            bool asynchronous = false
+            )
+            : base(time, (int)OrderResponseErrorCode.UnableToFindOrder, tag)
+        {
+            SecurityType = securityType;
+            Symbol = symbol;
+            GroupOrderManager = groupOrderManager;
+            OrderType = orderType;
+            Quantity = quantity;
+            LimitPrice = limitPrice;
+            StopPrice = stopPrice;
+            TriggerPrice = triggerPrice;
+            TrailingAmount = trailingAmount;
+            TrailingAsPercentage = trailingAsPercentage;
+            OrderProperties = properties;
+            Asynchronous = asynchronous;
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="SubmitOrderRequest"/> class.
+        /// The <see cref="OrderRequest.OrderId"/> will default to <see cref="OrderResponseErrorCode.UnableToFindOrder"/>
+        /// </summary>
+        /// <param name="orderType">The order type to be submitted</param>
+        /// <param name="securityType">The symbol's <see cref="SecurityType"/></param>
+        /// <param name="symbol">The symbol to be traded</param>
+        /// <param name="quantity">The number of units to be ordered</param>
+        /// <param name="stopPrice">The stop price for stop orders, non-stop orders this value is ignored</param>
         /// <param name="limitPrice">The limit price for limit orders, non-limit orders this value is ignored</param>
         /// <param name="triggerPrice">The trigger price for limit if touched orders, for non-limit if touched orders this value is ignored</param>
         /// <param name="time">The time this request was created</param>
         /// <param name="tag">A custom tag for this request</param>
         /// <param name="properties">The order properties for this request</param>
+        /// <param name="groupOrderManager">The manager for this combo order</param>
+        /// <param name="asynchronous">True if this request should be asynchronous,
+        /// which means the ticket will be returned to the algorithm without waiting for submission</param>
         public SubmitOrderRequest(
             OrderType orderType,
             SecurityType securityType,
@@ -120,18 +206,13 @@ namespace QuantConnect.Orders
             decimal triggerPrice,
             DateTime time,
             string tag,
-            IOrderProperties properties = null
+            IOrderProperties properties = null,
+            GroupOrderManager groupOrderManager = null,
+            bool asynchronous = false
             )
-            : base(time, (int) OrderResponseErrorCode.UnableToFindOrder, tag)
+            : this(orderType, securityType, symbol, quantity, stopPrice, limitPrice, triggerPrice, 0, false, time, tag, properties,
+                  groupOrderManager, asynchronous)
         {
-            SecurityType = securityType;
-            Symbol = symbol;
-            OrderType = orderType;
-            Quantity = quantity;
-            LimitPrice = limitPrice;
-            StopPrice = stopPrice;
-            TriggerPrice = triggerPrice;
-            OrderProperties = properties;
         }
 
         /// <summary>
@@ -142,11 +223,14 @@ namespace QuantConnect.Orders
         /// <param name="securityType">The symbol's <see cref="SecurityType"/></param>
         /// <param name="symbol">The symbol to be traded</param>
         /// <param name="quantity">The number of units to be ordered</param>
-        /// <param name="stopPrice">The stop price for stop orders, non-stop orers this value is ignored</param>
+        /// <param name="stopPrice">The stop price for stop orders, non-stop orders this value is ignored</param>
         /// <param name="limitPrice">The limit price for limit orders, non-limit orders this value is ignored</param>
         /// <param name="time">The time this request was created</param>
         /// <param name="tag">A custom tag for this request</param>
         /// <param name="properties">The order properties for this request</param>
+        /// <param name="groupOrderManager">The manager for this combo order</param>
+        /// <param name="asynchronous">True if this request should be asynchronous,
+        /// which means the ticket will be returned to the algorithm without waiting for submission</param>
         public SubmitOrderRequest(
             OrderType orderType,
             SecurityType securityType,
@@ -156,9 +240,11 @@ namespace QuantConnect.Orders
             decimal limitPrice,
             DateTime time,
             string tag,
-            IOrderProperties properties = null
+            IOrderProperties properties = null,
+            GroupOrderManager groupOrderManager = null,
+            bool asynchronous = false
             )
-            : this(orderType, securityType, symbol, quantity, stopPrice, limitPrice, 0, time, tag, properties)
+            : this(orderType, securityType, symbol, quantity, stopPrice, limitPrice, 0, time, tag, properties, groupOrderManager, asynchronous)
         {
         }
 
@@ -180,9 +266,7 @@ namespace QuantConnect.Orders
         /// <filterpriority>2</filterpriority>
         public override string ToString()
         {
-            // create a proxy order object to steal his to string method
-            var proxy = Order.CreateOrder(this);
-            return Invariant($"{Time} UTC: Submit Order: ({OrderId}) - {proxy} {Tag} Status: {Status}");
+            return Messages.SubmitOrderRequest.ToString(this);
         }
     }
 }

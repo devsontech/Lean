@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -28,13 +28,13 @@ namespace QuantConnect.Brokerages
         /// <summary>
         /// Initializes a new instance of the <see cref="AlphaStreamsBrokerageModel"/> class
         /// </summary>
-        /// <param name="accountType">The type of account to be modelled, defaults to <see cref="AccountType.Margin"/> does not accept <see cref="AccountType.Cash"/>.</param>
+        /// <param name="accountType">The type of account to be modeled, defaults to <see cref="AccountType.Margin"/> does not accept <see cref="AccountType.Cash"/>.</param>
         public AlphaStreamsBrokerageModel(AccountType accountType = AccountType.Margin)
             : base(accountType)
         {
             if (accountType == AccountType.Cash)
             {
-                throw new ArgumentException("The Alpha Streams brokerage does not currently support Cash trading.", nameof(accountType));
+                throw new ArgumentException(Messages.AlphaStreamsBrokerageModel.UnsupportedAccountType, nameof(accountType));
             }
         }
 
@@ -59,29 +59,12 @@ namespace QuantConnect.Brokerages
         /// <returns>The leverage for the specified security</returns>
         public override decimal GetLeverage(Security security)
         {
-            if (AccountType == AccountType.Cash)
-            {
-                return 1m;
-            }
-
             switch (security.Type)
             {
-                case SecurityType.Equity:
-                    return 2m;
-
                 case SecurityType.Forex:
                 case SecurityType.Cfd:
                     return 10m;
 
-                case SecurityType.Crypto:
-                    return 1m;
-
-                case SecurityType.Base:
-                case SecurityType.Commodity:
-                case SecurityType.Option:
-                case SecurityType.FutureOption:
-                case SecurityType.IndexOption:
-                case SecurityType.Future:
                 default:
                     return 1m;
             }

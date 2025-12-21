@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -67,7 +67,7 @@ namespace QuantConnect
         /// Sets the current UTC time for this time keeper and the attached child <see cref="LocalTimeKeeper"/> instances.
         /// </summary>
         /// <param name="utcDateTime">The current time in UTC</param>
-        public void SetUtcDateTime(DateTime utcDateTime)
+        public virtual void SetUtcDateTime(DateTime utcDateTime)
         {
             _utcDateTime = utcDateTime;
             foreach (var timeZone in _localTimeKeepers)

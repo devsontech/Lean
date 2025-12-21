@@ -16,6 +16,7 @@
 using System;
 using System.Collections.Generic;
 using QuantConnect.Algorithm.Framework.Alphas;
+using QuantConnect.Data;
 using QuantConnect.Data.Market;
 using QuantConnect.Indicators;
 using QuantConnect.Interfaces;
@@ -37,8 +38,8 @@ namespace QuantConnect.Algorithm.CSharp
         private MovingAverageConvergenceDivergence _macd;
         private readonly string _symbol = "SPY";
 
-        public readonly int FastEmaPeriod = 12;
-        public readonly int SlowEmaPeriod = 26;
+        private readonly int _fastEmaPeriod = 12;
+        private readonly int _slowEmaPeriod = 26;
 
         /// <summary>
         /// Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. All algorithms must initialized.
@@ -51,14 +52,14 @@ namespace QuantConnect.Algorithm.CSharp
             AddSecurity(SecurityType.Equity, _symbol, Resolution.Daily);
 
             // define our daily macd(12,26) with a 9 day signal
-            _macd = MACD(_symbol, FastEmaPeriod, SlowEmaPeriod, 9, MovingAverageType.Exponential, Resolution.Daily);
+            _macd = MACD(_symbol, _fastEmaPeriod, _slowEmaPeriod, 9, MovingAverageType.Exponential, Resolution.Daily);
         }
 
         /// <summary>
         /// OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
         /// </summary>
-        /// <param name="data">TradeBars IDictionary object with your stock data</param>
-        public void OnData(TradeBars data)
+        /// <param name="slice">Slice object keyed by symbol containing the stock data</param>
+        public override void OnData(Slice slice)
         {
             // wait for our indicator to be ready
             if (!_macd.IsReady) return;
@@ -75,7 +76,7 @@ namespace QuantConnect.Algorithm.CSharp
                 //    The EmitInsights method can accept multiple insights separated by commas
                 EmitInsights(
                     // Creates an insight for our symbol, predicting that it will move up within the fast ema period number of days
-                    Insight.Price(_symbol, TimeSpan.FromDays(FastEmaPeriod), InsightDirection.Up)
+                    Insight.Price(_symbol, TimeSpan.FromDays(_fastEmaPeriod), InsightDirection.Up)
                 );
 
                 // longterm says buy as well
@@ -88,7 +89,7 @@ namespace QuantConnect.Algorithm.CSharp
                 //    The EmitInsights method can accept multiple insights separated by commas
                 EmitInsights(
                     // Creates an insight for our symbol, predicting that it will move down within the fast ema period number of days
-                    Insight.Price(_symbol, TimeSpan.FromDays(FastEmaPeriod), InsightDirection.Down)
+                    Insight.Price(_symbol, TimeSpan.FromDays(_fastEmaPeriod), InsightDirection.Down)
                 );
 
                 // shortterm says sell as well
@@ -107,7 +108,10 @@ namespace QuantConnect.Algorithm.CSharp
 
             // plot both lines
             Plot("MACD", _macd, _macd.Signal);
-            Plot(_symbol, "Open", data[_symbol].Open);
+            if (slice.Bars.ContainsKey(_symbol))
+            {
+                Plot(_symbol, "Open", slice[_symbol].Open);
+            }
             Plot(_symbol, _macd.Fast, _macd.Slow);
         }
 
@@ -119,54 +123,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 22136;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "85"},
+            {"Total Orders", "85"},
             {"Average Win", "4.85%"},
             {"Average Loss", "-4.22%"},
-            {"Compounding Annual Return", "-3.124%"},
-            {"Drawdown", "53.000%"},
+            {"Compounding Annual Return", "-3.119%"},
+            {"Drawdown", "52.900%"},
             {"Expectancy", "-0.053"},
-            {"Net Profit", "-29.486%"},
-            {"Sharpe Ratio", "-0.078"},
-            {"Probabilistic Sharpe Ratio", "0.004%"},
+            {"Start Equity", "100000"},
+            {"End Equity", "70553.97"},
+            {"Net Profit", "-29.446%"},
+            {"Sharpe Ratio", "-0.223"},
+            {"Sortino Ratio", "-0.243"},
+            {"Probabilistic Sharpe Ratio", "0.001%"},
             {"Loss Rate", "56%"},
             {"Win Rate", "44%"},
             {"Profit-Loss Ratio", "1.15"},
-            {"Alpha", "-0.013"},
-            {"Beta", "0.007"},
-            {"Annual Standard Deviation", "0.163"},
-            {"Annual Variance", "0.027"},
-            {"Information Ratio", "-0.393"},
-            {"Tracking Error", "0.238"},
-            {"Treynor Ratio", "-1.72"},
-            {"Total Fees", "$796.82"},
-            {"Estimated Strategy Capacity", "$1000000000.00"},
-            {"Fitness Score", "0.024"},
-            {"Kelly Criterion Estimate", "-0.9"},
-            {"Kelly Criterion Probability Value", "0.532"},
-            {"Sortino Ratio", "-0.228"},
-            {"Return Over Maximum Drawdown", "-0.058"},
-            {"Portfolio Turnover", "0.05"},
-            {"Total Insights Generated", "85"},
-            {"Total Insights Closed", "85"},
-            {"Total Insights Analysis Completed", "85"},
-            {"Long Insight Count", "42"},
-            {"Short Insight Count", "43"},
-            {"Long/Short Ratio", "97.67%"},
-            {"Estimated Monthly Alpha Value", "$-579527.4"},
-            {"Total Accumulated Estimated Alpha Value", "$-77622060"},
-            {"Mean Population Estimated Insight Value", "$-913200.7"},
-            {"Mean Population Direction", "51.7647%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "48.2217%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "177fb7f308a252864365442a30dd9eeb"}
+            {"Alpha", "-0.029"},
+            {"Beta", "-0.095"},
+            {"Annual Standard Deviation", "0.149"},
+            {"Annual Variance", "0.022"},
+            {"Information Ratio", "-0.34"},
+            {"Tracking Error", "0.23"},
+            {"Treynor Ratio", "0.351"},
+            {"Total Fees", "$797.27"},
+            {"Estimated Strategy Capacity", "$1400000000.00"},
+            {"Lowest Capacity Asset", "SPY R735QTJ8XC9X"},
+            {"Portfolio Turnover", "4.23%"},
+            {"Drawdown Recovery", "943"},
+            {"OrderListHash", "0422632afa17df1379757085f951de7b"}
         };
     }
 }

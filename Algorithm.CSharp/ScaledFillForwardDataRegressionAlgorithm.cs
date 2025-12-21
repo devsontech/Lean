@@ -48,16 +48,16 @@ namespace QuantConnect.Algorithm.CSharp
             Plot("Portfolio.TPV", "Value", Portfolio.TotalPortfolioValue);
         }
 
-        public override void OnData(Slice data)
+        public override void OnData(Slice slice)
         {
-            var current = data.Bars.FirstOrDefault().Value;
+            var current = slice.Bars.FirstOrDefault().Value;
             if (current != null)
             {
                 if (Time == new DateTime(2014, 06, 09, 4, 1, 0) && !Portfolio.Invested)
                 {
                     if (!current.IsFillForward)
                     {
-                        throw new Exception($"Was expecting a first fill forward bar {Time}");
+                        throw new RegressionTestException($"Was expecting a first fill forward bar {Time}");
                     }
 
                     // trade on the first bar after a factor price scale change. +10 so we fill ASAP. Limit so it fills in extended market hours
@@ -70,7 +70,7 @@ namespace QuantConnect.Algorithm.CSharp
                 }
                 else if (_lastRealBar.Close != current.Close)
                 {
-                    throw new Exception($"FillForwarded data point at {Time} was scaled. Actual: {current.Close}; Expected: {_lastRealBar.Close}");
+                    throw new RegressionTestException($"FillForwarded data point at {Time} was scaled. Actual: {current.Close}; Expected: {_lastRealBar.Close}");
                 }
             }
         }
@@ -79,7 +79,7 @@ namespace QuantConnect.Algorithm.CSharp
         {
             if (_lastRealBar == null)
             {
-                throw new Exception($"Not all expected data points were received.");
+                throw new RegressionTestException($"Not all expected data points were received.");
             }
         }
 
@@ -91,54 +91,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp };
+        public List<Language> Languages { get; } = new() { Language.CSharp };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 5507;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "1"},
+            {"Total Orders", "1"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
-            {"Compounding Annual Return", "32.825%"},
+            {"Compounding Annual Return", "45.475%"},
             {"Drawdown", "0.800%"},
             {"Expectancy", "0"},
-            {"Net Profit", "0.377%"},
-            {"Sharpe Ratio", "8.953"},
+            {"Start Equity", "100000"},
+            {"End Equity", "100497.59"},
+            {"Net Profit", "0.498%"},
+            {"Sharpe Ratio", "9.126"},
+            {"Sortino Ratio", "0"},
             {"Probabilistic Sharpe Ratio", "95.977%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "0.328"},
-            {"Beta", "-0.139"},
-            {"Annual Standard Deviation", "0.03"},
-            {"Annual Variance", "0.001"},
-            {"Information Ratio", "-3.191"},
-            {"Tracking Error", "0.052"},
-            {"Treynor Ratio", "-1.919"},
+            {"Alpha", "0.439"},
+            {"Beta", "-0.184"},
+            {"Annual Standard Deviation", "0.039"},
+            {"Annual Variance", "0.002"},
+            {"Information Ratio", "-1.093"},
+            {"Tracking Error", "0.059"},
+            {"Treynor Ratio", "-1.956"},
             {"Total Fees", "$5.00"},
-            {"Estimated Strategy Capacity", "$24000.00"},
-            {"Fitness Score", "0.158"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "79228162514264337593543950335"},
-            {"Return Over Maximum Drawdown", "79228162514264337593543950335"},
-            {"Portfolio Turnover", "0.158"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "fb4a3d12fdcb4f06fa421f37c7942dd1"}
+            {"Estimated Strategy Capacity", "$26000.00"},
+            {"Lowest Capacity Asset", "AOL R735QTJ8XC9X"},
+            {"Portfolio Turnover", "12.68%"},
+            {"Drawdown Recovery", "0"},
+            {"OrderListHash", "409eed1832c1cf1db6afaa160e85c639"}
         };
     }
 }

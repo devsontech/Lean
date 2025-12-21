@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -169,7 +169,7 @@ namespace QuantConnect.Configuration
         public static void Set(string key, dynamic value)
         {
             JToken environment = Settings.Value;
-            while (key.Contains("."))
+            while (key.Contains('.', StringComparison.InvariantCulture))
             {
                 var envName = key.Substring(0, key.IndexOf(".", StringComparison.InvariantCulture));
                 key = key.Substring(key.IndexOf(".", StringComparison.InvariantCulture) + 1);
@@ -298,8 +298,8 @@ namespace QuantConnect.Configuration
         /// </summary>
         /// <typeparam name="T">The desired output type</typeparam>
         /// <param name="key">The configuration key</param>
-        /// <param name="value">The output value</param>
-        /// <returns>True on successful parse, false when output value is default(T)</returns>
+        /// <param name="value">The output value. If the key is found and parsed successfully, it will be the parsed value, else default(T).</param>
+        /// <returns>True on successful parse or if they key is not found. False only when key is found but fails to parse.</returns>
         public static bool TryGetValue<T>(string key, out T value)
         {
             return TryGetValue(key, default(T), out value);
@@ -312,8 +312,8 @@ namespace QuantConnect.Configuration
         /// <typeparam name="T">The desired output type</typeparam>
         /// <param name="key">The configuration key</param>
         /// <param name="defaultValue">The default value to use on key not found or unsuccessful parse</param>
-        /// <param name="value">The output value</param>
-        /// <returns>True on successful parse, false when output value is defaultValue</returns>
+        /// <param name="value">The output value. If the key is found and parsed successfully, it will be the parsed value, else defaultValue.</param>
+        /// <returns>True on successful parse or if they key is not found and using defaultValue. False only when key is found but fails to parse.</returns>
         public static bool TryGetValue<T>(string key, T defaultValue, out T value)
         {
             try
@@ -331,11 +331,17 @@ namespace QuantConnect.Configuration
         /// <summary>
         /// Write the contents of the serialized configuration back to the disk.
         /// </summary>
-        public static void Write()
+        public static void Write(string targetPath = null)
         {
             if (!Settings.IsValueCreated) return;
             var serialized = JsonConvert.SerializeObject(Settings.Value, Formatting.Indented);
-            File.WriteAllText(ConfigurationFileName, serialized);
+
+            var taget = ConfigurationFileName;
+            if (!string.IsNullOrEmpty(targetPath))
+            {
+                taget = Path.Combine(targetPath, ConfigurationFileName);
+            }
+            File.WriteAllText(taget, serialized);
         }
 
         /// <summary>

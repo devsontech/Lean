@@ -1,20 +1,18 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <RootNamespace>QuantConnect.Algorithm.Framework</RootNamespace>
     <AssemblyName>QuantConnect.Algorithm.Framework</AssemblyName>
-    <TargetFramework>net462</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <OutputPath>bin\$(Configuration)\</OutputPath>
     <AnalysisMode>AllEnabledByDefault</AnalysisMode>
     <DocumentationFile>bin\$(Configuration)\QuantConnect.Algorithm.Framework.xml</DocumentationFile>
     <PackageTags>Library</PackageTags>
-    <LangVersion>6</LangVersion>
-    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
     <Description>QuantConnect LEAN Engine: Algorithm.Framework Project - The core QCAlgorithm framework implementation</Description>
+    <NoWarn>CA1062</NoWarn>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <OutputPath>bin\Debug\</OutputPath>
@@ -28,35 +26,15 @@
     <DefineConstants>TRACE</DefineConstants>
   </PropertyGroup>
   <PropertyGroup>
-    <IsWindows>false</IsWindows>
-    <IsWindows Condition="'$(OS)' == 'Windows_NT'">true</IsWindows>
-    <IsOSX>false</IsOSX>
-    <IsOSX Condition="'$(IsWindows)' != 'true' AND '$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))' == 'true'">true</IsOSX>
-    <IsLinux>false</IsLinux>
-    <IsLinux Condition="'$(IsWindows)' != 'true' AND '$(IsOSX)' != 'true' AND '$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</IsLinux>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
   </PropertyGroup>
-  <Target Name="PrintRID" BeforeTargets="Build">
-    <Message Text="IsWindows $(IsWindows)" Importance="high" />
-    <Message Text="IsOSX $(IsOSX)" Importance="high" />
-    <Message Text="IsLinux $(IsLinux)" Importance="high" />
-    <Message Text="ForceLinuxBuild $(ForceLinuxBuild)" Importance="high" />
-  </Target>
   <ItemGroup>
-    <PackageReference Include="QuantConnect.pythonnet" Version="2.0.1" />
+    <PackageReference Include="QuantConnect.pythonnet" Version="2.0.50" />
     <PackageReference Include="Accord" Version="3.6.0" />
     <PackageReference Include="Accord.Math" Version="3.6.0" />
     <PackageReference Include="Accord.Statistics" Version="3.6.0" />
-    <PackageReference Include="MathNet.Numerics" Version="4.15.0" />
-    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="5.0.3">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
+    <PackageReference Include="MathNet.Numerics" Version="5.0.0" />
     <PackageReference Include="NodaTime" Version="3.0.5" />
-  </ItemGroup>
-  <ItemGroup>
-    <Reference Include="System.Data.DataSetExtensions" />
-    <Reference Include="Microsoft.CSharp" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\Common\Properties\SharedAssemblyInfo.cs" Link="Properties\SharedAssemblyInfo.cs" />
@@ -76,6 +54,9 @@
     <Content Include="Portfolio\AccumulativeInsightPortfolioConstructionModel.py">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="Portfolio\RiskParityPortfolioOptimizer.py">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="Portfolio\SectorWeightingPortfolioConstructionModel.py">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -88,14 +69,18 @@
     <Content Include="Portfolio\MaximumSharpeRatioPortfolioOptimizer.py">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="Portfolio\MeanReversionPortfolioConstructionModel.py">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="Portfolio\MeanVarianceOptimizationPortfolioConstructionModel.py">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="Portfolio\MinimumVariancePortfolioOptimizer.py">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-  </ItemGroup>
-  <ItemGroup>
+    <Content Include="Portfolio\RiskParityPortfolioConstructionModel.py">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="Alphas\PearsonCorrelationPairsTradingAlphaModel.py">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -109,6 +94,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="Execution\StandardDeviationExecutionModel.py">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Execution\SpreadExecutionModel.py">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="Portfolio\EqualWeightingPortfolioConstructionModel.py">
@@ -129,6 +117,9 @@
     <Content Include="Risk\MaximumSectorExposureRiskManagementModel.py">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="Selection\ETFConstituentsUniverseSelectionModel.py">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="Selection\EmaCrossUniverseSelectionModel.py">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -138,17 +129,12 @@
     <Content Include="Selection\OptionUniverseSelectionModel.py">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Selection\UncorrelatedUniverseSelectionModel.py">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
     <Content Include="Selection\QC500UniverseSelectionModel.py">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="Selection\FundamentalUniverseSelectionModel.py">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-  </ItemGroup>
-  <ItemGroup>
     <Content Include="Alphas\ConstantAlphaModel.py">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

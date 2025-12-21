@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,21 +11,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("System")
-AddReference("QuantConnect.Algorithm")
-AddReference("QuantConnect.Common")
-
-from System import *
-from QuantConnect import *
-from QuantConnect.Orders import *
-from QuantConnect.Algorithm import *
-from QuantConnect.Algorithm.Framework import *
-from QuantConnect.Algorithm.Framework.Selection import *
+from AlgorithmImports import *
 from Alphas.RsiAlphaModel import RsiAlphaModel
 from Portfolio.EqualWeightingPortfolioConstructionModel import EqualWeightingPortfolioConstructionModel
 from Execution.VolumeWeightedAveragePriceExecutionModel import VolumeWeightedAveragePriceExecutionModel
-from datetime import timedelta
 
 ### <summary>
 ### Regression algorithm for the VolumeWeightedAveragePriceExecutionModel.
@@ -40,30 +29,30 @@ class VolumeWeightedAveragePriceExecutionModelRegressionAlgorithm(QCAlgorithm):
     This algorithm shows how the execution model works to split up orders and
     submit them only when the price is on the favorable side of the intraday VWAP.'''
 
-    def Initialize(self):
+    def initialize(self):
 
-        self.UniverseSettings.Resolution = Resolution.Minute
+        self.universe_settings.resolution = Resolution.MINUTE
 
-        self.SetStartDate(2013,10,7)
-        self.SetEndDate(2013,10,11)
-        self.SetCash(1000000)
+        self.set_start_date(2013,10,7)
+        self.set_end_date(2013,10,11)
+        self.set_cash(1000000)
 
-        self.SetUniverseSelection(ManualUniverseSelectionModel([
-            Symbol.Create('AIG', SecurityType.Equity, Market.USA),
-            Symbol.Create('BAC', SecurityType.Equity, Market.USA),
-            Symbol.Create('IBM', SecurityType.Equity, Market.USA),
-            Symbol.Create('SPY', SecurityType.Equity, Market.USA)
+        self.set_universe_selection(ManualUniverseSelectionModel([
+            Symbol.create('AIG', SecurityType.EQUITY, Market.USA),
+            Symbol.create('BAC', SecurityType.EQUITY, Market.USA),
+            Symbol.create('IBM', SecurityType.EQUITY, Market.USA),
+            Symbol.create('SPY', SecurityType.EQUITY, Market.USA)
         ]))
 
         # using hourly rsi to generate more insights
-        self.SetAlpha(RsiAlphaModel(14, Resolution.Hour))
-        self.SetPortfolioConstruction(EqualWeightingPortfolioConstructionModel())
-        self.SetExecution(VolumeWeightedAveragePriceExecutionModel())
+        self.set_alpha(RsiAlphaModel(14, Resolution.HOUR))
+        self.set_portfolio_construction(EqualWeightingPortfolioConstructionModel())
+        self.set_execution(VolumeWeightedAveragePriceExecutionModel())
 
-        self.InsightsGenerated += self.OnInsightsGenerated
+        self.insights_generated += self.on_insights_generated
 
-    def OnInsightsGenerated(self, algorithm, data):
-        self.Log(f"{self.Time}: {', '.join(str(x) for x in data.Insights)}")
+    def on_insights_generated(self, algorithm, data):
+        self.log(f"{self.time}: {', '.join(str(x) for x in data.insights)}")
 
-    def OnOrderEvent(self, orderEvent):
-        self.Log(f"{self.Time}: {orderEvent}")
+    def on_order_event(self, orderEvent):
+        self.log(f"{self.time}: {orderEvent}")

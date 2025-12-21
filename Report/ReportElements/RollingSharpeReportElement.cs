@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -27,18 +27,25 @@ namespace QuantConnect.Report.ReportElements
         private BacktestResult _backtest;
 
         /// <summary>
+        /// The number of trading days per year to get better result of statistics
+        /// </summary>
+        private int _tradingDaysPerYear;
+
+        /// <summary>
         /// Create a new plot of the rolling sharpe ratio
         /// </summary>
         /// <param name="name">Name of the widget</param>
         /// <param name="key">Location of injection</param>
         /// <param name="backtest">Backtest result object</param>
         /// <param name="live">Live result object</param>
-        public RollingSharpeReportElement(string name, string key, BacktestResult backtest, LiveResult live)
+        /// <param name="tradingDaysPerYear">The number of trading days per year to get better result of statistics</param>
+        public RollingSharpeReportElement(string name, string key, BacktestResult backtest, LiveResult live, int tradingDaysPerYear)
         {
             _live = live;
             _backtest = backtest;
             Name = name;
             Key = key;
+            _tradingDaysPerYear = tradingDaysPerYear;
         }
 
         /// <summary>
@@ -49,8 +56,13 @@ namespace QuantConnect.Report.ReportElements
             var backtestPoints = ResultsUtil.EquityPoints(_backtest);
             var livePoints = ResultsUtil.EquityPoints(_live);
 
-            var backtestRollingSharpe = Rolling.Sharpe(new Series<DateTime, double>(backtestPoints), 6).DropMissing();
-            var liveRollingSharpe = Rolling.Sharpe(new Series<DateTime, double>(livePoints), 6).DropMissing();
+            var backtestSeries = new Series<DateTime, double>(backtestPoints);
+            var liveSeries = new Series<DateTime, double>(livePoints);
+
+            var backtestRollingSharpeSixMonths = Rolling.Sharpe(backtestSeries, 6, _tradingDaysPerYear).DropMissing();
+            var backtestRollingSharpeTwelveMonths = Rolling.Sharpe(backtestSeries, 12, _tradingDaysPerYear).DropMissing();
+            var liveRollingSharpeSixMonths = Rolling.Sharpe(liveSeries, 6, _tradingDaysPerYear).DropMissing();
+            var liveRollingSharpeTwelveMonths = Rolling.Sharpe(liveSeries, 12, _tradingDaysPerYear).DropMissing();
 
             var base64 = "";
             using (Py.GIL())
@@ -58,11 +70,15 @@ namespace QuantConnect.Report.ReportElements
                 var backtestList = new PyList();
                 var liveList = new PyList();
 
-                backtestList.Append(backtestRollingSharpe.Keys.ToList().ToPython());
-                backtestList.Append(backtestRollingSharpe.Values.ToList().ToPython());
+                backtestList.Append(backtestRollingSharpeSixMonths.Keys.ToList().ToPython());
+                backtestList.Append(backtestRollingSharpeSixMonths.Values.ToList().ToPython());
+                backtestList.Append(backtestRollingSharpeTwelveMonths.Keys.ToList().ToPython());
+                backtestList.Append(backtestRollingSharpeTwelveMonths.Values.ToList().ToPython());
 
-                liveList.Append(liveRollingSharpe.Keys.ToList().ToPython());
-                liveList.Append(liveRollingSharpe.Values.ToList().ToPython());
+                liveList.Append(liveRollingSharpeSixMonths.Keys.ToList().ToPython());
+                liveList.Append(liveRollingSharpeSixMonths.Values.ToList().ToPython());
+                liveList.Append(liveRollingSharpeTwelveMonths.Keys.ToList().ToPython());
+                liveList.Append(liveRollingSharpeTwelveMonths.Values.ToList().ToPython());
 
                 base64 = Charting.GetRollingSharpeRatio(backtestList, liveList);
             }

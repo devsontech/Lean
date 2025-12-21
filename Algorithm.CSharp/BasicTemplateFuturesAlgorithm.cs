@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using QuantConnect.Data;
+using QuantConnect.Data.UniverseSelection;
 using QuantConnect.Interfaces;
 using QuantConnect.Securities;
 using QuantConnect.Securities.Future;
@@ -38,11 +39,9 @@ namespace QuantConnect.Algorithm.CSharp
 
         // S&P 500 EMini futures
         private const string RootSP500 = Futures.Indices.SP500EMini;
-        public Symbol SP500 = QuantConnect.Symbol.Create(RootSP500, SecurityType.Future, Market.CME);
 
         // Gold futures
         private const string RootGold = Futures.Metals.Gold;
-        public Symbol Gold = QuantConnect.Symbol.Create(RootGold, SecurityType.Future, Market.COMEX);
 
         /// <summary>
         /// Initialize your algorithm and add desired assets.
@@ -58,12 +57,15 @@ namespace QuantConnect.Algorithm.CSharp
 
             // set our expiry filter for this futures chain
             // SetFilter method accepts TimeSpan objects or integer for days.
-            // The following statements yield the same filtering criteria 
+            // The following statements yield the same filtering criteria
             futureSP500.SetFilter(TimeSpan.Zero, TimeSpan.FromDays(182));
             futureGold.SetFilter(0, 182);
 
             var benchmark = AddEquity("SPY");
             SetBenchmark(benchmark.Symbol);
+
+            var seeder = new FuncSecuritySeeder(GetLastKnownPrices);
+            SetSecurityInitializer(security => seeder.SeedSecurity(security));
         }
 
         /// <summary>
@@ -72,6 +74,15 @@ namespace QuantConnect.Algorithm.CSharp
         /// <param name="slice">The current slice of data keyed by symbol string</param>
         public override void OnData(Slice slice)
         {
+            foreach (var changedEvent in slice.SymbolChangedEvents.Values)
+            {
+                Debug($"{Time} - SymbolChanged event: {changedEvent}");
+                if (Time.TimeOfDay != TimeSpan.Zero)
+                {
+                    throw new RegressionTestException($"{Time} unexpected symbol changed event {changedEvent}!");
+                }
+            }
+
             if (!Portfolio.Invested)
             {
                 foreach(var chain in slice.FutureChains)
@@ -104,12 +115,25 @@ namespace QuantConnect.Algorithm.CSharp
             var futureMarginModel = buyingPowerModel as FutureMarginModel;
             if (buyingPowerModel == null)
             {
-                throw new Exception($"Invalid buying power model. Found: {buyingPowerModel.GetType().Name}. Expected: {nameof(FutureMarginModel)}");
+                throw new RegressionTestException($"Invalid buying power model. Found: {buyingPowerModel.GetType().Name}. Expected: {nameof(FutureMarginModel)}");
             }
             var initialOvernight = futureMarginModel.InitialOvernightMarginRequirement;
             var maintenanceOvernight = futureMarginModel.MaintenanceOvernightMarginRequirement;
             var initialIntraday = futureMarginModel.InitialIntradayMarginRequirement;
             var maintenanceIntraday = futureMarginModel.MaintenanceIntradayMarginRequirement;
+        }
+
+        public override void OnSecuritiesChanged(SecurityChanges changes)
+        {
+            foreach (var addedSecurity in changes.AddedSecurities)
+            {
+                if (addedSecurity.Symbol.SecurityType == SecurityType.Future
+                    && !addedSecurity.Symbol.IsCanonical()
+                    && !addedSecurity.HasData)
+                {
+                    throw new RegressionTestException($"Future contracts did not work up as expected: {addedSecurity.Symbol}");
+                }
+            }
         }
 
         /// <summary>
@@ -120,54 +144,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 40308;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 354;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "8220"},
+            {"Total Orders", "2700"},
             {"Average Win", "0.00%"},
             {"Average Loss", "0.00%"},
-            {"Compounding Annual Return", "-100.000%"},
-            {"Drawdown", "13.500%"},
-            {"Expectancy", "-0.818"},
-            {"Net Profit", "-13.517%"},
-            {"Sharpe Ratio", "-2.678"},
+            {"Compounding Annual Return", "-99.597%"},
+            {"Drawdown", "4.400%"},
+            {"Expectancy", "-0.724"},
+            {"Start Equity", "1000000"},
+            {"End Equity", "955700.5"},
+            {"Net Profit", "-4.430%"},
+            {"Sharpe Ratio", "-31.63"},
+            {"Sortino Ratio", "-31.63"},
             {"Probabilistic Sharpe Ratio", "0%"},
-            {"Loss Rate", "89%"},
-            {"Win Rate", "11%"},
-            {"Profit-Loss Ratio", "0.69"},
-            {"Alpha", "4.469"},
-            {"Beta", "-0.961"},
-            {"Annual Standard Deviation", "0.373"},
-            {"Annual Variance", "0.139"},
-            {"Information Ratio", "-13.191"},
-            {"Tracking Error", "0.507"},
-            {"Treynor Ratio", "1.04"},
-            {"Total Fees", "$15207.00"},
-            {"Estimated Strategy Capacity", "$7700.00"},
-            {"Fitness Score", "0.033"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "-8.62"},
-            {"Return Over Maximum Drawdown", "-7.81"},
-            {"Portfolio Turnover", "302.321"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "35b3f4b7a225468d42ca085386a2383e"}
+            {"Loss Rate", "83%"},
+            {"Win Rate", "17%"},
+            {"Profit-Loss Ratio", "0.65"},
+            {"Alpha", "-3.065"},
+            {"Beta", "0.128"},
+            {"Annual Standard Deviation", "0.031"},
+            {"Annual Variance", "0.001"},
+            {"Information Ratio", "-81.232"},
+            {"Tracking Error", "0.212"},
+            {"Treynor Ratio", "-7.677"},
+            {"Total Fees", "$6237.00"},
+            {"Estimated Strategy Capacity", "$14000.00"},
+            {"Lowest Capacity Asset", "GC VOFJUCDY9XNH"},
+            {"Portfolio Turnover", "9912.69%"},
+            {"Drawdown Recovery", "0"},
+            {"OrderListHash", "6e0f767a46a54365287801295cf7bb75"}
         };
     }
 }

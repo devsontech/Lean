@@ -91,54 +91,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 37;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 10;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "6"},
+            {"Total Orders", "7"},
             {"Average Win", "6.02%"},
             {"Average Loss", "-2.40%"},
-            {"Compounding Annual Return", "915.480%"},
+            {"Compounding Annual Return", "1497.266%"},
             {"Drawdown", "5.500%"},
-            {"Expectancy", "1.338"},
-            {"Net Profit", "11.400%"},
-            {"Sharpe Ratio", "9.507"},
-            {"Probabilistic Sharpe Ratio", "76.768%"},
+            {"Expectancy", "1.339"},
+            {"Start Equity", "100000.00"},
+            {"End Equity", "113775.23"},
+            {"Net Profit", "13.775%"},
+            {"Sharpe Ratio", "4.906"},
+            {"Sortino Ratio", "11.482"},
+            {"Probabilistic Sharpe Ratio", "63.428%"},
             {"Loss Rate", "33%"},
             {"Win Rate", "67%"},
             {"Profit-Loss Ratio", "2.51"},
             {"Alpha", "0"},
             {"Beta", "0"},
-            {"Annual Standard Deviation", "0.507"},
-            {"Annual Variance", "0.257"},
-            {"Information Ratio", "9.507"},
-            {"Tracking Error", "0.507"},
+            {"Annual Standard Deviation", "0.456"},
+            {"Annual Variance", "0.208"},
+            {"Information Ratio", "4.922"},
+            {"Tracking Error", "0.456"},
             {"Treynor Ratio", "0"},
-            {"Total Fees", "$2651.01"},
-            {"Estimated Strategy Capacity", "$30000.00"},
-            {"Fitness Score", "0.467"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "53.455"},
-            {"Return Over Maximum Drawdown", "165.408"},
-            {"Portfolio Turnover", "0.468"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "2b3ac55337ce5619fc0388ccdac72c54"}
+            {"Total Fees", "$2650.41"},
+            {"Estimated Strategy Capacity", "$29000.00"},
+            {"Lowest Capacity Asset", "BTCUSD 2XR"},
+            {"Portfolio Turnover", "46.79%"},
+            {"Drawdown Recovery", "14"},
+            {"OrderListHash", "70610cb67cc63d197e22ca71180b2df2"}
         };
     }
 }

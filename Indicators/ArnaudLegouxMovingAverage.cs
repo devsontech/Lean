@@ -23,7 +23,7 @@ namespace QuantConnect.Indicators
     /// but still being smooth to reduce noises.
     /// Is a weighted moving average, which weights have a Normal shape;
     /// the parameters Sigma and Offset affect the kurtosis and skewness of the weights respectively.
-    /// Source: http://www.arnaudlegoux.com/index.html
+    /// Source: https://www.cjournal.cz/files/308.pdf
     /// </summary>
     /// <seealso cref="IndicatorDataPoint" />
     public class ArnaudLegouxMovingAverage : WindowIndicator<IndicatorDataPoint>, IIndicatorWarmUpPeriodProvider
@@ -50,7 +50,7 @@ namespace QuantConnect.Indicators
         public ArnaudLegouxMovingAverage(string name, int period, int sigma = 6, decimal offset = 0.85m)
             : base(name, period)
         {
-            if (offset < 0 || offset > 1) throw new ArgumentException($"Offset parameter range is [0,1]. Value: {offset}", "offset");
+            if (offset < 0 || offset > 1) throw new ArgumentException($"Offset parameter range is [0,1]. Value: {offset}", nameof(offset));
 
             var m = Math.Floor(offset * (period - 1));
             var s = period * 1m / sigma;

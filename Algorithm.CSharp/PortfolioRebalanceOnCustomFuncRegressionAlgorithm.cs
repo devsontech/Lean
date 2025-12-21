@@ -41,6 +41,10 @@ namespace QuantConnect.Algorithm.CSharp
         {
             UniverseSettings.Resolution = Resolution.Daily;
 
+            // Order margin value has to have a minimum of 0.5% of Portfolio value, allows filtering out small trades and reduce fees.
+            // Commented so regression algorithm is more sensitive
+            //Settings.MinimumOrderMarginPortfolioPercentage = 0.005m;
+
             SetStartDate(2015, 1, 1);
             SetEndDate(2018, 1, 1);
 
@@ -101,7 +105,7 @@ namespace QuantConnect.Algorithm.CSharp
             {
                 if (UtcTime - _lastRebalanceTime > TimeSpan.Zero || UtcTime.DayOfWeek != DayOfWeek.Monday)
                 {
-                    throw new Exception($"{UtcTime} {orderEvent.Symbol} {UtcTime - _lastRebalanceTime}");
+                    throw new RegressionTestException($"{UtcTime} {orderEvent.Symbol} {UtcTime - _lastRebalanceTime}");
                 }
             }
         }
@@ -114,54 +118,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 11379;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "28"},
-            {"Average Win", "0.78%"},
-            {"Average Loss", "0%"},
-            {"Compounding Annual Return", "18.524%"},
-            {"Drawdown", "9.200%"},
-            {"Expectancy", "0"},
-            {"Net Profit", "66.423%"},
-            {"Sharpe Ratio", "1.75"},
-            {"Probabilistic Sharpe Ratio", "87.845%"},
-            {"Loss Rate", "0%"},
-            {"Win Rate", "100%"},
-            {"Profit-Loss Ratio", "0"},
-            {"Alpha", "0.161"},
-            {"Beta", "-0.06"},
-            {"Annual Standard Deviation", "0.089"},
-            {"Annual Variance", "0.008"},
-            {"Information Ratio", "0.374"},
-            {"Tracking Error", "0.148"},
-            {"Treynor Ratio", "-2.585"},
-            {"Total Fees", "$39.42"},
-            {"Estimated Strategy Capacity", "$730000.00"},
-            {"Fitness Score", "0.001"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "1"},
-            {"Sortino Ratio", "2.126"},
-            {"Return Over Maximum Drawdown", "2.01"},
-            {"Portfolio Turnover", "0.001"},
-            {"Total Insights Generated", "5327"},
-            {"Total Insights Closed", "5320"},
-            {"Total Insights Analysis Completed", "5320"},
-            {"Long Insight Count", "5327"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "8df86eca0b4984b69cedf72bb3cb06de"}
+            {"Total Orders", "16"},
+            {"Average Win", "0.02%"},
+            {"Average Loss", "0.00%"},
+            {"Compounding Annual Return", "13.451%"},
+            {"Drawdown", "24.500%"},
+            {"Expectancy", "6.478"},
+            {"Start Equity", "100000"},
+            {"End Equity", "145958.59"},
+            {"Net Profit", "45.959%"},
+            {"Sharpe Ratio", "0.697"},
+            {"Sortino Ratio", "0.77"},
+            {"Probabilistic Sharpe Ratio", "30.183%"},
+            {"Loss Rate", "25%"},
+            {"Win Rate", "75%"},
+            {"Profit-Loss Ratio", "8.97"},
+            {"Alpha", "0.01"},
+            {"Beta", "1.1"},
+            {"Annual Standard Deviation", "0.127"},
+            {"Annual Variance", "0.016"},
+            {"Information Ratio", "0.285"},
+            {"Tracking Error", "0.06"},
+            {"Treynor Ratio", "0.081"},
+            {"Total Fees", "$24.50"},
+            {"Estimated Strategy Capacity", "$3600000.00"},
+            {"Lowest Capacity Asset", "BNO UN3IMQ2JU1YD"},
+            {"Portfolio Turnover", "0.10%"},
+            {"Drawdown Recovery", "489"},
+            {"OrderListHash", "47fb0abc2f7af436ed0faeb8eb64eeb3"}
         };
     }
 }

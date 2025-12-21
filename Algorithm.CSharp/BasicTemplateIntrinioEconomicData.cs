@@ -31,9 +31,9 @@ namespace QuantConnect.Algorithm.CSharp
     /// <meta name="tag" content="trading and orders" />
     public class BasicTemplateIntrinioEconomicData : QCAlgorithm
     {
-        // Set your Intrinino user and password.
-        public string _user = "";
-        public string _password = "";
+        // Set your Intrinio user and password.
+        private string _user = string.Empty;
+        private string _password = string.Empty;
 
         private Symbol _uso; // United States Oil Fund LP
         private Symbol _bno; // United States Brent Oil Fund LP
@@ -41,7 +41,7 @@ namespace QuantConnect.Algorithm.CSharp
         private readonly Identity _brent = new Identity("Brent");
         private readonly Identity _wti = new Identity("WTI");
 
-        private CompositeIndicator<IndicatorDataPoint> _spread;
+        private CompositeIndicator _spread;
 
         private ExponentialMovingAverage _emaWti;
 
@@ -55,7 +55,7 @@ namespace QuantConnect.Algorithm.CSharp
             SetEndDate(year: 2013, month: 12, day: 31); //Set End Date
             SetCash(startingCash: 100000); //Set Strategy Cash
 
-            // Set your Intrinino user and password.
+            // Set your Intrinio user and password.
             IntrinioConfig.SetUserAndPassword(_user, _password);
 
             // Set Intrinio config to make 1 call each minute, default is 1 call each 5 seconds.
@@ -81,9 +81,9 @@ namespace QuantConnect.Algorithm.CSharp
         ///     OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
         /// </summary>
         /// <param name="data">Slice object keyed by symbol containing the stock data</param>
-        public override void OnData(Slice data)
+        public override void OnData(Slice slice)
         {
-            var customData = data.Get<IntrinioEconomicData>();
+            var customData = slice.Get<IntrinioEconomicData>();
             if (customData.Count == 0) return;
 
             foreach (var economicData in customData.Values)
@@ -116,7 +116,7 @@ namespace QuantConnect.Algorithm.CSharp
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "91"},
+            {"Total Orders", "91"},
             {"Average Win", "0.09%"},
             {"Average Loss", "-0.01%"},
             {"Compounding Annual Return", "5.732%"},

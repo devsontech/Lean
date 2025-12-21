@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -32,22 +32,22 @@ namespace QuantConnect.Optimizer.Strategies
         /// <summary>
         /// Indicates was strategy initialized or no
         /// </summary>
-        protected bool Initialized = false;
+        protected bool Initialized { get; set; }
 
         /// <summary>
         /// Optimization parameters
         /// </summary>
-        protected HashSet<OptimizationParameter> OptimizationParameters;
+        protected HashSet<OptimizationParameter> OptimizationParameters { get; set; }
 
         /// <summary>
         /// Optimization target, i.e. maximize or minimize
         /// </summary>
-        protected Target Target;
+        protected Target Target { get; set; }
 
         /// <summary>
         /// Optimization constraints; if it doesn't comply just drop the backtest
         /// </summary>
-        protected IEnumerable<Constraint> Constraints;
+        protected IEnumerable<Constraint> Constraints { get; set; }
 
         /// <summary>
         /// Keep the best found solution - lean computed job result and corresponding  parameter set 
@@ -91,7 +91,7 @@ namespace QuantConnect.Optimizer.Strategies
                     var stepSettings = Settings as StepBaseOptimizationStrategySettings;
                     if (stepSettings == null)
                     {
-                        throw new ArgumentException(nameof(settings), $"OptimizationStrategySettings is not of {nameof(StepBaseOptimizationStrategySettings)} type");
+                        throw new ArgumentException($"OptimizationStrategySettings is not of {nameof(StepBaseOptimizationStrategySettings)} type", nameof(settings));
                     }
                     CalculateStep(optimizationParameter, stepSettings.DefaultSegmentAmount);
                 }
@@ -192,7 +192,7 @@ namespace QuantConnect.Optimizer.Strategies
         {
             if (defaultSegmentAmount < 1)
             {
-                throw new ArgumentException(nameof(defaultSegmentAmount), $"Number of segments should be positive number, but specified '{defaultSegmentAmount}'");
+                throw new ArgumentException($"Number of segments should be positive number, but specified '{defaultSegmentAmount}'", nameof(defaultSegmentAmount));
             }
 
             parameter.Step = Math.Abs(parameter.MaxValue - parameter.MinValue) / defaultSegmentAmount;

@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,18 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("System.Core")
-AddReference("QuantConnect.Common")
-AddReference("QuantConnect.Algorithm")
-
-from System import *
-from QuantConnect import *
-from QuantConnect.Algorithm import QCAlgorithm
-from QuantConnect.Brokerages import *
-from QuantConnect.Benchmarks import *
-from QuantConnect.Data import *
-from QuantConnect.Securities import *
+from AlgorithmImports import *
 
 ### <summary>
 ### Regression algorithm to test zeroed benchmark through BrokerageModel override
@@ -30,30 +19,30 @@ from QuantConnect.Securities import *
 ### <meta name="tag" content="regression test" />
 class ZeroedBenchmarkRegressionAlgorithm(QCAlgorithm):
 
-    def Initialize(self):
-        self.SetCash(100000)
-        self.SetStartDate(2013,10,7)
-        self.SetEndDate(2013,10,8)
+    def initialize(self):
+        self.set_cash(100000)
+        self.set_start_date(2013,10,7)
+        self.set_end_date(2013,10,8)
 
         # Add Equity
-        self.AddEquity("SPY", Resolution.Hour)
+        self.add_equity("SPY", Resolution.HOUR)
 
         # Use our Test Brokerage Model with zerod default benchmark
-        self.SetBrokerageModel(TestBrokerageModel())
+        self.set_brokerage_model(TestBrokerageModel())
 
-    def OnData(self, data):
+    def on_data(self, data):
         '''OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
 
         Arguments:
             data: Slice object keyed by symbol containing the stock data
         '''
-        if not self.Portfolio.Invested:
-            self.SetHoldings("SPY", 1)
+        if not self.portfolio.invested:
+            self.set_holdings("SPY", 1)
 
 class TestBrokerageModel(DefaultBrokerageModel):
 
-    def GetBenchmark(self, securities):
+    def get_benchmark(self, securities):
         return FuncBenchmark(self.func)
 
     def func(self, datetime):
-        return 0;
+        return 0

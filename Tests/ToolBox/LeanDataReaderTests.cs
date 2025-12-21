@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -44,7 +44,7 @@ namespace QuantConnect.Tests.ToolBox
             var leanDataReader = new LeanDataReader(dataPath);
             var data = leanDataReader.Parse().ToList();
 
-            Assert.AreEqual(5580, data.Count);
+            Assert.AreEqual(5849, data.Count);
             Assert.IsTrue(data.All(baseData => baseData.Symbol == Symbols.AAPL && baseData is TradeBar));
         }
 
@@ -177,13 +177,13 @@ namespace QuantConnect.Tests.ToolBox
             var filePath = LeanData.GenerateZipFilePath(_dataDirectory, baseFuture, date, res, tickType);
 
             //load future chain first
-            var config = new SubscriptionDataConfig(typeof(ZipEntryName), baseFuture, res,
+            var config = new SubscriptionDataConfig(typeof(ZipEntryNameData), baseFuture, res,
                                                     TimeZones.NewYork, TimeZones.NewYork, false, false, false, false, tickType);
+            var factory = new ZipEntryNameSubscriptionDataSourceReader(TestGlobals.DataCacheProvider, config, date, false);
 
-            var factory = new ZipEntryNameSubscriptionDataSourceReader(config, date, false);
-
-            return factory.Read(new SubscriptionDataSource(filePath, SubscriptionTransportMedium.LocalFile, FileFormat.ZipEntryName))
+            var result = factory.Read(new SubscriptionDataSource(filePath, SubscriptionTransportMedium.LocalFile, FileFormat.ZipEntryName))
                           .Select(s => s.Symbol).ToList();
+            return result;
         }
 
         private string LoadFutureData(Symbol future, TickType tickType, Resolution res)
@@ -316,7 +316,7 @@ namespace QuantConnect.Tests.ToolBox
 
 
         [Test, TestCaseSource(nameof(OptionAndFuturesCases))]
-        public void ReadLeanFutureAndOptionDataFromFilePath(string composedFilePath, Symbol symbol,  int rowsInfile, double sumValue)
+        public void ReadLeanFutureAndOptionDataFromFilePath(string composedFilePath, Symbol symbol, int rowsInfile, double sumValue)
         {
             // Act
             var ldr = new LeanDataReader(composedFilePath);
@@ -332,44 +332,44 @@ namespace QuantConnect.Tests.ToolBox
         {
             new object[]
             {
-                "../../../Data/future/cme/minute/es/20131008_quote.zip#20131008_es_minute_quote_201312_20131220.csv",
+                "../../../Data/future/cme/minute/es/20131008_quote.zip#20131008_es_minute_quote_201312.csv",
                 LeanData
                     .ReadSymbolFromZipEntry(Symbol.Create(Futures.Indices.SP500EMini, SecurityType.Future, Market.CME),
-                                            Resolution.Minute, "20131008_es_minute_quote_201312_20131220.csv"),
+                                            Resolution.Minute, "20131008_es_minute_quote_201312.csv"),
                 1411,
                 2346061.875
             },
 
             new object[]
             {
-                "../../../Data/future/comex/minute/gc/20131010_trade.zip#20131010_gc_minute_trade_201312_20131227.csv",
+                "../../../Data/future/comex/minute/gc/20131010_trade.zip#20131010_gc_minute_trade_201312.csv",
                 LeanData.ReadSymbolFromZipEntry(Symbol.Create(Futures.Metals.Gold, SecurityType.Future, Market.COMEX),
-                                                Resolution.Minute, "20131010_gc_minute_trade_201312_20131227.csv"),
+                                                Resolution.Minute, "20131010_gc_minute_trade_201312.csv"),
                 1379,
                 1791800.9
             },
 
             new object[]
             {
-                "../../../Data/future/comex/tick/gc/20131009_quote.zip#20131009_gc_tick_quote_201406_20140626.csv",
+                "../../../Data/future/comex/tick/gc/20131009_quote.zip#20131009_gc_tick_quote_201406.csv",
                 LeanData.ReadSymbolFromZipEntry(Symbol.Create(Futures.Metals.Gold, SecurityType.Future, Market.COMEX),
-                                                Resolution.Tick, "20131009_gc_tick_quote_201406_20140626.csv"),
+                                                Resolution.Tick, "20131009_gc_tick_quote_201406.csv"),
                 197839,
                 259245064.8
             },
 
             new object[]
             {
-                "../../../Data/future/comex/tick/gc/20131009_trade.zip#20131009_gc_tick_trade_201312_20131227.csv",
+                "../../../Data/future/comex/tick/gc/20131009_trade.zip#20131009_gc_tick_trade_201312.csv",
                 LeanData.ReadSymbolFromZipEntry(Symbol.Create(Futures.Metals.Gold, SecurityType.Future, Market.COMEX),
-                                                Resolution.Tick, "20131009_gc_tick_trade_201312_20131227.csv"),
+                                                Resolution.Tick, "20131009_gc_tick_trade_201312.csv"),
                 64712,
                 84596673.8
             },
 
             new object[]
             {
-                "../../../Data/future/cme/minute/es/20131010_openinterest.zip#20131010_es_minute_openinterest_201312_20131220.csv",
+                "../../../Data/future/cme/minute/es/20131010_openinterest.zip#20131010_es_minute_openinterest_201312.csv",
                 LeanData
                     .ReadSymbolFromZipEntry(Symbol.Create(Futures.Indices.SP500EMini, SecurityType.Future, Market.CME),
                                             Resolution.Minute, "20131010_es_minute_openinterest_201312.csv"),
@@ -379,9 +379,9 @@ namespace QuantConnect.Tests.ToolBox
 
             new object[]
             {
-                "../../../Data/future/comex/tick/gc/20131009_openinterest.zip#20131009_gc_tick_openinterest_201310_20131029.csv",
+                "../../../Data/future/comex/tick/gc/20131009_openinterest.zip#20131009_gc_tick_openinterest_201310.csv",
                 LeanData.ReadSymbolFromZipEntry(Symbol.Create(Futures.Metals.Gold, SecurityType.Future, Market.COMEX),
-                                                Resolution.Tick, "20131009_gc_tick_openinterest_201310_20131029.csv"),
+                                                Resolution.Tick, "20131009_gc_tick_openinterest_201310.csv"),
                 4,
                 1312
             },
@@ -414,6 +414,36 @@ namespace QuantConnect.Tests.ToolBox
                                                 "20151224_goog_minute_openinterest_american_call_3000000_20160115.csv"),
                 1,
                 38
+            },
+
+            new object[]
+            {
+                "../../../Data/option/usa/daily/aapl_2014_openinterest_american.zip#aapl_openinterest_american_call_1950000_20150117.csv",
+                LeanData.ReadSymbolFromZipEntry(Symbol.Create("AAPL", SecurityType.Option, Market.USA),
+                    Resolution.Daily,
+                    "aapl_openinterest_american_call_1950000_20150117.csv"),
+                2,
+                824
+            },
+
+            new object[]
+            {
+            "../../../Data/option/usa/daily/aapl_2014_trade_american.zip#aapl_trade_american_call_5400000_20141018.csv",
+            LeanData.ReadSymbolFromZipEntry(Symbol.Create("AAPL", SecurityType.Option, Market.USA),
+                Resolution.Daily,
+                "aapl_trade_american_call_5400000_20141018.csv"),
+            1,
+            109.9
+            },
+
+            new object[]
+            {
+                "../../../Data/option/usa/daily/aapl_2014_quote_american.zip#aapl_quote_american_call_307100_20150117.csv",
+                LeanData.ReadSymbolFromZipEntry(Symbol.Create("AAPL", SecurityType.Option, Market.USA),
+                    Resolution.Daily,
+                    "aapl_quote_american_call_307100_20150117.csv"),
+                1,
+                63.3
             }
         };
 
@@ -440,19 +470,78 @@ namespace QuantConnect.Tests.ToolBox
         public static object[] SpotMarketCases =
         {
             //TODO: generate Low resolution sample data for equities
-            new object[] {"equity", "usa", "daily", "aig", "aig.zip", 5580, 331752.9901},
-            new object[] {"equity", "usa", "minute", "aapl", "20140605_trade.zip", 658, 425067.37},
-            new object[] {"equity", "usa", "minute", "ibm", "20131010_quote.zip", 584, 107061.28},
-            new object[] {"equity", "usa", "second", "ibm", "20131010_trade.zip", 2878, 528701.39},
-            new object[] {"equity", "usa", "tick", "bac", "20131011_trade.zip", 108505, 1539443.26},
+            new object[] {"equity", "usa", "daily", "aig", "aig.zip", 5849, 340770.5801},
+            new object[] {"equity", "usa", "minute", "aapl", "20140605_trade.zip", 686, 443184.58},
+            new object[] {"equity", "usa", "minute", "ibm", "20131010_quote.zip", 584, 107061.125},
+            new object[] {"equity", "usa", "second", "ibm", "20131010_trade.zip", 5060, 929385.34},
+            new object[] {"equity", "usa", "tick", "bac", "20131011_trade.zip", 112177, 1591680.73},
             new object[] {"forex", "oanda", "minute", "eurusd", "20140502_quote.zip", 1222, 1693.578875},
             new object[] {"forex", "oanda", "second", "nzdusd", "20140514_quote.zip", 18061, 15638.724575},
             new object[] {"forex", "oanda", "tick", "eurusd", "20140507_quote.zip", 41367, 57598.54664},
             new object[] {"cfd", "oanda", "hour", "xauusd", "xauusd.zip", 76499, 90453133.772 },
-            new object[] {"crypto", "gdax", "second", "btcusd", "20161008_trade.zip", 3453, 2137057.57},
-            new object[] {"crypto", "gdax", "minute", "ethusd", "20170903_trade.zip", 1440, 510470.66},
-            new object[] {"crypto", "gdax", "daily", "btcusd", "btcusd_trade.zip", 1318, 3725052.03},
+            new object[] {"crypto", "coinbase", "second", "btcusd", "20161008_trade.zip", 3453, 2137057.57},
+            new object[] {"crypto", "coinbase", "minute", "ethusd", "20170903_trade.zip", 1440, 510470.66},
+            new object[] {"crypto", "coinbase", "daily", "btcusd", "btcusd_trade.zip", 1318, 3725052.03},
         };
+
+        private static IEnumerable<TestCaseData> MinuteZipEntryFileNames
+        {
+            get
+            {
+                yield return new TestCaseData(
+                    Symbol.CreateCanonicalOption(Symbol.CreateFuture(Futures.Grains.Corn, Market.CBOT, new(2025, 12, 12))),
+                    "20251103_ozc_minute_trade_american_call_41000_20251121.csv",
+                    4.1m,
+                    OptionRight.Call,
+                    new DateTime(2025, 11, 21));
+
+                yield return new TestCaseData(
+                    Symbol.CreateCanonicalOption(Symbol.CreateFuture(Futures.Currencies.JPY, Market.CME, new(2025, 12, 15))),
+                    "20251103_jpu_minute_trade_american_call_62.50000_20260109.csv",
+                    0.00625m,
+                    OptionRight.Call,
+                    new DateTime(2026, 01, 09));
+
+                yield return new TestCaseData(
+                    Symbol.CreateCanonicalOption(Symbol.CreateFuture(Futures.Currencies.AUD, Market.CME, new(2025, 12, 15))),
+                    "20251103_adu_minute_openinterest_american_put_6350_20251205.csv",
+                    0.635m,
+                    OptionRight.Put,
+                    new DateTime(2025, 12, 05));
+
+                yield return new TestCaseData(
+                    Symbol.CreateCanonicalOption(Symbol.CreateFuture(Futures.Currencies.AUD, Market.CME, new(2025, 12, 15))),
+                    "20251103_adu_minute_quote_american_call_8400_20260306.csv",
+                    0.84m,
+                    OptionRight.Call,
+                    new DateTime(2026, 03, 06));
+
+                yield return new TestCaseData(
+                    Symbol.CreateCanonicalOption(Symbol.CreateFuture(Futures.Currencies.NZD, Market.CME, new(2025, 12, 15))),
+                    "20251103_6n_minute_quote_american_call_5600_20260403.csv",
+                    0.56m,
+                    OptionRight.Call,
+                    new DateTime(2026, 04, 03));
+
+                yield return new TestCaseData(
+                    Symbol.CreateCanonicalOption(Symbol.CreateFuture(Futures.Meats.LiveCattle, Market.CME, new(2025, 12, 31))),
+                    "20251103_le_minute_quote_american_call_21800_20251205.csv",
+                    2.18m,
+                    OptionRight.Call,
+                    new DateTime(2025, 12, 05));
+            }
+        }
+
+        [TestCaseSource(nameof(MinuteZipEntryFileNames))]
+        public void ReadSymbolFromZipEntryShouldParseFileNameWithFloatingNumber(Symbol rootSymbol, string fileNameCsv,
+            decimal expectedStrike, OptionRight expectedOptionRight, DateTime expectedExpiry)
+        {
+            var actualSymbol = LeanData.ReadSymbolFromZipEntry(rootSymbol, Resolution.Minute, fileNameCsv);
+
+            Assert.AreEqual(expectedStrike, actualSymbol.ID.StrikePrice);
+            Assert.AreEqual(expectedOptionRight, actualSymbol.ID.OptionRight);
+            Assert.AreEqual(expectedExpiry, actualSymbol.ID.Date);
+        }
 
         public static string GenerateFilepathForTesting(string dataDirectory, string securityType, string market, string resolution, string ticker,
                                                  string fileName)
@@ -467,6 +556,21 @@ namespace QuantConnect.Tests.ToolBox
                 filepath = Path.Combine(dataDirectory, securityType, market, resolution, ticker, fileName);
             }
             return filepath;
+        }
+
+        private class ZipEntryNameData : BaseData
+        {
+            public override BaseData Reader(SubscriptionDataConfig config, string line, DateTime date, bool isLiveMode)
+            {
+                var symbol = LeanData.ReadSymbolFromZipEntry(config.Symbol, config.Resolution, line);
+                return new ZipEntryNameData { Time = date, Symbol = symbol };
+            }
+
+            public override SubscriptionDataSource GetSource(SubscriptionDataConfig config, DateTime date, bool isLiveMode)
+            {
+                var source = LeanData.GenerateZipFilePath(Globals.DataFolder, config.Symbol, date, config.Resolution, config.TickType);
+                return new SubscriptionDataSource(source, SubscriptionTransportMedium.LocalFile, FileFormat.ZipEntryName);
+            }
         }
 
     }

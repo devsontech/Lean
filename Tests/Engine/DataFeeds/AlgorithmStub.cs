@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -14,35 +14,60 @@
  *
 */
 
-using System.Collections.Generic;
+using QuantConnect.Python;
 using QuantConnect.Algorithm;
-using QuantConnect.Data.UniverseSelection;
-using QuantConnect.Lean.Engine.DataFeeds;
 using QuantConnect.Securities;
+using System.Collections.Generic;
+using QuantConnect.Lean.Engine.DataFeeds;
+using QuantConnect.Data.UniverseSelection;
+using QuantConnect.Tests.Common.Securities;
 
 namespace QuantConnect.Tests.Engine.DataFeeds
 {
     /// <summary>
     /// This type allows tests to easily create an algorithm that is mostly initialized in one line
     /// </summary>
-    internal class AlgorithmStub : QCAlgorithm
+    public class AlgorithmStub : QCAlgorithm
     {
-        public List<SecurityChanges> SecurityChangesRecord = new List<SecurityChanges>();
-        public DataManager DataManager;
+        public List<SecurityChanges> SecurityChangesRecord { get; set; } = new List<SecurityChanges>();
+        public DataManager DataManager { get; set; }
+        public IDataFeed DataFeed { get; set; }
+
+        /// <summary>
+        /// Lanzy PandasConverter only if used
+        /// </summary>
+        public override PandasConverter PandasConverter
+        {
+            get
+            {
+                if(base.PandasConverter == null)
+                {
+                    SetPandasConverter();
+                }
+                return base.PandasConverter;
+            }
+        }
 
         public AlgorithmStub(bool createDataManager = true)
         {
             if (createDataManager)
             {
-                DataManager = new DataManagerStub(this);
+                var dataManagerStub = new DataManagerStub(this);
+                DataManager = dataManagerStub;
+                DataFeed = dataManagerStub.DataFeed;
                 SubscriptionManager.SetDataManager(DataManager);
             }
+            var orderProcessor = new FakeOrderProcessor();
+            orderProcessor.TransactionManager = Transactions;
+            Transactions.SetOrderProcessor(orderProcessor);
         }
 
         public AlgorithmStub(IDataFeed dataFeed)
         {
+            DataFeed = dataFeed;
             DataManager = new DataManagerStub(dataFeed, this);
             SubscriptionManager.SetDataManager(DataManager);
+            Transactions.SetOrderProcessor(new FakeOrderProcessor());
         }
 
         public void AddSecurities(Resolution resolution = Resolution.Second, List<string> equities = null, List<string> forex = null, List<string> crypto = null)
@@ -63,6 +88,12 @@ namespace QuantConnect.Tests.Engine.DataFeeds
                 var symbol = SymbolCache.GetSymbol(ticker);
                 Securities[symbol].Exchange = new SecurityExchange(SecurityExchangeHours.AlwaysOpen(TimeZones.Utc));
             }
+        }
+
+        public void AddCryptoEntry(string ticker, string market)
+        {
+            var symbolProperties = SymbolPropertiesDatabase.GetSymbolProperties(market, null, SecurityType.Crypto, Currencies.USD);
+            SymbolPropertiesDatabase.SetEntry(market, ticker, SecurityType.Crypto, symbolProperties);
         }
 
         public override void OnSecuritiesChanged(SecurityChanges changes)

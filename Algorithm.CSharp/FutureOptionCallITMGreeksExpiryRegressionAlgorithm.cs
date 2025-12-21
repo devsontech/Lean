@@ -14,13 +14,11 @@
 */
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using QuantConnect.Data;
 using QuantConnect.Interfaces;
-using QuantConnect.Orders;
 using QuantConnect.Securities;
+using System.Collections.Generic;
 using QuantConnect.Securities.Option;
 
 namespace QuantConnect.Algorithm.CSharp
@@ -33,7 +31,7 @@ namespace QuantConnect.Algorithm.CSharp
     {
         private bool _invested;
         private int _onDataCalls;
-        private Symbol _es19m20;
+        private Security _es19m20;
         private Option _esOption;
         private Symbol _expectedOptionContract;
 
@@ -47,10 +45,17 @@ namespace QuantConnect.Algorithm.CSharp
                     Futures.Indices.SP500EMini,
                     Market.CME,
                     new DateTime(2020, 6, 19)),
-                Resolution.Minute).Symbol;
+                Resolution.Minute);
+
+            // We must set the volatility model on the underlying, since the defaults are
+            // too strict to calculate greeks with when we only have data for a single day
+            _es19m20.VolatilityModel = new StandardDeviationOfReturnsVolatilityModel(
+                60,
+                Resolution.Minute,
+                TimeSpan.FromMinutes(1));
 
             // Select a future option expiring ITM, and adds it to the algorithm.
-            _esOption = AddFutureOptionContract(OptionChainProvider.GetOptionContractList(_es19m20, new DateTime(2020, 1, 5))
+            _esOption = AddFutureOptionContract(OptionChain(_es19m20.Symbol)
                 .Where(x => x.ID.StrikePrice <= 3200m && x.ID.OptionRight == OptionRight.Call)
                 .OrderByDescending(x => x.ID.StrikePrice)
                 .Take(1)
@@ -58,14 +63,14 @@ namespace QuantConnect.Algorithm.CSharp
 
             _esOption.PriceModel = OptionPriceModels.BjerksundStensland();
 
-            _expectedOptionContract = QuantConnect.Symbol.CreateOption(_es19m20, Market.CME, OptionStyle.American, OptionRight.Call, 3200m, new DateTime(2020, 6, 19));
+            _expectedOptionContract = QuantConnect.Symbol.CreateOption(_es19m20.Symbol, Market.CME, OptionStyle.American, OptionRight.Call, 3200m, new DateTime(2020, 6, 19));
             if (_esOption.Symbol != _expectedOptionContract)
             {
-                throw new Exception($"Contract {_expectedOptionContract} was not found in the chain");
+                throw new RegressionTestException($"Contract {_expectedOptionContract} was not found in the chain");
             }
         }
 
-        public override void OnData(Slice data)
+        public override void OnData(Slice slice)
         {
             // Let the algo warmup, but without using SetWarmup. Otherwise, we get
             // no contracts in the option chain
@@ -74,25 +79,25 @@ namespace QuantConnect.Algorithm.CSharp
                 return;
             }
 
-            if (data.OptionChains.Count == 0)
+            if (slice.OptionChains.Count == 0)
             {
                 return;
             }
-            if (data.OptionChains.Values.All(o => o.Contracts.Values.Any(c => !data.ContainsKey(c.Symbol))))
+            if (slice.OptionChains.Values.All(o => o.Contracts.Values.Any(c => !slice.ContainsKey(c.Symbol))))
             {
                 return;
             }
-            if (data.OptionChains.Values.First().Contracts.Count == 0)
+            if (slice.OptionChains.Values.First().Contracts.Count == 0)
             {
-                throw new Exception($"No contracts found in the option {data.OptionChains.Keys.First()}");
+                throw new RegressionTestException($"No contracts found in the option {slice.OptionChains.Keys.First()}");
             }
 
-            var deltas = data.OptionChains.Values.OrderByDescending(y => y.Contracts.Values.Sum(x => x.Volume)).First().Contracts.Values.Select(x => x.Greeks.Delta).ToList();
-            var gammas = data.OptionChains.Values.OrderByDescending(y => y.Contracts.Values.Sum(x => x.Volume)).First().Contracts.Values.Select(x => x.Greeks.Gamma).ToList();
-            var lambda = data.OptionChains.Values.OrderByDescending(y => y.Contracts.Values.Sum(x => x.Volume)).First().Contracts.Values.Select(x => x.Greeks.Lambda).ToList();
-            var rho = data.OptionChains.Values.OrderByDescending(y => y.Contracts.Values.Sum(x => x.Volume)).First().Contracts.Values.Select(x => x.Greeks.Rho).ToList();
-            var theta = data.OptionChains.Values.OrderByDescending(y => y.Contracts.Values.Sum(x => x.Volume)).First().Contracts.Values.Select(x => x.Greeks.Theta).ToList();
-            var vega = data.OptionChains.Values.OrderByDescending(y => y.Contracts.Values.Sum(x => x.Volume)).First().Contracts.Values.Select(x => x.Greeks.Vega).ToList();
+            var deltas = slice.OptionChains.Values.OrderByDescending(y => y.Contracts.Values.Sum(x => x.Volume)).First().Contracts.Values.Select(x => x.Greeks.Delta).ToList();
+            var gammas = slice.OptionChains.Values.OrderByDescending(y => y.Contracts.Values.Sum(x => x.Volume)).First().Contracts.Values.Select(x => x.Greeks.Gamma).ToList();
+            var lambda = slice.OptionChains.Values.OrderByDescending(y => y.Contracts.Values.Sum(x => x.Volume)).First().Contracts.Values.Select(x => x.Greeks.Lambda).ToList();
+            var rho = slice.OptionChains.Values.OrderByDescending(y => y.Contracts.Values.Sum(x => x.Volume)).First().Contracts.Values.Select(x => x.Greeks.Rho).ToList();
+            var theta = slice.OptionChains.Values.OrderByDescending(y => y.Contracts.Values.Sum(x => x.Volume)).First().Contracts.Values.Select(x => x.Greeks.Theta).ToList();
+            var vega = slice.OptionChains.Values.OrderByDescending(y => y.Contracts.Values.Sum(x => x.Volume)).First().Contracts.Values.Select(x => x.Greeks.Vega).ToList();
 
             // The commented out test cases all return zero.
             // This is because of failure to evaluate the greeks in the option pricing model.
@@ -105,26 +110,28 @@ namespace QuantConnect.Algorithm.CSharp
             {
                 throw new AggregateException("Option contract Gamma was equal to zero");
             }
-            //if (lambda.Any(l => l == 0))
-            //{
-            //    throw new AggregateException("Option contract Lambda was equal to zero");
-            //}
+            if (lambda.Any(l => l == 0))
+            {
+                throw new AggregateException("Option contract Lambda was equal to zero");
+            }
             if (rho.Any(r => r == 0))
             {
                 throw new AggregateException("Option contract Rho was equal to zero");
             }
-            //if (theta.Any(t => t == 0))
-            //{
-            //    throw new AggregateException("Option contract Theta was equal to zero");
-            //}
-            //if (vega.Any(v => v == 0))
-            //{
-            //    throw new AggregateException("Option contract Vega was equal to zero");
-            //}
+            if (theta.Any(t => t == 0))
+            {
+                throw new AggregateException("Option contract Theta was equal to zero");
+            }
+            if (vega.Any(v => v == 0))
+            {
+                throw new AggregateException("Option contract Vega was equal to zero");
+            }
 
             if (!_invested)
             {
-                SetHoldings(data.OptionChains.Values.First().Contracts.Values.First().Symbol, 1);
+                // the margin requirement for the FOPs is less than the one of the underlying so we can't allocate all our buying power
+                // into FOPs else we won't be able to exercise
+                SetHoldings(slice.OptionChains.Values.First().Contracts.Values.First().Symbol, 0.25);
                 _invested = true;
             }
         }
@@ -132,16 +139,16 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// Ran at the end of the algorithm to ensure the algorithm has no holdings
         /// </summary>
-        /// <exception cref="Exception">The algorithm has holdings</exception>
+        /// <exception cref="RegressionTestException">The algorithm has holdings</exception>
         public override void OnEndOfAlgorithm()
         {
             if (Portfolio.Invested)
             {
-                throw new Exception($"Expected no holdings at end of algorithm, but are invested in: {string.Join(", ", Portfolio.Keys)}");
+                throw new RegressionTestException($"Expected no holdings at end of algorithm, but are invested in: {string.Join(", ", Portfolio.Keys)}");
             }
             if (!_invested)
             {
-                throw new Exception($"Never checked greeks, maybe we have no option data?");
+                throw new RegressionTestException($"Never checked greeks, maybe we have no option data?");
             }
         }
 
@@ -153,54 +160,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp };
+        public List<Language> Languages { get; } = new() { Language.CSharp };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 212198;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 1;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "3"},
-            {"Average Win", "27.44%"},
-            {"Average Loss", "-62.81%"},
-            {"Compounding Annual Return", "-78.438%"},
-            {"Drawdown", "52.600%"},
-            {"Expectancy", "-0.282"},
-            {"Net Profit", "-52.604%"},
-            {"Sharpe Ratio", "-0.862"},
-            {"Probabilistic Sharpe Ratio", "0.019%"},
+            {"Total Orders", "3"},
+            {"Average Win", "16.44%"},
+            {"Average Loss", "-35.38%"},
+            {"Compounding Annual Return", "-44.262%"},
+            {"Drawdown", "26.200%"},
+            {"Expectancy", "-0.268"},
+            {"Start Equity", "100000"},
+            {"End Equity", "75242.9"},
+            {"Net Profit", "-24.757%"},
+            {"Sharpe Ratio", "-0.965"},
+            {"Sortino Ratio", "0"},
+            {"Probabilistic Sharpe Ratio", "0.060%"},
             {"Loss Rate", "50%"},
             {"Win Rate", "50%"},
-            {"Profit-Loss Ratio", "0.44"},
-            {"Alpha", "-0.586"},
-            {"Beta", "0.031"},
-            {"Annual Standard Deviation", "0.679"},
-            {"Annual Variance", "0.461"},
-            {"Information Ratio", "-0.779"},
-            {"Tracking Error", "0.784"},
-            {"Treynor Ratio", "-18.756"},
-            {"Total Fees", "$66.60"},
-            {"Estimated Strategy Capacity", "$8300000.00"},
-            {"Fitness Score", "0.156"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "-0.133"},
-            {"Return Over Maximum Drawdown", "-1.491"},
-            {"Portfolio Turnover", "0.408"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "a7f76d1e2d6f27651465217c92deea80"}
+            {"Profit-Loss Ratio", "0.46"},
+            {"Alpha", "-0.303"},
+            {"Beta", "0.016"},
+            {"Annual Standard Deviation", "0.313"},
+            {"Annual Variance", "0.098"},
+            {"Information Ratio", "-0.649"},
+            {"Tracking Error", "0.483"},
+            {"Treynor Ratio", "-18.59"},
+            {"Total Fees", "$7.10"},
+            {"Estimated Strategy Capacity", "$24000000.00"},
+            {"Lowest Capacity Asset", "ES XFH59UPBMTJ8|ES XFH59UK0MYO1"},
+            {"Portfolio Turnover", "12.22%"},
+            {"Drawdown Recovery", "0"},
+            {"OrderListHash", "1d4a9403cd69b8510f15d100acdffa26"}
         };
     }
 }

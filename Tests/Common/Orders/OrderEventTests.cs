@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -33,25 +33,27 @@ namespace QuantConnect.Tests.Common.Orders
             var json = JsonConvert.SerializeObject(new OrderEvent(order, DateTime.UtcNow, OrderFee.Zero),
                 new OrderEventJsonConverter("id"));
 
-            Assert.IsFalse(json.Contains("Message"));
-            Assert.IsFalse(json.Contains("Message"));
-            Assert.IsFalse(json.Contains("LimitPrice"));
-            Assert.IsFalse(json.Contains("StopPrice"));
+            Assert.IsFalse(json.Contains("Message", StringComparison.InvariantCulture));
+            Assert.IsFalse(json.Contains("LimitPrice", StringComparison.InvariantCulture));
+            Assert.IsFalse(json.Contains("StopPrice", StringComparison.InvariantCulture));
+            Assert.IsFalse(json.Contains(value: "IsInTheMoney", StringComparison.InvariantCulture));
 
             json = JsonConvert.SerializeObject(new OrderEvent(order, DateTime.UtcNow, OrderFee.Zero, "This is a message")
             {
                 LimitPrice = 1,
-                StopPrice = 2
+                StopPrice = 2,
+                IsInTheMoney = true
             });
 
-            Assert.IsTrue(json.Contains("Message"));
-            Assert.IsTrue(json.Contains("This is a message"));
-            Assert.IsTrue(json.Contains("LimitPrice"));
-            Assert.IsTrue(json.Contains("StopPrice"));
+            Assert.IsTrue(json.Contains("Message", StringComparison.InvariantCulture));
+            Assert.IsTrue(json.Contains("This is a message", StringComparison.InvariantCulture));
+            Assert.IsTrue(json.Contains("LimitPrice", StringComparison.InvariantCulture));
+            Assert.IsTrue(json.Contains("StopPrice", StringComparison.InvariantCulture));
+            Assert.IsTrue(json.Contains(value: "IsInTheMoney", StringComparison.InvariantCulture));
         }
 
         [Test]
-        public void RoundTripSerialization()
+        public void RoundTripSerialization([Values] bool isInTheMoney)
         {
             var order = new MarketOrder(Symbols.BTCUSD, 0.123m, DateTime.UtcNow);
             var orderEvent = new OrderEvent(order, DateTime.UtcNow, OrderFee.Zero)
@@ -64,23 +66,25 @@ namespace QuantConnect.Tests.Common.Orders
                 FillQuantity = 12,
                 FillPriceCurrency = "USD",
                 Id = 55,
-                Quantity = 16
+                Quantity = 16,
+                IsInTheMoney = isInTheMoney
             };
 
             var converter = new OrderEventJsonConverter("id");
             var serializeObject = JsonConvert.SerializeObject(orderEvent, converter);
 
             // OrderFee zero uses null currency and should be ignored when serializing
-            Assert.IsFalse(serializeObject.Contains(Currencies.NullCurrency));
-            Assert.IsFalse(serializeObject.Contains("order-fee-amount"));
-            Assert.IsFalse(serializeObject.Contains("order-fee-currency"));
+            Assert.IsFalse(serializeObject.Contains(Currencies.NullCurrency, StringComparison.InvariantCulture));
+            Assert.IsFalse(serializeObject.Contains("order-fee-amount", StringComparison.InvariantCulture));
+            Assert.IsFalse(serializeObject.Contains("order-fee-currency", StringComparison.InvariantCulture));
+            Assert.AreEqual(isInTheMoney, serializeObject.Contains("isInTheMoney", StringComparison.InvariantCulture));
 
             var deserializeObject = JsonConvert.DeserializeObject<OrderEvent>(serializeObject, converter);
 
             Assert.AreEqual(orderEvent.Symbol, deserializeObject.Symbol);
             Assert.AreEqual(orderEvent.StopPrice, deserializeObject.StopPrice);
             // there is a small loss of precision because we use double
-            Assert.AreEqual(orderEvent.UtcTime.Ticks, deserializeObject.UtcTime.Ticks, 50);
+            Assert.AreEqual(orderEvent.UtcTime.Ticks, deserializeObject.UtcTime.Ticks, 200);
             Assert.AreEqual(orderEvent.OrderId, deserializeObject.OrderId);
             Assert.AreEqual(orderEvent.AbsoluteFillQuantity, deserializeObject.AbsoluteFillQuantity);
             Assert.AreEqual(orderEvent.Direction, deserializeObject.Direction);
@@ -95,6 +99,7 @@ namespace QuantConnect.Tests.Common.Orders
             Assert.AreEqual(orderEvent.Status, deserializeObject.Status);
             Assert.AreEqual(orderEvent.OrderFee.Value.Amount, deserializeObject.OrderFee.Value.Amount);
             Assert.AreEqual(orderEvent.OrderFee.Value.Currency, deserializeObject.OrderFee.Value.Currency);
+            Assert.AreEqual(orderEvent.IsInTheMoney, deserializeObject.IsInTheMoney);
         }
 
         [Test]
@@ -107,8 +112,11 @@ namespace QuantConnect.Tests.Common.Orders
             var serializeObject = JsonConvert.SerializeObject(orderEvent, converter);
             var deserializeObject = JsonConvert.DeserializeObject<OrderEvent>(serializeObject, converter);
 
-            Assert.IsTrue(serializeObject.Contains("order-fee-amount"));
-            Assert.IsTrue(serializeObject.Contains("order-fee-currency"));
+            Assert.IsFalse(serializeObject.Contains("order-fee-amount", StringComparison.InvariantCulture));
+            Assert.IsFalse(serializeObject.Contains("order-fee-currency", StringComparison.InvariantCulture));
+
+            Assert.IsTrue(serializeObject.Contains("orderFeeAmount", StringComparison.InvariantCulture));
+            Assert.IsTrue(serializeObject.Contains("orderFeeCurrency", StringComparison.InvariantCulture));
 
             Assert.AreEqual(orderEvent.OrderFee.Value.Amount, deserializeObject.OrderFee.Value.Amount);
             Assert.AreEqual(orderEvent.OrderFee.Value.Currency, deserializeObject.OrderFee.Value.Currency);
@@ -137,6 +145,29 @@ namespace QuantConnect.Tests.Common.Orders
             var symbol = Symbols.GetBySecurityType(type);
             var fill = new OrderEvent(1, symbol, DateTime.Today, OrderStatus.New, OrderDirection.Buy, 1, 2, OrderFee.Zero, "message");
             StringAssert.DoesNotContain("IsAssignment", fill.ToString());
+        }
+
+        [Test]
+        public void BackwardsCompatibleDeserialization()
+        {
+            var serializeObject = "{\"id\":\"id-0-0\",\"algorithm-id\":\"id\",\"order-id\":0,\"order-event-id\":0,\"symbol\":\"BTCUSD 2XR\",\"time\":1711565119.684036,\"status\":\"none\"," +
+                "\"order-fee-amount\":88.0,\"order-fee-currency\":\"USD\",\"fill-price\":0.0,\"fill-price-currency\":\"\",\"fill-quantity\":0.0,\"direction\":\"buy\",\"is-assignment\":false," +
+                "\"quantity\":0.0}";
+
+            var order = new MarketOrder(Symbols.BTCUSD, 0.123m, DateTime.UtcNow);
+            var orderEvent = new OrderEvent(order, DateTime.UtcNow, new OrderFee(new CashAmount(88, Currencies.USD)));
+
+            var converter = new OrderEventJsonConverter("id");
+            var deserializeObject = JsonConvert.DeserializeObject<OrderEvent>(serializeObject, converter);
+
+            // has the old version
+            Assert.IsTrue(serializeObject.Contains("order-fee-amount", StringComparison.InvariantCulture));
+            Assert.IsTrue(serializeObject.Contains("order-fee-currency", StringComparison.InvariantCulture));
+            Assert.IsFalse(serializeObject.Contains("orderFeeAmount", StringComparison.InvariantCulture));
+            Assert.IsFalse(serializeObject.Contains("orderFeeCurrency", StringComparison.InvariantCulture));
+
+            Assert.AreEqual(orderEvent.OrderFee.Value.Amount, deserializeObject.OrderFee.Value.Amount);
+            Assert.AreEqual(orderEvent.OrderFee.Value.Currency, deserializeObject.OrderFee.Value.Currency);
         }
     }
 }

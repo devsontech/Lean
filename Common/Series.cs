@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -20,7 +20,6 @@ using System.Linq;
 using System.Runtime.Serialization;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
-using QuantConnect.Logging;
 using QuantConnect.Util;
 
 namespace QuantConnect
@@ -29,80 +28,31 @@ namespace QuantConnect
     /// Chart Series Object - Series data and properties for a chart:
     /// </summary>
     [JsonConverter(typeof(SeriesJsonConverter))]
-    public class Series
+    public class Series : BaseSeries
     {
-        /// <summary>
-        /// Name of the Series:
-        /// </summary>
-        public string Name = "";
-
-        /// <summary>
-        /// Axis for the chart series.
-        /// </summary>
-        public string Unit = "$";
-
-        /// <summary>
-        /// Index/position of the series on the chart.
-        /// </summary>
-        public int Index;
-
-        /// <summary>
-        ///  Values for the series plot:
-        /// These values are assumed to be in ascending time order (first points earliest, last points latest)
-        /// </summary>
-        public List<ChartPoint> Values = new List<ChartPoint>();
-
-        /// <summary>
-        /// Chart type for the series:
-        /// </summary>
-        public SeriesType SeriesType = SeriesType.Line;
-
         /// <summary>
         /// Color the series
         /// </summary>
         [JsonConverter(typeof(ColorJsonConverter))]
-        public Color Color = Color.Empty;
+        public Color Color { get; set; } = Color.Empty;
 
         /// <summary>
         /// Shape or symbol for the marker in a scatter plot
         /// </summary>
-        public ScatterMarkerSymbol ScatterMarkerSymbol = ScatterMarkerSymbol.None;
-
-        /// Get the index of the last fetch update request to only retrieve the "delta" of the previous request.
-        private int _updatePosition;
+        public ScatterMarkerSymbol ScatterMarkerSymbol { get; set; } = ScatterMarkerSymbol.None;
 
         /// <summary>
         /// Default constructor for chart series
         /// </summary>
-        public Series() { }
+        public Series() : base() { }
 
         /// <summary>
         /// Constructor method for Chart Series
         /// </summary>
         /// <param name="name">Name of the chart series</param>
         public Series(string name)
+            : base(name, SeriesType.Line)
         {
-            Name = name;
-            SeriesType = SeriesType.Line;
-            Unit = "$";
-            Index = 0;
-            Color = Color.Empty;
-            ScatterMarkerSymbol = ScatterMarkerSymbol.None;
-        }
-
-        /// <summary>
-        /// Foundational constructor on the series class
-        /// </summary>
-        /// <param name="name">Name of the series</param>
-        /// <param name="type">Type of the series</param>
-        public Series(string name, SeriesType type)
-        {
-            Name = name;
-            SeriesType = type;
-            Index = 0;
-            Unit = "$";
-            Color = Color.Empty;
-            ScatterMarkerSymbol = ScatterMarkerSymbol.None;
         }
 
         /// <summary>
@@ -112,13 +62,8 @@ namespace QuantConnect
         /// <param name="type">Type of the series</param>
         /// <param name="index">Index position on the chart of the series</param>
         public Series(string name, SeriesType type, int index)
+            : this(name, type, index, "$")
         {
-            Name = name;
-            SeriesType = type;
-            Index = index;
-            Unit = "$";
-            Color = Color.Empty;
-            ScatterMarkerSymbol = ScatterMarkerSymbol.None;
         }
 
         /// <summary>
@@ -129,13 +74,9 @@ namespace QuantConnect
         /// <param name="index">Index position on the chart of the series</param>
         /// <param name="unit">Unit for the series axis</param>
         public Series(string name, SeriesType type, int index, string unit)
+            : this(name, type, unit, Color.Empty, ScatterMarkerSymbol.None)
         {
-            Name = name;
-            SeriesType = type;
             Index = index;
-            Unit = unit;
-            Color = Color.Empty;
-            ScatterMarkerSymbol = ScatterMarkerSymbol.None;
         }
 
         /// <summary>
@@ -143,16 +84,10 @@ namespace QuantConnect
         /// </summary>
         /// <param name="name">Name of the chart series</param>
         /// <param name="type">Type of the chart series</param>
-        /// <param name="unit">Unit of the serier</param>
+        /// <param name="unit">Unit of the series</param>
         public Series(string name, SeriesType type = SeriesType.Line, string unit = "$")
+            : this(name, type, unit, Color.Empty)
         {
-            Name = name;
-            Values = new List<ChartPoint>();
-            SeriesType = type;
-            Unit = unit;
-            Index = 0;
-            Color = Color.Empty;
-            ScatterMarkerSymbol = ScatterMarkerSymbol.None;
         }
 
         /// <summary>
@@ -160,17 +95,11 @@ namespace QuantConnect
         /// </summary>
         /// <param name="name">Name of the chart series</param>
         /// <param name="type">Type of the chart series</param>
-        /// <param name="unit">Unit of the serier</param>
+        /// <param name="unit">Unit of the series</param>
         /// <param name="color">Color of the series</param>
         public Series(string name, SeriesType type, string unit, Color color)
+            : this(name, type, unit, color, ScatterMarkerSymbol.None)
         {
-            Name = name;
-            Values = new List<ChartPoint>();
-            SeriesType = type;
-            Unit = unit;
-            Index = 0;
-            Color = color;
-            ScatterMarkerSymbol = ScatterMarkerSymbol.None;
         }
 
         /// <summary>
@@ -178,16 +107,12 @@ namespace QuantConnect
         /// </summary>
         /// <param name="name">Name of the chart series</param>
         /// <param name="type">Type of the chart series</param>
-        /// <param name="unit">Unit of the serier</param>
+        /// <param name="unit">Unit of the series</param>
         /// <param name="color">Color of the series</param>
         /// <param name="symbol">Symbol for the marker in a scatter plot series</param>
         public Series(string name, SeriesType type, string unit, Color color, ScatterMarkerSymbol symbol = ScatterMarkerSymbol.None)
+            : base(name, type, 0, unit)
         {
-            Name = name;
-            Values = new List<ChartPoint>();
-            SeriesType = type;
-            Unit = unit;
-            Index = 0;
             Color = color;
             ScatterMarkerSymbol = symbol;
         }
@@ -199,80 +124,65 @@ namespace QuantConnect
         /// <param name="value">Value of the chart point</param>
         public void AddPoint(DateTime time, decimal value)
         {
-            var chartPoint = new ChartPoint(time, value);
-            AddPoint(chartPoint);
+            ISeriesPoint point;
+            if (SeriesType == SeriesType.Scatter)
+            {
+                point = new ScatterChartPoint(time, value);
+            }
+            else
+            {
+                point = new ChartPoint(time, value);
+            }
+            AddPoint(point);
         }
 
         /// <summary>
         /// Add a new point to this series
         /// </summary>
-        /// <param name="chartPoint">The data point to add</param>
-        public void AddPoint(ChartPoint chartPoint)
+        /// <param name="point">The data point to add</param>
+        public override void AddPoint(ISeriesPoint point)
         {
-            if (Values.Count > 0 && Values[Values.Count - 1].x == chartPoint.x)
+            if (point as ChartPoint == null)
             {
-                // duplicate points at the same time, overwrite the value
-                Values[Values.Count - 1] = chartPoint;
+                throw new ArgumentException("Series.AddPoint requires a ChartPoint object");
             }
-            else
-            {
-                Values.Add(chartPoint);
-            }
+
+            base.AddPoint(point);
         }
 
         /// <summary>
-        /// Get the updates since the last call to this function.
+        /// Add a new point to this series
         /// </summary>
-        /// <returns>List of the updates from the series</returns>
-        public Series GetUpdates()
+        /// <param name="time">The time of the data point</param>
+        /// <param name="values">The values of the data point</param>
+        public override void AddPoint(DateTime time, List<decimal> values)
         {
-            var copy = new Series(Name, SeriesType, Index, Unit)
+            if (values.Count > 1)
             {
-                Color = Color,
-                ScatterMarkerSymbol = ScatterMarkerSymbol
-            };
+                throw new ArgumentException("Series.AddPoint requires a single value");
+            }
 
-            try
-            {
-                //Add the updates since the last
-                for (var i = _updatePosition; i < Values.Count; i++)
-                {
-                    copy.Values.Add(Values[i]);
-                }
-                //Shuffle the update point to now:
-                _updatePosition = Values.Count;
-            }
-            catch (Exception err)
-            {
-                Log.Error(err);
-            }
-            return copy;
+            AddPoint(time, values.Count > 0 ? values[0] : 0);
         }
 
         /// <summary>
-        /// Removes the data from this series and resets the update position to 0
-        /// </summary>
-        public void Purge()
-        {
-            Values.Clear();
-            _updatePosition = 0;
-        }
-
-        /// <summary>
-        /// Will sum up all chart points into a new single value, using the time of lastest point
+        /// Will sum up all chart points into a new single value, using the time of latest point
         /// </summary>
         /// <returns>The new chart point</returns>
-        public ChartPoint ConsolidateChartPoints()
+        public override ISeriesPoint ConsolidateChartPoints()
         {
             if (Values.Count <= 0) return null;
 
             var sum = 0m;
-            foreach (var point in Values)
+            foreach (ChartPoint point in Values)
             {
-                sum += point.y;
+                if (point.y.HasValue)
+                {
+                    sum += point.y.Value;
+                }
             }
 
-            var lastPoint = Values.Last();
+            var lastPoint = (ChartPoint)Values.Last();
             return new ChartPoint(lastPoint.x, sum);
         }
 
@@ -280,49 +190,24 @@ namespace QuantConnect
         /// Return a new instance clone of this object
         /// </summary>
         /// <returns></returns>
-        public Series Clone()
+        public override BaseSeries Clone(bool empty = false)
         {
-            var series = new Series
+            var series = new Series(Name, SeriesType, Index, Unit)
             {
-                Name = Name,
-                Values = new List<ChartPoint>(),
-                SeriesType = SeriesType,
-                Unit = Unit,
-                Index = Index,
                 Color = Color,
-                ScatterMarkerSymbol = ScatterMarkerSymbol
+                ZIndex = ZIndex,
+                Tooltip = Tooltip,
+                IndexName = IndexName,
+                ScatterMarkerSymbol = ScatterMarkerSymbol,
             };
 
-            foreach (var point in Values)
+            if (!empty)
             {
-                series.Values.Add(new ChartPoint(point.x, point.y));
+                series.Values = CloneValues();
             }
 
             return series;
         }
-    }
-
-    /// <summary>
-    /// Available types of charts
-    /// </summary>
-    public enum SeriesType
-    {
-        /// Line Plot for Value Types
-        Line,
-        /// Scatter Plot for Chart Distinct Types
-        Scatter,
-        /// Charts
-        Candle,
-        /// Bar chart.
-        Bar,
-        /// Flag indicators
-        Flag,
-        /// 100% area chart showing relative proportions of series values at each time index
-        StackedArea,
-        /// Pie chart
-        Pie,
-        /// Treemap Plot
-        Treemap
     }
 
     /// <summary>
@@ -331,23 +216,40 @@ namespace QuantConnect
     [JsonConverter(typeof(StringEnumConverter))]
     public enum ScatterMarkerSymbol
     {
-        /// Circle symbol
+        /// <summary>
+        /// Circle symbol (0)
+        /// </summary>
         [EnumMember(Value = "none")]
         None,
-        /// Circle symbol
+
+        /// <summary>
+        /// Circle symbol (1)
+        /// </summary>
         [EnumMember(Value = "circle")]
         Circle,
-        /// Square symbol
+
+        /// <summary>
+        /// Square symbol (2)
+        /// </summary>
         [EnumMember(Value = "square")]
         Square,
-        /// Diamond symbol
+
+        /// <summary>
+        /// Diamond symbol (3)
+        /// </summary>
         [EnumMember(Value = "diamond")]
         Diamond,
-        /// Triangle symbol
+
+        /// <summary>
+        /// Triangle symbol (4)
+        /// </summary>
         [EnumMember(Value = "triangle")]
         Triangle,
-        /// Triangle-down symbol
+
+        /// <summary>
+        /// Triangle-down symbol (5)
+        /// </summary>
         [EnumMember(Value = "triangle-down")]
-        TriangleDown,
+        TriangleDown
     }
 }

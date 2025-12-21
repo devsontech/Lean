@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -215,7 +215,7 @@ namespace QuantConnect.Tests.Optimizer.Strategies
                 {
                     new OptimizationStepParameter("ema-fast", 10, 100, 1),
                     new OptimizationStepParameter("ema-slow", 20, 200, 4),
-                    new OptimizationStepParameter("ema-custom", 30, 300, 2),
+                    new OptimizationStepParameter("ema-custom", 30, 300, 30),
                     new StaticOptimizationParameter("pepe", "SPY")
                 };
                 _strategy.Initialize(new Target("Profit", new Maximization(), null), null, args, new StepBaseOptimizationStrategySettings());
@@ -260,7 +260,7 @@ namespace QuantConnect.Tests.Optimizer.Strategies
                                             Assert.IsNotNull(parameterSet);
                                             Assert.IsTrue(parameterSet.Value.All(s =>
                                                 args.Any(arg => arg.Name == s.Key)));
-                                            Assert.AreEqual(4, parameterSet.Value.Count());
+                                            Assert.AreEqual(4, parameterSet.Value.Count);
                                             Assert.AreEqual(fast, parameterSet.Value["ema-fast"]);
                                             Assert.AreEqual(slow, parameterSet.Value["ema-slow"]);
                                             Assert.AreEqual(custom, parameterSet.Value["ema-custom"]);

@@ -54,7 +54,7 @@ namespace QuantConnect.Algorithm.CSharp
             var data = order.OrderSubmissionData;
             if (data == null || data.AskPrice == 0 || data.BidPrice == 0 || data.LastPrice == 0)
             {
-                throw new Exception("Invalid Order Submission data detected");
+                throw new RegressionTestException("Invalid Order Submission data detected");
             }
 
             if (_orderSubmissionData.ContainsKey(ticker))
@@ -62,7 +62,7 @@ namespace QuantConnect.Algorithm.CSharp
                 var previous = _orderSubmissionData[ticker];
                 if (previous.AskPrice == data.AskPrice || previous.BidPrice == data.BidPrice || previous.LastPrice == data.LastPrice)
                 {
-                    throw new Exception("Order Submission data didn't change");
+                    throw new RegressionTestException("Order Submission data didn't change");
                 }
             }
             _orderSubmissionData[ticker] = data;
@@ -76,54 +76,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp };
+        public List<Language> Languages { get; } = new() { Language.CSharp };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 10708;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 5;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "18"},
+            {"Total Orders", "18"},
             {"Average Win", "0.83%"},
             {"Average Loss", "-0.90%"},
             {"Compounding Annual Return", "273.871%"},
             {"Drawdown", "3.200%"},
             {"Expectancy", "0.203"},
+            {"Start Equity", "100000.00"},
+            {"End Equity", "101715.67"},
             {"Net Profit", "1.716%"},
-            {"Sharpe Ratio", "11.411"},
-            {"Probabilistic Sharpe Ratio", "67.018%"},
+            {"Sharpe Ratio", "11.391"},
+            {"Sortino Ratio", "0"},
+            {"Probabilistic Sharpe Ratio", "67.016%"},
             {"Loss Rate", "38%"},
             {"Win Rate", "62%"},
             {"Profit-Loss Ratio", "0.93"},
-            {"Alpha", "0.814"},
-            {"Beta", "1.463"},
+            {"Alpha", "0.82"},
+            {"Beta", "1.464"},
             {"Annual Standard Deviation", "0.326"},
             {"Annual Variance", "0.106"},
-            {"Information Ratio", "16.809"},
+            {"Information Ratio", "16.804"},
             {"Tracking Error", "0.103"},
-            {"Treynor Ratio", "2.539"},
+            {"Treynor Ratio", "2.535"},
             {"Total Fees", "$45.00"},
             {"Estimated Strategy Capacity", "$20000000.00"},
-            {"Fitness Score", "0.988"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "10.302"},
-            {"Return Over Maximum Drawdown", "48.904"},
-            {"Portfolio Turnover", "2.58"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "bf0434a44121c3e61963c60ef9e15ee5"}
+            {"Lowest Capacity Asset", "EURUSD 8G"},
+            {"Portfolio Turnover", "264.72%"},
+            {"Drawdown Recovery", "2"},
+            {"OrderListHash", "705cad7cbcf7fc0d38367dbaad3556f5"}
         };
     }
 }

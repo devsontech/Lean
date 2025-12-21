@@ -17,22 +17,22 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json;
+using ProtoBuf;
 using QuantConnect.Data;
 using QuantConnect.Data.UniverseSelection;
 using QuantConnect.Interfaces;
 using QuantConnect.Logging;
-using static QuantConnect.StringExtensions;
+using QuantConnect.Securities.CurrencyConversion;
 
 namespace QuantConnect.Securities
 {
     /// <summary>
     /// Represents a holding of a currency in cash.
     /// </summary>
+    [ProtoContract(SkipConstructor = true)]
     public class Cash
     {
-        private decimal _conversionRate;
-        private bool _isBaseCurrency;
-        private bool _invertRealTimePrice;
+        private ICurrencyConversion _currencyConversion;
 
         private readonly object _locker = new object();
 
@@ -43,48 +43,96 @@ namespace QuantConnect.Securities
         public event EventHandler Updated;
 
         /// <summary>
-        /// Gets the symbol of the security required to provide conversion rates.
-        /// If this cash represents the account currency, then <see cref="QuantConnect.Symbol.Empty"/>
-        /// is returned
+        /// Event fired when this instance's <see cref="CurrencyConversion"/> is set/updated
         /// </summary>
-        public Symbol SecuritySymbol => ConversionRateSecurity?.Symbol ?? QuantConnect.Symbol.Empty;
+        public event EventHandler CurrencyConversionUpdated;
 
         /// <summary>
-        /// Gets the security used to apply conversion rates.
-        /// If this cash represents the account currency, then null is returned.
+        /// Gets the symbols of the securities required to provide conversion rates.
+        /// If this cash represents the account currency, then an empty enumerable is returned.
+        /// </summary>
+        public IEnumerable<Symbol> SecuritySymbols => CurrencyConversion.ConversionRateSecurities.Any()
+            ? CurrencyConversion.ConversionRateSecurities.Select(x => x.Symbol)
+            // we do this only because Newtonsoft.Json complains about empty enumerables
+            : new List<Symbol>(0);
+
+        /// <summary>
+        /// Gets the object that calculates the conversion rate to account currency
         /// </summary>
         [JsonIgnore]
-        public Security ConversionRateSecurity { get; private set; }
+        public ICurrencyConversion CurrencyConversion
+        {
+            get
+            {
+                return _currencyConversion;
+            }
+            internal set
+            {
+
+                var lastConversionRate = 0m;
+                if (_currencyConversion != null)
+                {
+                    lastConversionRate = _currencyConversion.ConversionRate;
+                    _currencyConversion.ConversionRateUpdated -= OnConversionRateUpdated;
+                }
+
+                _currencyConversion = value;
+                if (_currencyConversion != null)
+                {
+                    if (lastConversionRate != 0m)
+                    {
+                        // If a user adds cash with an initial conversion rate and then this is overriden to a SecurityCurrencyConversion,
+                        // we want to keep the previous rate until the new one is updated.
+                        _currencyConversion.ConversionRate = lastConversionRate;
+                    }
+                    _currencyConversion.ConversionRateUpdated += OnConversionRateUpdated;
+                }
+                CurrencyConversionUpdated?.Invoke(this, EventArgs.Empty);
+            }
+        }
+
+        private void OnConversionRateUpdated(object sender, decimal e)
+        {
+            OnUpdate();
+        }
 
         /// <summary>
         /// Gets the symbol used to represent this cash
         /// </summary>
+        [ProtoMember(1)]
         public string Symbol { get; }
 
         /// <summary>
         /// Gets or sets the amount of cash held
         /// </summary>
+        [ProtoMember(2)]
         public decimal Amount { get; private set; }
 
         /// <summary>
         /// Gets the conversion rate into account currency
         /// </summary>
+        [ProtoMember(3)]
         public decimal ConversionRate
         {
             get
             {
-                return _conversionRate;
+                return _currencyConversion.ConversionRate;
             }
             internal set
             {
-                _conversionRate = value;
-                OnUpdate();
+                if (_currencyConversion == null)
+                {
+                    CurrencyConversion = new ConstantCurrencyConversion(Symbol, null, value);
+                }
+
+                _currencyConversion.ConversionRate = value;
             }
         }
 
         /// <summary>
         /// The symbol of the currency, such as $
         /// </summary>
+        [ProtoMember(4)]
         public string CurrencySymbol { get; }
 
         /// <summary>
@@ -102,29 +150,20 @@ namespace QuantConnect.Securities
         {
             if (string.IsNullOrEmpty(symbol))
             {
-                throw new ArgumentException("Cash symbols cannot be null or empty.");
+                throw new ArgumentException(Messages.Cash.NullOrEmptyCashSymbol);
             }
             Amount = amount;
-            ConversionRate = conversionRate;
             Symbol = symbol.LazyToUpper();
             CurrencySymbol = Currencies.GetCurrencySymbol(Symbol);
+            CurrencyConversion = new ConstantCurrencyConversion(Symbol, null, conversionRate);
         }
 
         /// <summary>
-        /// Updates this cash object with the specified data
+        /// Marks this cash object's conversion rate as being potentially outdated
         /// </summary>
-        /// <param name="data">The new data for this cash object</param>
-        public void Update(BaseData data)
+        public void Update()
         {
-            if (_isBaseCurrency) return;
-
-            var rate = data.Value;
-            if (_invertRealTimePrice)
-            {
-                rate = 1/rate;
-            }
-            ConversionRate = rate;
-            OnUpdate();
+            _currencyConversion.Update();
         }
 
         /// <summary>
@@ -149,11 +188,22 @@ namespace QuantConnect.Securities
         /// <param name="amount">The amount to set the quantity to</param>
         public void SetAmount(decimal amount)
         {
-            lock (_locker)
+            var updated = false;
+            // lock can be null when proto deserializing this instance
+            lock (_locker ?? new object())
             {
-                Amount = amount;
+                if (Amount != amount)
+                {
+                    Amount = amount;
+                    // only update if there was actually one
+                    updated = true;
+                }
             }
-            OnUpdate();
+
+            if (updated)
+            {
+                OnUpdate();
+            }
         }
 
         /// <summary>
@@ -168,7 +218,7 @@ namespace QuantConnect.Securities
         /// <param name="accountCurrency">The account currency</param>
         /// <param name="defaultResolution">The default resolution to use for the internal subscriptions</param>
         /// <returns>Returns the added <see cref="SubscriptionDataConfig"/>, otherwise null</returns>
-        public SubscriptionDataConfig EnsureCurrencyDataFeed(SecurityManager securities,
+        public List<SubscriptionDataConfig> EnsureCurrencyDataFeed(SecurityManager securities,
             SubscriptionManager subscriptions,
             IReadOnlyDictionary<SecurityType, string> marketMap,
             SecurityChanges changes,
@@ -179,44 +229,26 @@ namespace QuantConnect.Securities
         {
             // this gets called every time we add securities using universe selection,
             // so must of the time we've already resolved the value and don't need to again
-            if (ConversionRateSecurity != null)
+            if (CurrencyConversion.DestinationCurrency != null)
             {
                 return null;
             }
 
             if (Symbol == accountCurrency)
             {
-                ConversionRateSecurity = null;
-                _isBaseCurrency = true;
-                ConversionRate = 1.0m;
+                CurrencyConversion = ConstantCurrencyConversion.Identity(accountCurrency);
                 return null;
             }
 
-            // we require a security that converts this into the base currency
-            string normal = Symbol + accountCurrency;
-            string invert = accountCurrency + Symbol;
+            // existing securities
             var securitiesToSearch = securities.Select(kvp => kvp.Value)
                 .Concat(changes.AddedSecurities)
-                .Where(s => s.Type == SecurityType.Forex || s.Type == SecurityType.Cfd || s.Type == SecurityType.Crypto);
-
-            foreach (var security in securitiesToSearch)
-            {
-                if (security.Symbol.Value == normal)
-                {
-                    ConversionRateSecurity = security;
-                    return null;
-                }
-                if (security.Symbol.Value == invert)
-                {
-                    ConversionRateSecurity = security;
-                    _invertRealTimePrice = true;
-                    return null;
-                }
-            }
-            // if we've made it here we didn't find a security, so we'll need to add one
+                .Where(s => ProvidesConversionRate(s.Type));
 
             // Create a SecurityType to Market mapping with the markets from SecurityManager members
-            var markets = securities.Select(x => x.Key).GroupBy(x => x.SecurityType).ToDictionary(x => x.Key, y => y.First().ID.Market);
+            var markets = securities.Select(x => x.Key)
+                .GroupBy(x => x.SecurityType)
+                .ToDictionary(x => x.Key, y => y.Select(symbol => symbol.ID.Market).ToHashSet());
             if (markets.ContainsKey(SecurityType.Cfd) && !markets.ContainsKey(SecurityType.Forex))
             {
                 markets.Add(SecurityType.Forex, markets[SecurityType.Cfd]);
@@ -240,52 +272,69 @@ namespace QuantConnect.Securities
                     Symbol == x.Value.QuoteCurrency))
             {
                 // currency not found in any tradeable pair
-                Log.Error($"No tradeable pair was found for currency {Symbol}, conversion rate to account currency ({accountCurrency}) will be set to zero.");
-                ConversionRateSecurity = null;
-                ConversionRate = 0m;
+                Log.Error(Messages.Cash.NoTradablePairFoundForCurrencyConversion(Symbol, accountCurrency, marketMap.Where(kvp => ProvidesConversionRate(kvp.Key))));
+                CurrencyConversion = ConstantCurrencyConversion.Null(accountCurrency, Symbol);
                 return null;
             }
+
+            // Special case for crypto markets without direct pairs (They wont be found by the above)
+            // This allows us to add cash for "StableCoins" that are 1-1 with our account currency without needing a conversion security.
+            // Check out the StableCoinsWithoutPairs static var for those that are missing their 1-1 conversion pairs
+            if (marketMap.TryGetValue(SecurityType.Crypto, out var market)
+                &&
+                (Currencies.IsStableCoinWithoutPair(Symbol + accountCurrency, market)
+                || Currencies.IsStableCoinWithoutPair(accountCurrency + Symbol, market)))
+            {
+                CurrencyConversion = ConstantCurrencyConversion.Identity(accountCurrency, Symbol);
+                return null;
+            }
+
+            var requiredSecurities = new List<SubscriptionDataConfig>();
 
             var potentials = potentialEntries
                 .Select(x => QuantConnect.Symbol.Create(x.Key.Symbol, x.Key.SecurityType, x.Key.Market));
 
             var minimumResolution = subscriptions.Subscriptions.Select(x => x.Resolution).DefaultIfEmpty(defaultResolution).Min();
 
-            foreach (var symbol in potentials)
+            var makeNewSecurity = new Func<Symbol, Security>(symbol =>
             {
-                if (symbol.Value == normal || symbol.Value == invert)
-                {
-                    _invertRealTimePrice = symbol.Value == invert;
-                    var securityType = symbol.ID.SecurityType;
+                var securityType = symbol.ID.SecurityType;
 
-                    // use the first subscription defined in the subscription manager
-                    var type = subscriptions.LookupSubscriptionConfigDataTypes(securityType, minimumResolution, false).First();
-                    var objectType = type.Item1;
-                    var tickType = type.Item2;
+                // use the first subscription defined in the subscription manager
+                var type = subscriptions.LookupSubscriptionConfigDataTypes(securityType, minimumResolution, false).First();
+                var objectType = type.Item1;
+                var tickType = type.Item2;
 
-                    // set this as an internal feed so that the data doesn't get sent into the algorithm's OnData events
-                    var config = subscriptions.SubscriptionDataConfigService.Add(symbol,
-                        minimumResolution,
-                        fillForward: true,
-                        extendedMarketHours: false,
-                        isInternalFeed: true,
-                        subscriptionDataTypes: new List<Tuple<Type, TickType>> { new Tuple<Type, TickType>(objectType, tickType) }).First();
+                // set this as an internal feed so that the data doesn't get sent into the algorithm's OnData events
+                var config = subscriptions.SubscriptionDataConfigService.Add(symbol,
+                    minimumResolution,
+                    fillForward: true,
+                    extendedMarketHours: false,
+                    isInternalFeed: true,
+                    subscriptionDataTypes: new List<Tuple<Type, TickType>>
+                        {new Tuple<Type, TickType>(objectType, tickType)}).First();
 
-                    var security = securityService.CreateSecurity(symbol,
-                        config,
-                        addToSymbolCache: false);
+                var newSecurity = securityService.CreateSecurity(symbol,
+                    config,
+                    addToSymbolCache: false,
+                    // All securities added for currency conversion will be seeded in batch after all are created
+                    seedSecurity: false);
 
-                    ConversionRateSecurity = security;
-                    securities.Add(config.Symbol, security);
-                    Log.Trace($"Cash.EnsureCurrencyDataFeed(): Adding {symbol.Value} for cash {Symbol} currency feed");
-                    return config;
-                }
-            }
+                Log.Trace("Cash.EnsureCurrencyDataFeed(): " + Messages.Cash.AddingSecuritySymbolForCashCurrencyFeed(symbol, Symbol));
 
-            // if this still hasn't been set then it's an error condition
-            throw new ArgumentException($"In order to maintain cash in {Symbol} you are required to add a " +
-                $"subscription for Forex pair {Symbol}{accountCurrency} or {accountCurrency}{Symbol}"
-            );
+                securities.Add(symbol, newSecurity);
+                requiredSecurities.Add(config);
+
+                return newSecurity;
+            });
+
+            CurrencyConversion = SecurityCurrencyConversion.LinearSearch(Symbol,
+                accountCurrency,
+                securitiesToSearch.ToList(),
+                potentials,
+                makeNewSecurity);
+
+            return requiredSecurities;
         }
 
         /// <summary>
@@ -303,16 +352,13 @@ namespace QuantConnect.Securities
         /// <returns>A <see cref="string"/> that represents the current <see cref="Cash"/>.</returns>
         public string ToString(string accountCurrency)
         {
-            // round the conversion rate for output
-            var rate = ConversionRate;
-            rate = rate < 1000 ? rate.RoundToSignificantDigits(5) : Math.Round(rate, 2);
-            return Invariant($"{Symbol}: {CurrencySymbol}{Amount,15:0.00} @ {rate,10:0.00####} = {Currencies.GetCurrencySymbol(accountCurrency)}{Math.Round(ValueInAccountCurrency, 2)}");
+            return Messages.Cash.ToString(this, accountCurrency);
         }
 
         private static IEnumerable<KeyValuePair<SecurityDatabaseKey, SymbolProperties>> GetAvailableSymbolPropertiesDatabaseEntries(
             SecurityType securityType,
             IReadOnlyDictionary<SecurityType, string> marketMap,
-            IReadOnlyDictionary<SecurityType, string> markets
+            IReadOnlyDictionary<SecurityType, HashSet<string>> markets
             )
         {
             var marketJoin = new HashSet<string>();
@@ -322,14 +368,23 @@ namespace QuantConnect.Securities
                 {
                     marketJoin.Add(market);
                 }
-                if (markets.TryGetValue(securityType, out market))
+                HashSet<string> existingMarkets;
+                if (markets.TryGetValue(securityType, out existingMarkets))
                 {
-                    marketJoin.Add(market);
+                    foreach (var existingMarket in existingMarkets)
+                    {
+                        marketJoin.Add(existingMarket);
+                    }
                 }
             }
 
             return marketJoin.SelectMany(market => SymbolPropertiesDatabase.FromDataFolder()
                 .GetSymbolPropertiesList(market, securityType));
+        }
+
+        private static bool ProvidesConversionRate(SecurityType securityType)
+        {
+            return securityType == SecurityType.Forex || securityType == SecurityType.Crypto || securityType == SecurityType.Cfd;
         }
 
         private void OnUpdate()

@@ -14,8 +14,8 @@
 */
 
 using System;
-using System.Collections.Concurrent;
 using System.Threading;
+using System.Collections.Generic;
 
 namespace QuantConnect.Util
 {
@@ -44,7 +44,7 @@ namespace QuantConnect.Util
         private readonly SemaphoreSlim _semaphore;
 
         // Times (in millisecond ticks) at which the semaphore should be exited.
-        private readonly ConcurrentQueue<int> _exitTimes;
+        private readonly Queue<int> _exitTimes;
 
         // Timer used to trigger exiting the semaphore.
         private readonly Timer _exitTimer;
@@ -102,11 +102,11 @@ namespace QuantConnect.Util
             _semaphore = new SemaphoreSlim(Occurrences, Occurrences);
 
             // Create a queue to hold the semaphore exit times.
-            _exitTimes = new ConcurrentQueue<int>();
+            _exitTimes = new ();
 
             // Create a timer to exit the semaphore. Use the time unit as the original
             // interval length because that's the earliest we will need to exit the semaphore.
-            _exitTimer = new Timer(ExitTimerCallback, null, TimeUnitMilliseconds, -1);
+            _exitTimer = new Timer(ExitTimerCallback, null, Timeout.Infinite, Timeout.Infinite);
         }
 
         // Callback for the exit timer that exits the semaphore based on exit times
@@ -115,27 +115,41 @@ namespace QuantConnect.Util
         // for providing the code below, fixing issue #3499 - https://github.com/QuantConnect/Lean/issues/3499
         private void ExitTimerCallback(object state)
         {
-            // While there are exit times that are passed due still in the queue,
-            // exit the semaphore and dequeue the exit time.
-            var exitTime = 0;
-            var exitTimeValid = _exitTimes.TryPeek(out exitTime);
-            while (exitTimeValid)
+            try
             {
-                if (unchecked(exitTime - Environment.TickCount) > 0)
+                // While there are exit times that are passed due still in the queue,
+                // exit the semaphore and dequeue the exit time.
+                var exitTime = 0;
+                var exitTimeValid = false;
+                var tickCount = Environment.TickCount;
+                lock (_exitTimes)
                 {
-                    break;
-                }
-                _semaphore.Release();
-                _exitTimes.TryDequeue(out exitTime);
-                exitTimeValid = _exitTimes.TryPeek(out exitTime);
-            }
-            // we are already holding the next item from the queue, do not peek again
-            // although this exit time may have already pass by this stmt.
-            var timeUntilNextCheck = exitTimeValid
-                ? Math.Min(TimeUnitMilliseconds, Math.Max(0, exitTime - Environment.TickCount))
-                : TimeUnitMilliseconds;
+                    exitTimeValid = _exitTimes.TryPeek(out exitTime);
+                    while (exitTimeValid)
+                    {
+                        if (unchecked(exitTime - tickCount) > 0)
+                        {
+                            break;
+                        }
+                        _semaphore.Release();
+                        _exitTimes.Dequeue();
+                        exitTimeValid = _exitTimes.TryPeek(out exitTime);
+                    }
 
-            _exitTimer.Change(timeUntilNextCheck, -1);
+                    // only schedule if there's someone waiting
+                    if (exitTimeValid)
+                    {
+                        // we are already holding the next item from the queue, do not peek again
+                        // although this exit time may have already pass by this stmt.
+                        var timeUntilNextCheck = Math.Min(TimeUnitMilliseconds, Math.Max(0, exitTime - tickCount));
+                        _exitTimer.Change(timeUntilNextCheck, Timeout.Infinite);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // can throw if called when disposing
+            }
         }
 
         /// <summary>
@@ -160,7 +174,15 @@ namespace QuantConnect.Util
             if (entered)
             {
                 var timeToExit = unchecked(Environment.TickCount + TimeUnitMilliseconds);
-                _exitTimes.Enqueue(timeToExit);
+                lock(_exitTimes)
+                {
+                    if (_exitTimes.Count == 0)
+                    {
+                        // schedule, there was no one so it's not scheduled
+                        _exitTimer.Change(TimeUnitMilliseconds, Timeout.Infinite);
+                    }
+                    _exitTimes.Enqueue(timeToExit);
+                }
             }
 
             return entered;

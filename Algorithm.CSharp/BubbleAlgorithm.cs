@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -116,9 +116,9 @@ namespace QuantConnect.Algorithm.CSharp
         }
 
         /// <summary>
-        /// New TradeBar data for our assets.
+        /// New data for our assets.
         /// </summary>
-        public void OnData(TradeBars data)
+        public override void OnData(Slice slice)
         {
             try
             {
@@ -166,7 +166,7 @@ namespace QuantConnect.Algorithm.CSharp
                     }
 
                 }
-                // Cape Ratio is missing from orignial data
+                // Cape Ratio is missing from original data
                 // Most recent cape data is most likely to be missing
                 else if (_currCape == 0)
                 {
@@ -174,7 +174,7 @@ namespace QuantConnect.Algorithm.CSharp
                     Quit("CAPE ratio not supplied in data, exiting.");
                 }
             }
-            catch (Exception err)
+            catch (RegressionTestException err)
             {
                 Error(err.Message);
             }
@@ -220,7 +220,7 @@ namespace QuantConnect.Algorithm.CSharp
     /// </summary>
     public class CAPE : BaseData
     {
-        public decimal Cape;
+        public decimal Cape { get; set; }
         private const string Format = "yyyy-MM";
         private readonly CultureInfo _provider = CultureInfo.InvariantCulture;
 
@@ -246,7 +246,7 @@ namespace QuantConnect.Algorithm.CSharp
         }
 
         /// <summary>
-        /// Reader Method :: using set of arguements we specify read out type. Enumerate
+        /// Reader Method :: using set of arguments we specify read out type. Enumerate
         /// until the end of the data stream or file. E.g. Read CSV file line by line and convert
         /// into data types.
         /// </summary>

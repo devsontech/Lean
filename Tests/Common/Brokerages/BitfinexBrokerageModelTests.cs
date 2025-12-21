@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -13,6 +13,7 @@
  * limitations under the License.
 */
 
+using Moq;
 using System;
 using NUnit.Framework;
 using QuantConnect.Brokerages;
@@ -20,12 +21,16 @@ using QuantConnect.Data;
 using QuantConnect.Data.Market;
 using QuantConnect.Securities;
 using QuantConnect.Securities.Crypto;
+using QuantConnect.Tests.Brokerages;
+using QuantConnect.Orders;
 
 namespace QuantConnect.Tests.Common.Brokerages
 {
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class BitfinexBrokerageModelTests
     {
+        private readonly BitfinexBrokerageModel _bitfinexBrokerageModel = new BitfinexBrokerageModel();
+
         protected Symbol Symbol => Symbol.Create("ETHUSD", SecurityType.Crypto, Market.Bitfinex);
         protected Crypto Security
         {
@@ -34,6 +39,7 @@ namespace QuantConnect.Tests.Common.Brokerages
                 return new Crypto(
                     SecurityExchangeHours.AlwaysOpen(TimeZones.NewYork),
                     new Cash(Currencies.USD, 0, 1m),
+                    new Cash("ETH", 0, 0),
                     new SubscriptionDataConfig(
                         typeof(TradeBar),
                         Symbol,
@@ -156,6 +162,7 @@ namespace QuantConnect.Tests.Common.Brokerages
             return new Crypto(
                 SecurityExchangeHours.AlwaysOpen(TimeZones.NewYork),
                 new Cash(Currencies.USD, 0, 1m),
+                new Cash(symbol.Value.RemoveFromEnd(Currencies.USD), 0, 0),
                 new SubscriptionDataConfig(
                     typeof(TradeBar),
                     symbol,
@@ -170,6 +177,41 @@ namespace QuantConnect.Tests.Common.Brokerages
                 ErrorCurrencyConverter.Instance,
                 RegisteredSecurityDataTypesProvider.Null
             );
+        }
+
+        [TestCase(0.01, true)]
+        [TestCase(0.00003, false)]
+        public void CanSubmitOrder_WhenQuantityIsLargeEnough(decimal orderQuantity, bool isValidOrderQuantity)
+        {
+            BrokerageMessageEvent message;
+            var order = new Mock<Order>();
+            order.Setup(x => x.Quantity).Returns(orderQuantity);
+
+            Assert.AreEqual(isValidOrderQuantity, _bitfinexBrokerageModel.CanSubmitOrder(TestsHelpers.GetSecurity(market: Market.Bitfinex), order.Object, out message));
+        }
+
+        [TestCase(OrderType.Limit, true)]
+        [TestCase(OrderType.Market, true)]
+        [TestCase(OrderType.StopMarket, true)]
+        [TestCase(OrderType.StopLimit, true)]
+        [TestCase(OrderType.LimitIfTouched, false)]
+        [TestCase(OrderType.MarketOnOpen, false)]
+        [TestCase(OrderType.MarketOnClose, false)]
+        [TestCase(OrderType.OptionExercise, false)]
+        [TestCase(OrderType.ComboMarket, false)]
+        [TestCase(OrderType.ComboLimit, false)]
+        [TestCase(OrderType.ComboLegLimit, false)]
+        [TestCase(OrderType.TrailingStop, false)]
+        public void CanSubmitOrderValidatesSupportedAndUnsupportedOrderTypes(OrderType orderType, bool isSupported)
+        {
+            var security = TestsHelpers.GetSecurity(market: Market.Bitfinex);
+            var order = new Mock<Order>();
+            order.Setup(o => o.Type).Returns(orderType);
+            order.Setup(o => o.Quantity).Returns(0.01m);
+            var result = _bitfinexBrokerageModel.CanSubmitOrder(security, order.Object, out var message);
+
+            // Verify correct handling of each order type
+            Assert.AreEqual(isSupported, result);
         }
     }
 }

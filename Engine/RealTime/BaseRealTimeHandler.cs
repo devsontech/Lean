@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -15,17 +15,18 @@
 */
 
 using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Threading;
+using QuantConnect.Util;
+using QuantConnect.Packets;
 using QuantConnect.Algorithm;
-using QuantConnect.AlgorithmFactory.Python.Wrappers;
-using QuantConnect.Data.UniverseSelection;
 using QuantConnect.Interfaces;
-using QuantConnect.Lean.Engine.Results;
 using QuantConnect.Scheduling;
 using QuantConnect.Securities;
-using QuantConnect.Util;
+using System.Collections.Generic;
+using System.Collections.Concurrent;
+using QuantConnect.Lean.Engine.Results;
+using QuantConnect.Data.UniverseSelection;
+using QuantConnect.AlgorithmFactory.Python.Wrappers;
 
 namespace QuantConnect.Lean.Engine.RealTime
 {
@@ -33,7 +34,7 @@ namespace QuantConnect.Lean.Engine.RealTime
     /// Base class for the real time handler <see cref="LiveTradingRealTimeHandler"/>
     /// and <see cref="BacktestingRealTimeHandler"/> implementations
     /// </summary>
-    public abstract class BaseRealTimeHandler : IEventSchedule
+    public abstract class BaseRealTimeHandler : IRealTimeHandler
     {
         private int _scheduledEventUniqueId;
         // For performance only add OnEndOfDay Symbol scheduled events if the method is implemented.
@@ -50,8 +51,17 @@ namespace QuantConnect.Lean.Engine.RealTime
         /// Keep a separate track of these scheduled events so we can remove them
         /// if the security gets removed
         /// </summary>
-        private readonly ConcurrentDictionary<Symbol, ScheduledEvent> _securityOnEndOfDay
-            = new ConcurrentDictionary<Symbol, ScheduledEvent>();
+        private readonly ConcurrentDictionary<Symbol, ScheduledEvent> _securityOnEndOfDay = new();
+
+        /// <summary>
+        /// The result handler instance
+        /// </summary>
+        private IResultHandler ResultHandler { get; set; }
+
+        /// <summary>
+        /// Thread status flag.
+        /// </summary>
+        public abstract bool IsActive { get; protected set; }
 
         /// <summary>
         /// The scheduled events container
@@ -59,18 +69,22 @@ namespace QuantConnect.Lean.Engine.RealTime
         /// <remarks>Initialize this immediately since the Initialize method gets
         /// called after IAlgorithm.Initialize, so we want to be ready to accept
         /// events as soon as possible</remarks>
-        protected readonly ConcurrentDictionary<ScheduledEvent, int> ScheduledEvents
-            = new ConcurrentDictionary<ScheduledEvent, int>();
+        protected ConcurrentDictionary<ScheduledEvent, int> ScheduledEvents { get; } = new();
+
+        /// <summary>
+        /// The isolator limit result provider instance
+        /// </summary>
+        protected IIsolatorLimitResultProvider IsolatorLimitProvider { get; private set; }
 
         /// <summary>
         /// The algorithm instance
         /// </summary>
-        protected IAlgorithm Algorithm;
+        protected IAlgorithm Algorithm { get; private set; }
 
         /// <summary>
-        /// The result handler instance
+        /// The time monitor instance to use
         /// </summary>
-        protected IResultHandler ResultHandler;
+        protected TimeMonitor TimeMonitor { get; private set; }
 
         /// <summary>
         /// Adds the specified event to the schedule
@@ -86,12 +100,29 @@ namespace QuantConnect.Lean.Engine.RealTime
         public abstract void Remove(ScheduledEvent scheduledEvent);
 
         /// <summary>
+        /// Set the current time for the event scanner (so we can use same code for backtesting and live events)
+        /// </summary>
+        /// <param name="time">Current real or backtest time.</param>
+        public abstract void SetTime(DateTime time);
+
+        /// <summary>
+        /// Scan for past events that didn't fire because there was no data at the scheduled time.
+        /// </summary>
+        /// <param name="time">Current time.</param>
+        public abstract void ScanPastEvents(DateTime time);
+
+        /// <summary>
         /// Initializes the real time handler for the specified algorithm and job.
         /// Adds EndOfDayEvents
         /// </summary>
-        protected void Setup(DateTime start, DateTime end, Language language, DateTime? currentUtcTime = null)
+        public virtual void Setup(IAlgorithm algorithm, AlgorithmNodePacket job, IResultHandler resultHandler, IApi api, IIsolatorLimitResultProvider isolatorLimitProvider)
         {
-            if (language == Language.CSharp)
+            Algorithm = algorithm;
+            ResultHandler = resultHandler;
+            TimeMonitor = new TimeMonitor(GetTimeMonitorTimeout());
+            IsolatorLimitProvider = isolatorLimitProvider;
+
+            if (job.Language == Language.CSharp)
             {
                 var method = Algorithm.GetType().GetMethod("OnEndOfDay", new[] { typeof(Symbol) });
                 var method2 = Algorithm.GetType().GetMethod("OnEndOfDay", new[] { typeof(string) });
@@ -109,7 +140,7 @@ namespace QuantConnect.Lean.Engine.RealTime
                     _implementsOnEndOfDay = true;
                 }
             }
-            else if (language == Language.Python)
+            else if (job.Language == Language.Python)
             {
                 var wrapper = Algorithm as AlgorithmPythonWrapper;
                 if (wrapper != null)
@@ -120,11 +151,11 @@ namespace QuantConnect.Lean.Engine.RealTime
             }
             else
             {
-                throw new ArgumentException(nameof(language));
+                throw new ArgumentException(nameof(job.Language));
             }
 
             // Here to maintain functionality until deprecation in August 2021
-            AddAlgorithmEndOfDayEvent(start, end, currentUtcTime);
+            AddAlgorithmEndOfDayEvent(start: algorithm.Time, end: algorithm.EndDate, currentUtcTime: algorithm.UtcTime);
         }
 
         /// <summary>
@@ -137,6 +168,14 @@ namespace QuantConnect.Lean.Engine.RealTime
         }
 
         /// <summary>
+        /// Get's the timeout the scheduled task time monitor should use
+        /// </summary>
+        protected virtual int GetTimeMonitorTimeout()
+        {
+            return 100;
+        }
+
+        /// <summary>
         /// Creates a new <see cref="ScheduledEvent"/> that will fire before market close by the specified time
         /// </summary>
         /// <param name="start">The date to start the events</param>
@@ -144,7 +183,7 @@ namespace QuantConnect.Lean.Engine.RealTime
         /// <param name="currentUtcTime">Specifies the current time in UTC, before which,
         /// no events will be scheduled. Specify null to skip this filter.</param>
         [Obsolete("This method is deprecated. It will add ScheduledEvents for the deprecated IAlgorithm.OnEndOfDay()")]
-        protected void AddAlgorithmEndOfDayEvent(DateTime start, DateTime end, DateTime? currentUtcTime = null)
+        private void AddAlgorithmEndOfDayEvent(DateTime start, DateTime end, DateTime? currentUtcTime = null)
         {
             // If the algorithm didn't implement it no need to support it.
             if (!_implementsOnEndOfDay) { return; }
@@ -177,29 +216,23 @@ namespace QuantConnect.Lean.Engine.RealTime
         /// <param name="end">The date to end the events</param>
         /// <param name="currentUtcTime">Specifies the current time in UTC, before which,
         /// no events will be scheduled. Specify null to skip this filter.</param>
-        protected void AddSecurityDependentEndOfDayEvents(
+        private void AddSecurityDependentEndOfDayEvents(
             IEnumerable<Security> securities,
             DateTime start,
             DateTime end,
             DateTime? currentUtcTime = null)
         {
-            if (_implementsOnEndOfDaySymbol)
+            // add end of trading day events for each security
+            foreach (var security in securities)
             {
-                // add end of trading day events for each security
-                foreach (var security in securities)
-                {
-                    if (!security.IsInternalFeed())
-                    {
-                        var scheduledEvent = ScheduledEventFactory.EverySecurityEndOfDay(
-                            Algorithm, ResultHandler, security, start, end, ScheduledEvent.SecurityEndOfDayDelta, currentUtcTime);
+                var scheduledEvent = ScheduledEventFactory.EverySecurityEndOfDay(
+                    Algorithm, ResultHandler, security, start, end, ScheduledEvent.SecurityEndOfDayDelta, currentUtcTime);
 
-                        // we keep separate track so we can remove it later
-                        _securityOnEndOfDay[security.Symbol] = scheduledEvent;
+                // we keep separate track so we can remove it later
+                _securityOnEndOfDay[security.Symbol] = scheduledEvent;
 
-                        // assumes security.Exchange has been updated with today's hours via RefreshMarketHoursToday
-                        Add(scheduledEvent);
-                    }
-                }
+                // assumes security.Exchange has been updated with today's hours via RefreshMarketHoursToday
+                Add(scheduledEvent);
             }
         }
 
@@ -212,6 +245,8 @@ namespace QuantConnect.Lean.Engine.RealTime
             {
                 if (_implementsOnEndOfDaySymbol)
                 {
+                    // we only add and remove on end of day for non internal securities
+                    changes = new SecurityChanges(changes) { FilterInternalSecurities = true };
                     AddSecurityDependentEndOfDayEvents(changes.AddedSecurities,
                         Algorithm.UtcTime,
                         Algorithm.EndDate,
@@ -233,6 +268,15 @@ namespace QuantConnect.Lean.Engine.RealTime
                 // Here to maintain functionality until deprecation in August 2021
                 AddAlgorithmEndOfDayEvent(Algorithm.UtcTime, Algorithm.EndDate, Algorithm.UtcTime);
             }
+        }
+
+        /// <summary>
+        /// Stop the real time thread
+        /// </summary>
+        public virtual void Exit()
+        {
+            TimeMonitor.DisposeSafely();
+            TimeMonitor = null;
         }
     }
 }

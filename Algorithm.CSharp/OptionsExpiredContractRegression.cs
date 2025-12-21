@@ -1,4 +1,4 @@
-﻿/* 
+/* 
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -18,7 +18,6 @@ using System.Collections.Generic;
 using System.Linq;
 using QuantConnect.Data;
 using QuantConnect.Interfaces;
-using QuantConnect.Securities;
 
 namespace QuantConnect.Algorithm.CSharp
 {
@@ -44,9 +43,9 @@ namespace QuantConnect.Algorithm.CSharp
             option.SetFilter(x => x.CallsOnly().Strikes(0, 1).Expiration(0, 30));
         }
 
-        public override void OnData(Slice data)
+        public override void OnData(Slice slice)
         {
-            foreach (var chain in data.OptionChains)
+            foreach (var chain in slice.OptionChains)
             {
                 _receivedData = true;
 
@@ -54,7 +53,7 @@ namespace QuantConnect.Algorithm.CSharp
                 {
                     if (contract.Expiry.Date < Time.Date)
                     {
-                        throw new Exception($"Received expired contract {contract} expired: {contract.Expiry} current time: {Time}");
+                        throw new RegressionTestException($"Received expired contract {contract} expired: {contract.Expiry} current time: {Time}");
                     }
                 }
             }
@@ -64,7 +63,7 @@ namespace QuantConnect.Algorithm.CSharp
         {
             if (!_receivedData)
             {
-                throw new Exception("No Options chains were received in this regression");
+                throw new RegressionTestException("No Options chains were received in this regression");
             }
         }
 
@@ -76,21 +75,39 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp };
+        public List<Language> Languages { get; } = new() { Language.CSharp };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 29379;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "0"},
+            {"Total Orders", "0"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
             {"Compounding Annual Return", "0%"},
             {"Drawdown", "0%"},
             {"Expectancy", "0"},
+            {"Start Equity", "1000000"},
+            {"End Equity", "1000000"},
             {"Net Profit", "0%"},
             {"Sharpe Ratio", "0"},
+            {"Sortino Ratio", "0"},
             {"Probabilistic Sharpe Ratio", "0%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
@@ -99,12 +116,14 @@ namespace QuantConnect.Algorithm.CSharp
             {"Beta", "0"},
             {"Annual Standard Deviation", "0"},
             {"Annual Variance", "0"},
-            {"Information Ratio", "4.098"},
-            {"Tracking Error", "0.186"},
+            {"Information Ratio", "3.945"},
+            {"Tracking Error", "0.152"},
             {"Treynor Ratio", "0"},
             {"Total Fees", "$0.00"},
             {"Estimated Strategy Capacity", "$0"},
-            {"Fitness Score", "0"},
+            {"Lowest Capacity Asset", ""},
+            {"Portfolio Turnover", "0%"},
+            {"Drawdown Recovery", "0"},
             {"OrderListHash", "d41d8cd98f00b204e9800998ecf8427e"}
         };
     }

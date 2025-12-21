@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -14,12 +14,14 @@
  *
 */
 
-using Python.Runtime;
-using QuantConnect.Data.Fundamental;
-using QuantConnect.Data.UniverseSelection;
 using System;
-using System.Collections.Generic;
 using System.Linq;
+using Python.Runtime;
+using System.Collections.Generic;
+using QuantConnect.Data.Fundamental;
+using System.Text.RegularExpressions;
+using QuantConnect.Data.UniverseSelection;
+using System.Globalization;
 
 namespace QuantConnect.Util
 {
@@ -28,7 +30,14 @@ namespace QuantConnect.Util
     /// </summary>
     public class PythonUtil
     {
+        private static Regex LineRegex = new Regex("line (\\d+)", RegexOptions.Compiled);
+        private static Regex StackTraceFileLineRegex = new Regex("\"(.+)\", line (\\d+), in (.+)", RegexOptions.Compiled | RegexOptions.Singleline);
         private static readonly Lazy<dynamic> lazyInspect = new Lazy<dynamic>(() => Py.Import("inspect"));
+
+        /// <summary>
+        /// The python exception stack trace line shift to use
+        /// </summary>
+        public static int ExceptionLineShift { get; set; } = 0;
 
         /// <summary>
         /// Encapsulates a python method with a <see cref="System.Action{T1}"/>
@@ -87,8 +96,30 @@ namespace QuantConnect.Util
                 {
                     return null;
                 }
-                dynamic method = GetModule().GetAttr("to_func");
+                dynamic method = GetModule().GetAttr("to_func1");
                 return method(pyObject, typeof(T1), typeof(T2)).AsManagedObject(typeof(Func<T1, T2>));
+            }
+        }
+
+        /// <summary>
+        /// Encapsulates a python method with a <see cref="System.Func{T1, T2, T3}"/>
+        /// </summary>
+        /// <typeparam name="T1">The first argument's type</typeparam>
+        /// <typeparam name="T2">The first argument's type</typeparam>
+        /// <typeparam name="T3">The output type</typeparam>
+        /// <param name="pyObject">The python method</param>
+        /// <returns>A <see cref="System.Func{T1, T2, T3}"/> that encapsulates the python method</returns>
+        public static Func<T1, T2, T3> ToFunc<T1, T2, T3>(PyObject pyObject)
+        {
+            using (Py.GIL())
+            {
+                long count = 0;
+                if (!TryGetArgLength(pyObject, out count) || count != 2)
+                {
+                    return null;
+                }
+                dynamic method = GetModule().GetAttr("to_func2");
+                return method(pyObject, typeof(T1), typeof(T2), typeof(T3)).AsManagedObject(typeof(Func<T1, T2, T3>));
             }
         }
 
@@ -129,6 +160,40 @@ namespace QuantConnect.Util
         }
 
         /// <summary>
+        /// Parsers <see cref="PythonException"/> into a readable message
+        /// </summary>
+        /// <param name="pythonException">The exception to parse</param>
+        /// <returns>String with relevant part of the stacktrace</returns>
+        public static string PythonExceptionParser(PythonException pythonException)
+        {
+            return PythonExceptionMessageParser(pythonException.Message) + PythonExceptionStackParser(pythonException.StackTrace);
+        }
+
+        /// <summary>
+        /// Parsers <see cref="Exception.Message"/> into a readable message
+        /// </summary>
+        /// <param name="message">The python exception message</param>
+        /// <returns>String with relevant part of the stacktrace</returns>
+        public static string PythonExceptionMessageParser(string message)
+        {
+            var match = LineRegex.Match(message);
+            if (match.Success)
+            {
+                foreach (Match lineCapture in match.Captures)
+                {
+                    var newLineNumber = int.Parse(lineCapture.Groups[1].Value) + ExceptionLineShift;
+                    message = Regex.Replace(message, lineCapture.ToString(), $"line {newLineNumber}");
+                }
+            }
+            else if (message.Contains(" value cannot be converted to ", StringComparison.InvariantCulture))
+            {
+                message += ": This error is often encountered when assigning to a member defined in the base QCAlgorithm class. For example, self.universe conflicts with 'QCAlgorithm.Universe' but can be fixed by prefixing private variables with an underscore, self._universe.";
+            }
+
+            return message;
+        }
+
+        /// <summary>
         /// Parsers <see cref="PythonException.StackTrace"/> into a readable message
         /// </summary>
         /// <param name="value">String with the stacktrace information</param>
@@ -140,40 +205,50 @@ namespace QuantConnect.Util
                 return string.Empty;
             }
 
-            // Get the directory where the user files are located
-            var baseScript = value.GetStringBetweenChars('\"', '\"');
-            var length = Math.Max(baseScript.LastIndexOf('/'), baseScript.LastIndexOf('\\'));
-            if (length < 0)
-            {
-                return string.Empty;
-            }
-            var directory = baseScript.Substring(0, 1 + length);
+            // The stack trace info before "at Python.Runtime." is the trace we want,
+            // which is for user Python code.
+            var endIndex = value.IndexOf("at Python.Runtime.", StringComparison.InvariantCulture);
+            var neededStackTrace = endIndex > 0 ? value.Substring(0, endIndex) : value;
 
-            // Format the information in every line
-            var lines = value.Substring(1, value.Length - 1)
-                .Split(new[] { "\'  File " }, StringSplitOptions.RemoveEmptyEntries)
-                .Where(x => x.Contains(directory))
-                .Where(x => x.Split(',').Length > 2)
-                .Select(x =>
+            // The stack trace is separated in blocks by file
+            var blocks = neededStackTrace.Split("  File ", StringSplitOptions.RemoveEmptyEntries)
+                .Select(fileTrace =>
                 {
-                    var info = x.Replace(directory, string.Empty).Split(',');
-                    var line = info[0].GetStringBetweenChars('\"', '\"');
-                    line = $" in {line}:{info[1].Trim()}";
+                    var trimedTrace = fileTrace.Trim();
+                    if (string.IsNullOrWhiteSpace(trimedTrace))
+                    {
+                        return string.Empty;
+                    }
 
-                    info = info[2].Split(new[] { "\\n" }, StringSplitOptions.RemoveEmptyEntries);
-                    line = $" {info[0].Replace(" in ", " at ")}{line}";
+                    var match = StackTraceFileLineRegex.Match(trimedTrace);
+                    if (!match.Success)
+                    {
+                        return string.Empty;
+                    }
 
-                    // If we have the exact statement, add it to the error line
-                    if (info.Length > 2) line += $" :: {info[1].Trim()}";
+                    var capture = match.Captures[0] as Match;
 
-                    return line;
-                });
+                    var filePath = capture.Groups[1].Value;
+                    var lastFileSeparatorIndex = Math.Max(filePath.LastIndexOf('/'), filePath.LastIndexOf('\\'));
+                    if (lastFileSeparatorIndex < 0)
+                    {
+                        return string.Empty;
+                    }
 
-            var errorLine = string.Join(Environment.NewLine, lines);
+                    var fileName = filePath.Substring(lastFileSeparatorIndex + 1);
+                    var lineNumber = int.Parse(capture.Groups[2].Value, CultureInfo.InvariantCulture) + ExceptionLineShift;
+                    var locationAndInfo = capture.Groups[3].Value.Trim();
 
-            return string.IsNullOrWhiteSpace(errorLine)
+                    return $"  at {locationAndInfo}{Environment.NewLine} in {fileName}: line {lineNumber}";
+                })
+                .Where(x => !string.IsNullOrWhiteSpace(x));
+
+            var result = string.Join(Environment.NewLine, blocks);
+            result = Logging.Log.ClearLeanPaths(result);
+
+            return string.IsNullOrWhiteSpace(result)
                 ? string.Empty
-                : $"{Environment.NewLine}{errorLine}{Environment.NewLine}";
+                : $"{Environment.NewLine}{result}{Environment.NewLine}";
         }
 
         /// <summary>
@@ -189,7 +264,7 @@ namespace QuantConnect.Util
                 var inspect = lazyInspect.Value;
                 if (inspect.isfunction(pyObject))
                 {
-                    var args = inspect.getargspec(pyObject).args as PyObject;
+                    var args = inspect.getfullargspec(pyObject).args as PyObject;
                     var pyList = new PyList(args);
                     length = pyList.Length();
                     pyList.Dispose();
@@ -199,7 +274,7 @@ namespace QuantConnect.Util
 
                 if (inspect.ismethod(pyObject))
                 {
-                    var args = inspect.getargspec(pyObject).args as PyObject;
+                    var args = inspect.getfullargspec(pyObject).args as PyObject;
                     var pyList = new PyList(args);
                     length = pyList.Length() - 1;
                     pyList.Dispose();
@@ -217,7 +292,7 @@ namespace QuantConnect.Util
         /// <returns>PyObject with a python module</returns>
         private static PyObject GetModule()
         {
-            return PythonEngine.ModuleFromString("x",
+            return PyModule.FromString("x",
                 "from clr import AddReference\n" +
                 "AddReference(\"System\")\n" +
                 "from System import Action, Func\n" +
@@ -225,8 +300,10 @@ namespace QuantConnect.Util
                 "    return Action[t1](pyobject)\n" +
                 "def to_action2(pyobject, t1, t2):\n" +
                 "    return Action[t1, t2](pyobject)\n" +
-                "def to_func(pyobject, t1, t2):\n" +
-                "    return Func[t1, t2](pyobject)");
+                "def to_func1(pyobject, t1, t2):\n" +
+                "    return Func[t1, t2](pyobject)\n" +
+                "def to_func2(pyobject, t1, t2, t3):\n" +
+                "    return Func[t1, t2, t3](pyobject)");
         }
 
         /// <summary>
@@ -239,46 +316,71 @@ namespace QuantConnect.Util
             List<Symbol> symbolsList;
             Symbol symbol;
 
-            // Handle the possible types of conversions
-            if (PyList.IsListType(input))
+            using (Py.GIL())
             {
-                List<string> symbolsStringList;
+                // Handle the possible types of conversions
+                if (PyList.IsListType(input))
+                {
+                    List<string> symbolsStringList;
 
-                //Check if an entry in the list is a string type, if so then try and convert the whole list
-                if (PyString.IsStringType(input[0]) && input.TryConvert(out symbolsStringList))
-                {
-                    symbolsList = new List<Symbol>();
-                    foreach (var stringSymbol in symbolsStringList)
+                    //Check if an entry in the list is a string type, if so then try and convert the whole list
+                    if (PyString.IsStringType(input[0]) && input.TryConvert(out symbolsStringList))
                     {
-                        symbol = QuantConnect.Symbol.Create(stringSymbol, SecurityType.Equity, Market.USA);
-                        symbolsList.Add(symbol);
+                        symbolsList = new List<Symbol>();
+                        foreach (var stringSymbol in symbolsStringList)
+                        {
+                            symbol = QuantConnect.Symbol.Create(stringSymbol, SecurityType.Equity, Market.USA);
+                            symbolsList.Add(symbol);
+                        }
                     }
-                }
-                //Try converting it to list of symbols, if it fails throw exception
-                else if (!input.TryConvert(out symbolsList))
-                {
-                    throw new ArgumentException($"Cannot convert list {input.Repr()} to symbols");
-                }
-            }
-            else
-            {
-                //Check if its a single string, and try and convert it
-                string symbolString;
-                if (PyString.IsStringType(input) && input.TryConvert(out symbolString))
-                {
-                    symbol = QuantConnect.Symbol.Create(symbolString, SecurityType.Equity, Market.USA);
-                    symbolsList = new List<Symbol> { symbol };
-                }
-                else if (input.TryConvert(out symbol))
-                {
-                    symbolsList = new List<Symbol> { symbol };
+                    //Try converting it to list of symbols, if it fails throw exception
+                    else if (!input.TryConvert(out symbolsList))
+                    {
+                        throw new ArgumentException($"Cannot convert list {input.Repr()} to symbols");
+                    }
                 }
                 else
                 {
-                    throw new ArgumentException($"Cannot convert object {input.Repr()} to symbol");
+                    //Check if its a single string, and try and convert it
+                    string symbolString;
+                    if (PyString.IsStringType(input) && input.TryConvert(out symbolString))
+                    {
+                        symbol = QuantConnect.Symbol.Create(symbolString, SecurityType.Equity, Market.USA);
+                        symbolsList = new List<Symbol> { symbol };
+                    }
+                    else if (input.TryConvert(out symbol))
+                    {
+                        symbolsList = new List<Symbol> { symbol };
+                    }
+                    else
+                    {
+                        throw new ArgumentException($"Cannot convert object {input.Repr()} to symbol");
+                    }
                 }
             }
             return symbolsList;
+        }
+
+        /// <summary>
+        /// Attempts to convert a PyObject into a pure C# instance of <typeparamref name="T"/>.
+        /// If conversion fails, a wrapper instance is created/>.
+        /// </summary>
+        /// <typeparam name="T">The C# type expected, which may be an interface or a concrete class</typeparam>
+        /// <param name="pyObject">The Python object to convert.</param>
+        /// <param name="createWrapper">Factory function used to create a wrapper around the Python object</param>
+        /// <returns>
+        /// A pure C# instance if conversion is possible, otherwise a wrapper instance.
+        /// </returns>
+        public static T CreateInstanceOrWrapper<T>(PyObject pyObject, Func<PyObject, T> createWrapper)
+        {
+            if (pyObject.TryConvert<T>(out var instance))
+            {
+                // Successfully converted to pure C#
+                return instance;
+            }
+
+            // Fallback to wrapper
+            return createWrapper(pyObject);
         }
     }
 }

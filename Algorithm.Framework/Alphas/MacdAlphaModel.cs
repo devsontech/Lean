@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -14,6 +14,7 @@
 */
 
 using System.Collections.Generic;
+using System.Linq;
 using QuantConnect.Data;
 using QuantConnect.Data.Consolidators;
 using QuantConnect.Data.UniverseSelection;
@@ -35,7 +36,12 @@ namespace QuantConnect.Algorithm.Framework.Alphas
         private readonly MovingAverageType _movingAverageType;
         private readonly Resolution _resolution;
         private const decimal BounceThresholdPercent = 0.01m;
-        private readonly Dictionary<Symbol, SymbolData> _symbolData;
+        private InsightCollection _insightCollection = new();
+
+        /// <summary>
+        /// Dictionary containing basic information for each symbol present as key
+        /// </summary>
+        protected Dictionary<Symbol, SymbolData> _symbolData { get; init; }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="MacdAlphaModel"/> class
@@ -94,9 +100,18 @@ namespace QuantConnect.Algorithm.Framework.Alphas
                     continue;
                 }
 
+                sd.PreviousDirection = direction;
+
+                if (direction == InsightDirection.Flat)
+                {
+                    CancelInsights(algorithm, sd.Security.Symbol);
+                    continue;
+                }
+
                 var insightPeriod = _resolution.ToTimeSpan().Multiply(_fastPeriod);
                 var insight = Insight.Price(sd.Security.Symbol, insightPeriod, direction);
-                sd.PreviousDirection = insight.Direction;
+                _insightCollection.Add(insight);
+
                 yield return insight;
             }
         }
@@ -120,24 +135,58 @@ namespace QuantConnect.Algorithm.Framework.Alphas
 
             foreach (var removed in changes.RemovedSecurities)
             {
+                var symbol = removed.Symbol;
+
                 SymbolData data;
-                if (_symbolData.TryGetValue(removed.Symbol, out data))
+                if (_symbolData.TryGetValue(symbol, out data))
                 {
                     // clean up our consolidator
-                    algorithm.SubscriptionManager.RemoveConsolidator(data.Security.Symbol, data.Consolidator);
-                    _symbolData.Remove(removed.Symbol);
+                    algorithm.SubscriptionManager.RemoveConsolidator(symbol, data.Consolidator);
+                    _symbolData.Remove(symbol);
                 }
+
+                // remove from insight collection manager
+                CancelInsights(algorithm, symbol);
             }
         }
 
-        class SymbolData
+        private void CancelInsights(QCAlgorithm algorithm, Symbol symbol)
         {
+            if (_insightCollection.TryGetValue(symbol, out var insights))
+            {
+                algorithm.Insights.Cancel(insights);
+                _insightCollection.Clear(new[] { symbol });
+            }
+        }
+
+        /// <summary>
+        /// Class representing basic data of a symbol
+        /// </summary>
+        public class SymbolData
+        {
+            /// <summary>
+            /// Previous direction property
+            /// </summary>
             public InsightDirection? PreviousDirection { get; set; }
 
-            public readonly Security Security;
-            public readonly IDataConsolidator Consolidator;
-            public readonly MovingAverageConvergenceDivergence MACD;
+            /// <summary>
+            /// Security of the Symbol Data
+            /// </summary>
+            public Security Security { get; init; }
 
+            /// <summary>
+            /// Consolidator property
+            /// </summary>
+            public IDataConsolidator Consolidator { get; init; }
+
+            /// <summary>
+            /// Moving Average Convergence Divergence indicator
+            /// </summary>
+            public MovingAverageConvergenceDivergence MACD { get; init; }
+
+            /// <summary>
+            /// Initializes an instance of the SymbolData class with the given arguments
+            /// </summary>
             public SymbolData(QCAlgorithm algorithm, Security security, int fastPeriod, int slowPeriod, int signalPeriod, MovingAverageType movingAverageType, Resolution resolution)
             {
                 Security = security;
@@ -147,6 +196,7 @@ namespace QuantConnect.Algorithm.Framework.Alphas
                 MACD = new MovingAverageConvergenceDivergence(fastPeriod, slowPeriod, signalPeriod, movingAverageType);
 
                 algorithm.RegisterIndicator(security.Symbol, MACD, Consolidator);
+                algorithm.WarmUpIndicator(security.Symbol, MACD, resolution);
             }
         }
     }

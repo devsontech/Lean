@@ -96,15 +96,15 @@ namespace QuantConnect.Algorithm.CSharp
         {
             if (_onEndOfDaySpyCallCount != 5)
             {
-                throw new Exception($"OnEndOfDay(SPY) unexpected count call {_onEndOfDaySpyCallCount}");
+                throw new RegressionTestException($"OnEndOfDay(SPY) unexpected count call {_onEndOfDaySpyCallCount}");
             }
             if (_onEndOfDayBacCallCount != 4)
             {
-                throw new Exception($"OnEndOfDay(BAC) unexpected count call {_onEndOfDayBacCallCount}");
+                throw new RegressionTestException($"OnEndOfDay(BAC) unexpected count call {_onEndOfDayBacCallCount}");
             }
             if (_onEndOfDayIbmCallCount != 1)
             {
-                throw new Exception($"OnEndOfDay(IBM) unexpected count call {_onEndOfDayIbmCallCount}");
+                throw new RegressionTestException($"OnEndOfDay(IBM) unexpected count call {_onEndOfDayIbmCallCount}");
             }
         }
 
@@ -116,54 +116,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 7868;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "2"},
+            {"Total Orders", "2"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
-            {"Compounding Annual Return", "474.494%"},
+            {"Compounding Annual Return", "489.968%"},
             {"Drawdown", "1.200%"},
             {"Expectancy", "0"},
-            {"Net Profit", "2.260%"},
-            {"Sharpe Ratio", "15.623"},
-            {"Probabilistic Sharpe Ratio", "78.260%"},
+            {"Start Equity", "100000"},
+            {"End Equity", "102295.22"},
+            {"Net Profit", "2.295%"},
+            {"Sharpe Ratio", "15.661"},
+            {"Sortino Ratio", "0"},
+            {"Probabilistic Sharpe Ratio", "78.483%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "1.554"},
-            {"Beta", "0.929"},
-            {"Annual Standard Deviation", "0.217"},
-            {"Annual Variance", "0.047"},
-            {"Information Ratio", "20.529"},
-            {"Tracking Error", "0.069"},
-            {"Treynor Ratio", "3.655"},
-            {"Total Fees", "$20.84"},
-            {"Estimated Strategy Capacity", "$5200000.00"},
-            {"Fitness Score", "0.249"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "65.716"},
-            {"Return Over Maximum Drawdown", "599.744"},
-            {"Portfolio Turnover", "0.249"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "1ecc4599dcaed2f158c820923a97d8a2"}
+            {"Alpha", "1.604"},
+            {"Beta", "0.954"},
+            {"Annual Standard Deviation", "0.223"},
+            {"Annual Variance", "0.05"},
+            {"Information Ratio", "22.254"},
+            {"Tracking Error", "0.068"},
+            {"Treynor Ratio", "3.656"},
+            {"Total Fees", "$22.11"},
+            {"Estimated Strategy Capacity", "$5600000.00"},
+            {"Lowest Capacity Asset", "NB R735QTJ8XC9X"},
+            {"Portfolio Turnover", "19.96%"},
+            {"Drawdown Recovery", "1"},
+            {"OrderListHash", "17eb374f011ccb57a28cef4b9a4585d8"}
         };
     }
 }

@@ -53,7 +53,7 @@ namespace QuantConnect.Algorithm.CSharp
             {
                 if (config.Resolution != Resolution.Minute)
                 {
-                    throw new Exception("Expected resolution to be set to Minute");
+                    throw new RegressionTestException("Expected resolution to be set to Minute");
                 }
             }
         }
@@ -73,7 +73,7 @@ namespace QuantConnect.Algorithm.CSharp
                     if (mappingEvent.NewSymbol != "NWSA"
                         || mappingEvent.OldSymbol != "FOXA")
                     {
-                        throw new Exception($"Unexpected mapping event {mappingEvent}");
+                        throw new RegressionTestException($"Unexpected mapping event {mappingEvent}");
                     }
                     _initialMapping = true;
                 }
@@ -82,7 +82,7 @@ namespace QuantConnect.Algorithm.CSharp
                     if (mappingEvent.NewSymbol != "FOXA"
                         || mappingEvent.OldSymbol != "NWSA")
                     {
-                        throw new Exception($"Unexpected mapping event {mappingEvent}");
+                        throw new RegressionTestException($"Unexpected mapping event {mappingEvent}");
                     }
 
                     _executionMapping = true;
@@ -98,11 +98,11 @@ namespace QuantConnect.Algorithm.CSharp
         {
             if (_initialMapping)
             {
-                throw new Exception("The ticker generated the initial rename event");
+                throw new RegressionTestException("The ticker generated the initial rename event");
             }
             if (!_executionMapping)
             {
-                throw new Exception("The ticker did not rename throughout the course of its life even though it should have");
+                throw new RegressionTestException("The ticker did not rename throughout the course of its life even though it should have");
             }
         }
 
@@ -114,54 +114,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 1667;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "1"},
+            {"Total Orders", "1"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
-            {"Compounding Annual Return", "-99.920%"},
-            {"Drawdown", "11.100%"},
+            {"Compounding Annual Return", "-99.907%"},
+            {"Drawdown", "11.000%"},
             {"Expectancy", "0"},
-            {"Net Profit", "-10.486%"},
-            {"Sharpe Ratio", "-1.534"},
-            {"Probabilistic Sharpe Ratio", "0.001%"},
+            {"Start Equity", "100000"},
+            {"End Equity", "89657.2"},
+            {"Net Profit", "-10.343%"},
+            {"Sharpe Ratio", "-1.708"},
+            {"Sortino Ratio", "-1.361"},
+            {"Probabilistic Sharpe Ratio", "0.009%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "-0.909"},
-            {"Beta", "-5.676"},
-            {"Annual Standard Deviation", "0.651"},
-            {"Annual Variance", "0.424"},
-            {"Information Ratio", "-1.362"},
-            {"Tracking Error", "0.745"},
-            {"Treynor Ratio", "0.176"},
+            {"Alpha", "-0.974"},
+            {"Beta", "-5.612"},
+            {"Annual Standard Deviation", "0.587"},
+            {"Annual Variance", "0.345"},
+            {"Information Ratio", "-1.517"},
+            {"Tracking Error", "0.664"},
+            {"Treynor Ratio", "0.179"},
             {"Total Fees", "$0.00"},
             {"Estimated Strategy Capacity", "$0"},
-            {"Fitness Score", "0.127"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "79228162514264337593543950335"},
-            {"Return Over Maximum Drawdown", "-9.383"},
-            {"Portfolio Turnover", "0.249"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "1c319ae4b15416184a247bb47b31aabc"}
+            {"Lowest Capacity Asset", "NWSA.CustomDataUsingMapping T3MO1488O0H0"},
+            {"Portfolio Turnover", "16.62%"},
+            {"Drawdown Recovery", "0"},
+            {"OrderListHash", "fe95edf1a3eabc0ac044b85eb833da5a"}
         };
 
         /// <summary>

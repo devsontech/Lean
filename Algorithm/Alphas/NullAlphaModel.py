@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,16 +11,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("QuantConnect.Algorithm")
-
-from QuantConnect.Algorithm.Framework.Alphas import AlphaModel
-
+from AlgorithmImports import *
 
 class NullAlphaModel(AlphaModel):
     '''Provides a null implementation of an alpha model'''
 
-    def Update(self, algorithm, data):
+    def update(self, algorithm, data):
         ''' Determines an insight for each security based on it's current MACD signal
         Args:
             algorithm: The algorithm instance

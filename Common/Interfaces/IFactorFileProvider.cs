@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  * 
@@ -20,16 +20,24 @@ using QuantConnect.Data.Auxiliary;
 namespace QuantConnect.Interfaces
 {
     /// <summary>
-    /// Provides instances of <see cref="FactorFile"/> at run time
+    /// Provides instances of <see cref="FactorFile{T}"/> at run time
     /// </summary>
     [InheritedExport(typeof(IFactorFileProvider))]
     public interface IFactorFileProvider
     {
         /// <summary>
-        /// Gets a <see cref="FactorFile"/> instance for the specified symbol, or null if not found
+        /// Initializes our FactorFileProvider by supplying our mapFileProvider
+        /// and dataProvider
+        /// </summary>
+        /// <param name="mapFileProvider">MapFileProvider to use</param>
+        /// <param name="dataProvider">DataProvider to use</param>
+        void Initialize(IMapFileProvider mapFileProvider, IDataProvider dataProvider);
+
+        /// <summary>
+        /// Gets a <see cref="FactorFile{T}"/> instance for the specified symbol, or null if not found
         /// </summary>
         /// <param name="symbol">The security's symbol whose factor file we seek</param>
         /// <returns>The resolved factor file, or null if not found</returns>
-        FactorFile Get(Symbol symbol);
+        IFactorProvider Get(Symbol symbol);
     }
 }

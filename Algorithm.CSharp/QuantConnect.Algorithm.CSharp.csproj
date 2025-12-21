@@ -1,19 +1,16 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <RootNamespace>QuantConnect.Algorithm.CSharp</RootNamespace>
     <AssemblyName>QuantConnect.Algorithm.CSharp</AssemblyName>
-    <TargetFramework>net462</TargetFramework>
-    <LangVersion>6</LangVersion>
+    <TargetFramework>net9.0</TargetFramework>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <OutputPath>bin\$(Configuration)\</OutputPath>
     <AnalysisMode>AllEnabledByDefault</AnalysisMode>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
-    <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
     <Description>QuantConnect LEAN Engine: Algorithm.CSharp Project - A collection of C# algorithm demonstrations for how to use the API</Description>
-    <NoWarn>CS0618</NoWarn>
+    <NoWarn>CS0618;CA1062;CA1002</NoWarn>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <OutputPath>bin\Debug\</OutputPath>
@@ -27,12 +24,6 @@
     <DefineConstants>TRACE</DefineConstants>
   </PropertyGroup>
   <PropertyGroup>
-    <IsWindows>false</IsWindows>
-    <IsWindows Condition="'$(OS)' == 'Windows_NT'">true</IsWindows>
-    <IsOSX>false</IsOSX>
-    <IsOSX Condition="'$(IsWindows)' != 'true' AND '$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))' == 'true'">true</IsOSX>
-    <IsLinux>false</IsLinux>
-    <IsLinux Condition="'$(IsWindows)' != 'true' AND '$(IsOSX)' != 'true' AND '$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</IsLinux>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'DebugDocker|AnyCPU'">
@@ -40,32 +31,17 @@
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <DebugType>portable</DebugType>
   </PropertyGroup>
-  <Target Name="PrintRID" BeforeTargets="Build">
-    <Message Text="IsWindows $(IsWindows)" Importance="high" />
-    <Message Text="IsOSX $(IsOSX)" Importance="high" />
-    <Message Text="IsLinux $(IsLinux)" Importance="high" />
-    <Message Text="ForceLinuxBuild $(ForceLinuxBuild)" Importance="high" />
-  </Target>
   <ItemGroup>
-    <PackageReference Include="QuantConnect.pythonnet" Version="2.0.1" />
+    <PackageReference Include="QuantConnect.pythonnet" Version="2.0.50" />
     <PackageReference Include="Accord" Version="3.6.0" />
     <PackageReference Include="Accord.Fuzzy" Version="3.6.0" />
     <PackageReference Include="Accord.MachineLearning" Version="3.6.0" />
     <PackageReference Include="Accord.Math" Version="3.6.0" />
     <PackageReference Include="Accord.Statistics" Version="3.6.0" />
     <PackageReference Include="DynamicInterop" Version="0.9.1" />
-    <PackageReference Include="MathNet.Numerics" Version="4.15.0" />
-    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="5.0.3">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="Newtonsoft.Json" Version="12.0.3" />
+    <PackageReference Include="MathNet.Numerics" Version="5.0.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
     <PackageReference Include="NodaTime" Version="3.0.5" />
-    <PackageReference Include="R.NET" Version="1.9.0" />
-  </ItemGroup>
-  <ItemGroup>
-    <Reference Include="System.Data.DataSetExtensions" />
-    <Reference Include="Microsoft.CSharp" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\Common\Properties\SharedAssemblyInfo.cs" Link="Properties\SharedAssemblyInfo.cs" />

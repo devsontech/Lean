@@ -1,11 +1,11 @@
 /*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
- * 
- * Licensed under the Apache License, Version 2.0 (the "License"); 
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -78,19 +78,19 @@ namespace QuantConnect.Lean.Engine
         {
             if (jobQueue == null)
             {
-                throw new ArgumentNullException("jobQueue");
+                throw new ArgumentNullException(nameof(jobQueue));
             }
             if (api == null)
             {
-                throw new ArgumentNullException("api");
+                throw new ArgumentNullException(nameof(api));
             }
             if (notify == null)
             {
-                throw new ArgumentNullException("notify");
+                throw new ArgumentNullException(nameof(notify));
             }
             if (leanManager == null)
             {
-                throw new ArgumentNullException("leanManager");
+                throw new ArgumentNullException(nameof(leanManager));
             }
             _api = api;
             _jobQueue = jobQueue;
@@ -107,9 +107,9 @@ namespace QuantConnect.Lean.Engine
         public static LeanEngineSystemHandlers FromConfiguration(Composer composer)
         {
             return new LeanEngineSystemHandlers(
-                composer.GetExportedValueByTypeName<IJobQueueHandler>(Config.Get("job-queue-handler")),
-                composer.GetExportedValueByTypeName<IApi>(Config.Get("api-handler")),
-                composer.GetExportedValueByTypeName<IMessagingHandler>(Config.Get("messaging-handler")), 
+                composer.GetExportedValueByTypeName<IJobQueueHandler>(Config.Get("job-queue-handler", "QuantConnect.Queues.JobQueue")),
+                composer.GetExportedValueByTypeName<IApi>(Config.Get("api-handler", "QuantConnect.Api.Api")),
+                composer.GetExportedValueByTypeName<IMessagingHandler>(Config.Get("messaging-handler", "QuantConnect.Messaging.Messaging")),
                 composer.GetExportedValueByTypeName<ILeanManager>(Config.Get("lean-manager-type", "LocalLeanManager")));
         }
 
@@ -118,9 +118,8 @@ namespace QuantConnect.Lean.Engine
         /// </summary>
         public void Initialize()
         {
-            Api.Initialize(Config.GetInt("job-user-id", 0), Config.Get("api-access-token", ""), Config.Get("data-folder"));
-            Notify.Initialize();
-            JobQueue.Initialize(Api);
+            Notify.Initialize(new MessagingHandlerInitializeParameters(Api));
+            JobQueue.Initialize(Api, Notify);
         }
 
         /// <summary>
@@ -131,9 +130,9 @@ namespace QuantConnect.Lean.Engine
         {
             Log.Trace("LeanEngineSystemHandlers.Dispose(): start...");
 
-            Api.DisposeSafely();
             LeanManager.DisposeSafely();
             Notify.DisposeSafely();
+            Api.DisposeSafely();
 
             Log.Trace("LeanEngineSystemHandlers.Dispose(): Disposed of system handlers.");
         }

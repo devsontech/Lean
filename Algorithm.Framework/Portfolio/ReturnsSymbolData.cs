@@ -17,7 +17,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using QuantConnect.Indicators;
-using QuantConnect.Util;
 
 namespace QuantConnect.Algorithm.Framework.Portfolio
 {
@@ -29,6 +28,11 @@ namespace QuantConnect.Algorithm.Framework.Portfolio
         private readonly Symbol _symbol;
         private readonly RateOfChange _roc;
         private readonly RollingWindow<IndicatorDataPoint> _window;
+
+        /// <summary>
+        /// The symbol's asset rate of change indicator
+        /// </summary>
+        public RateOfChange ROC { get {  return _roc; } }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ReturnsSymbolData"/> class

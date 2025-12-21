@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -29,42 +29,32 @@ namespace QuantConnect.Configuration
         private const string ApplicationName = "QuantConnect.ToolBox.exe";
         private const string ApplicationDescription = "Lean Engine ToolBox";
         private const string ApplicationHelpText = "\nThe ToolBox is a wrapper of >15 tools. "
-                                                   + "Each require a different set of parameters. Example: --app=YahooDownloader --tickers="
+                                                   + "Each require a different set of parameters. Example: --app=RandomDataGenerator --tickers="
                                                    + "SPY,AAPL --resolution=Daily --from-date=yyyyMMdd-HH:mm:ss --to-date=yyyyMMdd-HH:mm:ss";
         private static readonly List<CommandLineOption> Options = new List<CommandLineOption>
             {
                 new CommandLineOption("app", CommandOptionType.SingleValue,
-                                                     "[REQUIRED] Target tool, CASE INSENSITIVE: GDAXDownloader or GDAXDL/CryptoiqDownloader or CDL"
-                                                     + "/DukascopyDownloader or DDL/IEXDownloader or IEXDL"
-                                                     + "/FxcmDownloader or FDL/FxcmVolumeDownload or FVDL/GoogleDownloader or GDL/IBDownloader or IBDL"
-                                                     + "/KrakenDownloader or KDL/OandaDownloader or ODL/QuandlBitfinexDownloader or QBDL or SECDataDownloader or SECDL"
-                                                     + "/SECDataConverter or SECCV/YahooDownloader or YDL/AlgoSeekFuturesConverter or ASFC/AlgoSeekOptionsConverter or ASOC"
-                                                     + "/SmartInsiderConverter or SICV"
-                                                     + "/IVolatilityEquityConverter or IVEC/KaikoDataConverter or KDC/NseMarketDataConverter or NMDC"
-                                                     + "/QuantQuoteConverter or QQC/CoarseUniverseGenerator or CUG/\n"
-                                                     + "RandomDataGenerator or RDG/USTYCDL or USTreasuryYieldCurveDownloader"
-                                                     + "/USTYCCV or USTreasuryYieldCurveConverter/TIINC or TiingoNewsConverter/BZCV or BenzingaNewsDataConverter\n"
-                                                     + "Example 1: --app=DDL\n"
-                                                     + "Example 2: --app=NseMarketDataConverter\n"
-                                                     + "Example 3: --app=RDG"),
-                new CommandLineOption("tickers", CommandOptionType.MultipleValue, "[REQUIRED ALL downloaders (except QBDL, SECDL)] "
+                                                     "[REQUIRED] Target tool, CASE INSENSITIVE: GDAXDownloader or GDAXDL"
+                                                     + "/GoogleDownloader or GDL/IBDownloader or IBDL"
+                                                     + "/AlgoSeekFuturesConverter or ASFC"
+                                                     + "/KaikoDataConverter or KDC"
+                                                     + "/CoarseUniverseGenerator or CUG/\n"
+                                                     + "RandomDataGenerator or RDG\n"
+                                                     + "Example 1: --app=RDG"),
+                new CommandLineOption("tickers", CommandOptionType.MultipleValue, "[REQUIRED ALL downloaders] "
                                                                                   + "--tickers=SPY,AAPL,etc"),
-                new CommandLineOption("resolution", CommandOptionType.SingleValue, "[REQUIRED ALL downloaders (except QBDL, CDL, SECDL) and IVolatilityEquityConverter,"
-                                                                                   + " QuantQuoteConverter] *Not all downloaders support all resolutions. Send empty for more information.*"
+                new CommandLineOption("resolution", CommandOptionType.SingleValue, "[REQUIRED ALL downloaders]"
+                                                                                   + " *Not all downloaders support all resolutions. Send empty for more information.*"
                                                                                    + " CASE SENSITIVE: --resolution=Tick/Second/Minute/Hour/Daily/All" +Environment.NewLine+
                                                                                    "[OPTIONAL for RandomDataGenerator - same format as downloaders, Options only support Minute"),
                 new CommandLineOption("from-date", CommandOptionType.SingleValue, "[REQUIRED ALL downloaders] --from-date=yyyyMMdd-HH:mm:ss"),
                 new CommandLineOption("to-date", CommandOptionType.SingleValue, "[OPTIONAL for downloaders] If not provided 'DateTime.UtcNow' will "
                                                                                 + "be used. --to-date=yyyyMMdd-HH:mm:ss"),
-                new CommandLineOption("exchange", CommandOptionType.SingleValue, "[REQUIRED for CryptoiqDownloader] [Optional for KaikoDataConverter] The exchange to process, if not defined, all exchanges will be processed."),
-                new CommandLineOption("api-key", CommandOptionType.SingleValue, "[REQUIRED for QuandlBitfinexDownloader, IEXDownloader, BenzingaNewsDataDownloader]"),
-                new CommandLineOption("date", CommandOptionType.SingleValue, "[REQUIRED for AlgoSeekFuturesConverter, AlgoSeekOptionsConverter, KaikoDataConverter, SECDataConverter, SmartInsiderConverter, BenzingaNewsDataConverter]"
+                new CommandLineOption("exchange", CommandOptionType.SingleValue, "[Optional for KaikoDataConverter] The exchange to process, if not defined, all exchanges will be processed."),
+                new CommandLineOption("date", CommandOptionType.SingleValue, "[REQUIRED for AlgoSeekFuturesConverter, AlgoSeekOptionsConverter, KaikoDataConverter]"
                                                                              + "Date for the option bz files: --date=yyyyMMdd"),
-                new CommandLineOption("source-dir", CommandOptionType.SingleValue, "[REQUIRED for IVolatilityEquityConverter, KaikoDataConverter,"
-                                                                                   + " CoinApiDataConverter, NseMarketDataConverter, QuantQuoteConverter, SECDataConverter, USTreasuryYieldCurveConverter, SmartInsiderConverter, TiingoNewsConverter, BenzingaNewsDataConverter]"),
-                new CommandLineOption("destination-dir", CommandOptionType.SingleValue, "[REQUIRED for IVolatilityEquityConverter, "
-                                                                                        + "NseMarketDataConverter, QuantQuoteConverter, SECDataDownloader, SECDataConverter, USTreasuryYieldCurveDownloader, USTreasuryYieldCurveConverter, SmartInsiderConverter, TiingoNewsConverter, BenzingaNewsDataDownloader, BenzingaNewsDataConverter]"),
-                new CommandLineOption("source-meta-dir", CommandOptionType.SingleValue, "[REQUIRED for IVolatilityEquityConverter, BenzingaNewsDataConverter. OPTIONAL for SmartInsiderConverter]"),
+                new CommandLineOption("source-dir", CommandOptionType.SingleValue, "[REQUIRED for KaikoDataConverter,"),
+                new CommandLineOption("destination-dir", CommandOptionType.SingleValue, "[REQUIRED for RandomDataGenerator]"),
                 new CommandLineOption("start", CommandOptionType.SingleValue, "[REQUIRED for RandomDataGenerator. Format yyyyMMdd Example: --start=20010101]"),
                 new CommandLineOption("end", CommandOptionType.SingleValue, "[REQUIRED for RandomDataGenerator. Format yyyyMMdd Example: --end=20020101]"),
                 new CommandLineOption("market", CommandOptionType.SingleValue, "[OPTIONAL for RandomDataGenerator. Market of generated symbols. Defaults to default market for security type: Example: --market=usa]"),
@@ -79,6 +69,9 @@ namespace QuantConnect.Configuration
                 new CommandLineOption("splits-percentage", CommandOptionType.SingleValue, "[OPTIONAL for RandomDataGenerator. Sets the probability each equity generated will have a stock split event. Note that this is not the total probability for all symbols generated. Only used for Equity. Defaults to 15.0: Example: --splits-percentage=10.0 ]"),
                 new CommandLineOption("dividends-percentage", CommandOptionType.SingleValue, "[OPTIONAL for RandomDataGenerator. Sets the probability each equity generated will have dividends. Note that this is not the probability for all symbols genearted. Only used for Equity. Defaults to 60.0: Example: --dividends-percentage=25.5 ]"),
                 new CommandLineOption("dividend-every-quarter-percentage", CommandOptionType.SingleValue, "[OPTIONAL for RandomDataGenerator. Sets the probability each equity generated will have a dividend event every quarter. Note that this is not the total probability for all symbols generated. Only used for Equity. Defaults to 30.0: Example: --dividend-every-quarter-percentage=15.0 ]"),
+                new CommandLineOption("option-price-engine", CommandOptionType.SingleValue, "[OPTIONAL for RandomDataGenerator. Sets the stochastic process, and returns new pricing engine to run calculations for that option. Defaults to BaroneAdesiWhaleyApproximationEngine: Example: --option-price-engine=BaroneAdesiWhaleyApproximationEngine ]"),
+                new CommandLineOption("volatility-model-resolution", CommandOptionType.SingleValue, "[OPTIONAL for RandomDataGenerator. Sets the volatility model period span. Defaults to Daily: Example: --volatility-model-resolution=Daily ]"),
+                new CommandLineOption("chain-symbol-count", CommandOptionType.SingleValue, "[OPTIONAL for RandomDataGenerator. Sets the size of the option chain. Defaults to 1 put and 1 call: Example: --chain-symbol-count=2 ]")
             };
 
         /// <summary>

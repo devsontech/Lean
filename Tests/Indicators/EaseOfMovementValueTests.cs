@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  * 
@@ -25,13 +25,16 @@ namespace QuantConnect.Tests.Indicators
     {
         protected override IndicatorBase<TradeBar> CreateIndicator()
         {
+            // Even if the indicator is ready, there may be zero values
+            ValueCanBeZero = true;
+            RenkoBarSize = 0.5m;
             return new EaseOfMovementValue();
         }
 
         protected override string TestFileName => "spy_emv.txt";
 
         protected override string TestColumnName => "EMV";
-
+        
         [Test]
         public void TestTradeBarsWithVolume()
         {
@@ -76,6 +79,25 @@ namespace QuantConnect.Tests.Indicators
             emv.Update(new TradeBar() { Symbol = Symbols.AAPL, Low = 6, High = 7, Volume = 400, Time = reference.AddMinutes(4) });
             Assert.AreEqual(0.00639, (double)emv.Current.Value, 0.00001);
             Assert.IsTrue(emv.IsReady);
+        }
+
+        /// <summary>
+        /// The final value of this indicator is zero because it uses the Volume of the bars it receives.
+        /// Since RenkoBar's don't always have Volume, the final current value is zero. Therefore we
+        /// skip this test
+        /// </summary>
+        /// <param name="indicator"></param>
+        protected override void IndicatorValueIsNotZeroAfterReceiveRenkoBars(IndicatorBase indicator)
+        {
+        }
+
+        /// <summary>
+        /// The final value of this indicator is zero because the bars it's receiving are the same.
+        /// Therefore we skip this test
+        /// </summary>
+        /// <param name="indicator"></param>
+        protected override void IndicatorValueIsNotZeroAfterReceiveVolumeRenkoBars(IndicatorBase indicator)
+        {
         }
     }
 }

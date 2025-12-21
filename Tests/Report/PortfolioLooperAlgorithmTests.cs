@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -18,6 +18,7 @@ using QuantConnect.Lean.Engine.DataFeeds;
 using QuantConnect.Orders;
 using QuantConnect.Report;
 using QuantConnect.Securities;
+using QuantConnect.Brokerages;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -27,9 +28,9 @@ namespace QuantConnect.Tests.Report
     [TestFixture]
     public class PortfolioLooperAlgorithmTests
     {
-        private PortfolioLooperAlgorithm CreateAlgorithm(IEnumerable<Order> orders)
+        private PortfolioLooperAlgorithm CreateAlgorithm(IEnumerable<Order> orders, AlgorithmConfiguration algorithmConfiguration = null)
         {
-            var algorithm = new PortfolioLooperAlgorithm(100000m, orders);
+            var algorithm = new PortfolioLooperAlgorithm(100000m, orders, algorithmConfiguration);
 
             // Create MHDB and Symbol properties DB instances for the DataManager
             var marketHoursDatabase = MarketHoursDatabase.FromDataFolder();
@@ -43,9 +44,10 @@ namespace QuantConnect.Tests.Report
                         symbolPropertiesDataBase,
                         algorithm,
                         RegisteredSecurityDataTypesProvider.Null,
-                        new SecurityCacheProvider(algorithm.Portfolio)),
+                        new SecurityCacheProvider(algorithm.Portfolio),
+                        algorithm: algorithm),
                     dataPermissionManager,
-                    new DefaultDataProvider()),
+                    TestGlobals.DataProvider),
                 algorithm,
                 algorithm.TimeKeeper,
                 marketHoursDatabase,
@@ -58,7 +60,8 @@ namespace QuantConnect.Tests.Report
                 symbolPropertiesDataBase,
                 algorithm,
                 RegisteredSecurityDataTypesProvider.Null,
-                new SecurityCacheProvider(algorithm.Portfolio));
+                new SecurityCacheProvider(algorithm.Portfolio),
+                algorithm: algorithm);
 
             // Initialize security services and other properties so that we
             // don't get null reference exceptions during our re-calculation
@@ -77,8 +80,8 @@ namespace QuantConnect.Tests.Report
                 Symbol.CreateOption("AAPL", Market.USA, OptionStyle.American, OptionRight.Call, 120m, new DateTime(2020, 5, 21)),
                 Symbol.Create("EURUSD", SecurityType.Forex, Market.Oanda),
                 Symbol.Create("XAUUSD", SecurityType.Cfd, Market.Oanda),
-                Symbol.CreateFuture(Futures.Energies.CrudeOilWTI, Market.NYMEX, new DateTime(2020, 5, 21)),
-                Symbol.Create("BTCUSD", SecurityType.Crypto, Market.GDAX)
+                Symbol.CreateFuture(Futures.Energy.CrudeOilWTI, Market.NYMEX, new DateTime(2020, 5, 21)),
+                Symbol.Create("BTCUSD", SecurityType.Crypto, Market.Coinbase)
             }.Select(s => new MarketOrder(s, 1m, new DateTime(2020, 1, 1))).ToList();
 
             var algorithm = CreateAlgorithm(orders);
@@ -94,8 +97,8 @@ namespace QuantConnect.Tests.Report
                 Symbol.CreateOption("AAPL", Market.USA, OptionStyle.American, OptionRight.Call, 120m, new DateTime(2020, 5, 21)),
                 Symbol.Create("EURUSD", SecurityType.Forex, Market.Oanda),
                 Symbol.Create("XAUUSD", SecurityType.Cfd, Market.Oanda),
-                Symbol.CreateFuture(Futures.Energies.CrudeOilWTI, Market.NYMEX, new DateTime(2020, 5, 21)),
-                Symbol.Create("BTCUSD", SecurityType.Crypto, Market.GDAX)
+                Symbol.CreateFuture(Futures.Energy.CrudeOilWTI, Market.NYMEX, new DateTime(2020, 5, 21)),
+                Symbol.Create("BTCUSD", SecurityType.Crypto, Market.Coinbase)
             }.Select(s => new MarketOrder(s, 1m, new DateTime(2020, 1, 1)));
 
             var algorithm = CreateAlgorithm(orders);
@@ -106,6 +109,21 @@ namespace QuantConnect.Tests.Report
             Assert.IsTrue(algorithm.Securities.Where(x => x.Key.SecurityType == SecurityType.Cfd).All(x => x.Value.BuyingPowerModel.GetLeverage(x.Value) == 10000m));
             Assert.IsTrue(algorithm.Securities.Where(x => x.Key.SecurityType == SecurityType.Future).All(x => x.Value.BuyingPowerModel.GetLeverage(x.Value) == 1m));
             Assert.IsTrue(algorithm.Securities.Where(x => x.Key.SecurityType == SecurityType.Crypto).All(x => x.Value.BuyingPowerModel.GetLeverage(x.Value) == 10000m));
+        }
+
+        [TestCase("BTC", BrokerageName.Binance, AccountType.Cash)]
+        [TestCase("USDT", BrokerageName.Coinbase, AccountType.Cash)]
+        [TestCase("EUR", BrokerageName.Bitfinex, AccountType.Margin)]
+        public void SetsTheRightAlgorithmConfiguration(string currency, BrokerageName brokerageName, AccountType accountType)
+        {
+            var algorithm = CreateAlgorithm(new List<Order>(),
+                new AlgorithmConfiguration("AlgorightmName", new HashSet<string>(), currency, brokerageName, accountType,
+                    new Dictionary<string, string>(), DateTime.MinValue, DateTime.MinValue, null));
+            algorithm.Initialize();
+
+            Assert.AreEqual(currency, algorithm.AccountCurrency);
+            Assert.AreEqual(brokerageName, BrokerageModel.GetBrokerageName(algorithm.BrokerageModel));
+            Assert.AreEqual(accountType, algorithm.BrokerageModel.AccountType);
         }
     }
 }

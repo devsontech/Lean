@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,26 +11,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("System")
-AddReference("QuantConnect.Algorithm")
-AddReference("QuantConnect.Common")
-
-from System import *
-from QuantConnect import *
-from QuantConnect.Algorithm import *
-from QuantConnect.Data import SubscriptionDataSource
-from QuantConnect.Python import PythonData
-from datetime import date, timedelta, datetime
-from System.Collections.Generic import List
-from QuantConnect.Algorithm import QCAlgorithm
-from QuantConnect.Data.UniverseSelection import *
-import numpy as np
-import math
-import json
+from AlgorithmImports import *
 
 ### <summary>
-### In this algortihm we show how you can easily use the universe selection feature to fetch symbols
+### In this algorithm we show how you can easily use the universe selection feature to fetch symbols
 ### to be traded using the BaseData custom data system in combination with the AddUniverse{T} method.
 ### AddUniverse{T} requires a function that will return the symbols to be traded.
 ### </summary>
@@ -39,59 +23,73 @@ import json
 ### <meta name="tag" content="custom universes" />
 class DropboxBaseDataUniverseSelectionAlgorithm(QCAlgorithm):
 
-    def Initialize(self):
+    def initialize(self) -> None:
+        self.universe_settings.resolution = Resolution.DAILY
 
-        self.UniverseSettings.Resolution = Resolution.Daily
+        # Order margin value has to have a minimum of 0.5% of Portfolio value, allows filtering out small trades and reduce fees.
+        # Commented so regression algorithm is more sensitive
+        #self.settings.minimum_order_margin_portfolio_percentage = 0.005
 
-        self.SetStartDate(2017, 7, 4)
-        self.SetEndDate(2018, 7, 4)
+        self.set_start_date(2017, 7, 6)
+        self.set_end_date(2018, 7, 4)
 
-        self.AddUniverse(StockDataSource, "my-stock-data-source", self.stockDataSource)
+        universe = self.add_universe(StockDataSource, self.stock_data_source)
 
-    def stockDataSource(self, data):
+        historical_selection_data = self.history(universe, 3)
+        if len(historical_selection_data) != 3:
+            raise ValueError(f"Unexpected universe data count {len(historical_selection_data)}")
+
+        for universe_data in historical_selection_data["symbols"]:
+            if len(universe_data) != 5:
+                raise ValueError(f"Unexpected universe data receieved")
+
+        self._changes = None
+
+    def stock_data_source(self, data: list[DynamicData]) -> list[Symbol]:
         list = []
         for item in data:
             for symbol in item["Symbols"]:
                 list.append(symbol)
         return list
 
-    def OnData(self, slice):
-
-        if slice.Bars.Count == 0: return
-        if self._changes is None: return
+    def on_data(self, slice: Slice) -> None:
+        if slice.bars.count == 0:
+           return
+        if not self._changes:
+           return
 
         # start fresh
-        self.Liquidate()
+        self.liquidate()
 
-        percentage = 1 / slice.Bars.Count
-        for tradeBar in slice.Bars.Values:
-            self.SetHoldings(tradeBar.Symbol, percentage)
+        percentage = 1 / slice.bars.count
+        for trade_bar in slice.bars.values():
+            self.set_holdings(trade_bar.symbol, percentage)
 
         # reset changes
         self._changes = None
 
-    def OnSecuritiesChanged(self, changes):
+    def on_securities_changed(self, changes: SecurityChanges) -> None:
         self._changes = changes
 
 class StockDataSource(PythonData):
 
-    def GetSource(self, config, date, isLiveMode):
-        url = "https://www.dropbox.com/s/2l73mu97gcehmh7/daily-stock-picker-live.csv?dl=1" if isLiveMode else \
+    def get_source(self, config: SubscriptionDataConfig, date: datetime, is_live_mode: bool) -> SubscriptionDataSource:
+        url = "https://www.dropbox.com/s/2l73mu97gcehmh7/daily-stock-picker-live.csv?dl=1" if is_live_mode else \
             "https://www.dropbox.com/s/ae1couew5ir3z9y/daily-stock-picker-backtest.csv?dl=1"
+        return SubscriptionDataSource(url, SubscriptionTransportMedium.REMOTE_FILE)
 
-        return SubscriptionDataSource(url, SubscriptionTransportMedium.RemoteFile)
-
-    def Reader(self, config, line, date, isLiveMode):
-        if not (line.strip() and line[0].isdigit()): return None
+    def reader(self, config: SubscriptionDataConfig, line: str, date: datetime, is_live_mode: bool) -> DynamicData:
+        if not (line.strip() and line[0].isdigit()):
+            return None
 
         stocks = StockDataSource()
-        stocks.Symbol = config.Symbol
+        stocks.symbol = config.symbol
 
         csv = line.split(',')
-        if isLiveMode:
-            stocks.Time = date
+        if is_live_mode:
+            stocks.time = date
             stocks["Symbols"] = csv
         else:
-            stocks.Time = datetime.strptime(csv[0], "%Y%m%d")
+            stocks.time = datetime.strptime(csv[0], "%Y%m%d")
             stocks["Symbols"] = csv[1:]
         return stocks

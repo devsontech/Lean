@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -14,9 +14,6 @@
  *
 */
 
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using Newtonsoft.Json;
 using NUnit.Framework;
 using QuantConnect.Packets;
@@ -25,52 +22,22 @@ namespace QuantConnect.Tests.Common.Packets
 {
     public class ControlsTests
     {
-        [TestCase(0)]
-        [TestCase(1)]
-        [TestCase(2)]
-        [TestCase(3)]
-        [TestCase(FileAccess.Read)]
-        [TestCase(FileAccess.Write)]
-        [TestCase(FileAccess.ReadWrite)]
-        public void StoragePermissionsJsonRoundTrip(FileAccess permissions)
-        {
-            var control = new Controls { StoragePermissions = permissions };
-            var json = JsonConvert.SerializeObject(control);
-            var result = JsonConvert.DeserializeObject<Controls>(json);
-
-            Assert.AreEqual(permissions, result.StoragePermissions);
-        }
-
-        [TestCase(0)]
-        [TestCase(1)]
-        [TestCase(2)]
-        [TestCase(3)]
-        [TestCase(4)]
-        [TestCase(Resolution.Daily)]
-        [TestCase(Resolution.Hour)]
-        [TestCase(Resolution.Minute)]
-        [TestCase(Resolution.Second)]
-        [TestCase(Resolution.Tick)]
-        public void DataResolutionPermissionsJsonRoundTrip(Resolution resolution)
-        {
-            var control = new Controls { DataResolutionPermissions = new HashSet<Resolution>{ resolution } };
-            var json = JsonConvert.SerializeObject(control);
-
-            var result = JsonConvert.DeserializeObject<Controls>(json);
-
-            Assert.AreEqual(resolution, result.DataResolutionPermissions.Single());
-        }
-
         [Test]
-        public void StringDataResolutionPermissionsJsonRoundTrip()
+        public void StoragePermissionsJsonRoundTrip([Values] bool read, [Values] bool write, [Values] bool delete)
         {
-            var json = "{\"dataResolutionPermissions\":[\"Tick\", \"daily\", \"1\"]}";
+            var permissions = new QuantConnect.Packets.StoragePermissions()
+            {
+                Read = read,
+                Write = write,
+                Delete = delete
+            };
+            var control = new Controls { StorageAccess = permissions };
+            var json = JsonConvert.SerializeObject(control);
             var result = JsonConvert.DeserializeObject<Controls>(json);
 
-            Assert.AreEqual(3, result.DataResolutionPermissions.Count);
-            Assert.IsTrue(result.DataResolutionPermissions.Contains(Resolution.Second));
-            Assert.IsTrue(result.DataResolutionPermissions.Contains(Resolution.Tick));
-            Assert.IsTrue(result.DataResolutionPermissions.Contains(Resolution.Daily));
+            Assert.AreEqual(permissions.Read, result.StorageAccess.Read);
+            Assert.AreEqual(permissions.Write, result.StorageAccess.Write);
+            Assert.AreEqual(permissions.Delete, result.StorageAccess.Delete);
         }
     }
 }

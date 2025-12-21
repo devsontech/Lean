@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -22,6 +22,7 @@ using QuantConnect.Algorithm.CSharp;
 using QuantConnect.Data;
 using QuantConnect.Data.Auxiliary;
 using QuantConnect.Data.Market;
+using QuantConnect.Data.UniverseSelection;
 using QuantConnect.Interfaces;
 using QuantConnect.Securities;
 using QuantConnect.Tests.Engine.DataFeeds;
@@ -39,7 +40,7 @@ namespace QuantConnect.Tests.Common.Securities
         public void Setup()
         {
             SymbolCache.Clear();
-            _subscriptionManager = new SubscriptionManager();
+            _subscriptionManager = new SubscriptionManager(NullTimeKeeper.Instance);
             var dataManager = new DataManagerStub();
             _subscriptionManager.SetDataManager(dataManager);
             _marketHoursDatabase = MarketHoursDatabase.FromDataFolder();
@@ -48,7 +49,7 @@ namespace QuantConnect.Tests.Common.Securities
 
         [TestCase("EURUSD", SecurityType.Forex, Market.FXCM)]
         [TestCase("EURUSD", SecurityType.Forex, Market.Oanda)]
-        [TestCase("BTCUSD", SecurityType.Crypto, Market.GDAX)]
+        [TestCase("BTCUSD", SecurityType.Crypto, Market.Coinbase)]
         public void CanCreate_ForexOrCrypto_WithCorrectSubscriptions(string ticker, SecurityType type, string market)
         {
             var symbol = Symbol.Create(ticker, type, market);
@@ -66,11 +67,11 @@ namespace QuantConnect.Tests.Common.Securities
         {
             var optionSymbol = Symbol.Create("GOOG", SecurityType.Option, Market.USA);
 
-            var configs = _subscriptionManager.SubscriptionDataConfigService.Add(typeof(ZipEntryName), optionSymbol, Resolution.Minute, false, false, false);
+            var configs = _subscriptionManager.SubscriptionDataConfigService.Add(typeof(OptionUniverse), optionSymbol, Resolution.Minute, false, false, false);
             var option = _securityService.CreateSecurity(optionSymbol, configs, 1.0m, false);
 
             Assert.AreEqual(option.Subscriptions.Count(), 1);
-            Assert.AreEqual(option.Subscriptions.First().Type, typeof(ZipEntryName));
+            Assert.AreEqual(option.Subscriptions.First().Type, typeof(OptionUniverse));
             Assert.AreEqual(option.Subscriptions.First().TickType, TickType.Quote);
         }
 
@@ -119,7 +120,7 @@ namespace QuantConnect.Tests.Common.Securities
         [Test]
         public void ThrowOnCreateCryptoNotDescribedInCSV()
         {
-            var symbol = Symbol.Create("ABCDEFG", SecurityType.Crypto, Market.GDAX);
+            var symbol = Symbol.Create("ABCDEFG", SecurityType.Crypto, Market.Coinbase);
 
             Assert.Throws<ArgumentException>(() =>
             {
@@ -131,9 +132,8 @@ namespace QuantConnect.Tests.Common.Securities
         [Test]
         public void CanCreate_ConcreteOptions_WithCorrectSubscriptions()
         {
-            var underlying = SecurityIdentifier.GenerateEquity(new DateTime(1998, 01, 02), "SPY", Market.USA);
-            var optionIdentifier = SecurityIdentifier.GenerateOption(new DateTime(2015, 09, 18), underlying, Market.USA, 195.50m, OptionRight.Put, OptionStyle.European);
-            var optionSymbol = new Symbol(optionIdentifier, "SPY", Symbol.Empty);
+            var optionSymbol = Symbol.CreateOption(Symbols.SPY, Market.USA, OptionStyle.European, OptionRight.Put, 195.50m,
+                new DateTime(2015, 09, 18));
 
             var subscriptionTypes = new List<Tuple<Type, TickType>>
             {
@@ -176,19 +176,35 @@ namespace QuantConnect.Tests.Common.Securities
             Assert.IsTrue(security.Subscriptions.Any(x => x.TickType == TickType.Quote && x.Type == typeof(QuoteBar)));
             Assert.IsTrue(security.Subscriptions.Any(x => x.TickType == TickType.Trade && x.Type == typeof(TradeBar)));
         }
-        
+
+        [TestCase("BTGUSDT", SecurityType.CryptoFuture, Market.Binance)]
+        [TestCase("USDTEUR", SecurityType.Forex, Market.Oanda)]
+        public void CannotCreateSecurityWhenBaseCurrencyNotFound(string ticker, SecurityType securityType, string market)
+        {
+            var symbol = QuantConnect.Symbol.Create(ticker, securityType, market);
+            var subscriptionTypes = new List<Tuple<Type, TickType>>
+            {
+                new Tuple<Type, TickType>(typeof(TradeBar), TickType.Trade),
+                new Tuple<Type, TickType>(typeof(QuoteBar), TickType.Quote),
+                new Tuple<Type, TickType>(typeof(OpenInterest), TickType.OpenInterest)
+            };
+
+            var configs = _subscriptionManager.SubscriptionDataConfigService.Add(symbol, Resolution.Second, false, false, false, false, false, subscriptionTypes);
+            Assert.Throws<ArgumentException>(() => _securityService.CreateSecurity(symbol, configs, 1.0m, false));
+        }
+
         [Test]
         public void CreatesEquityOptionWithContractMultiplierEqualsToContractUnitOfTrade()
         {
             var underlying = Symbol.Create("TWX", SecurityType.Equity, Market.USA);
             var equityOption = Symbol.CreateOption(
-                underlying, 
-                Market.USA, 
-                OptionStyle.American, 
-                OptionRight.Call, 
+                underlying,
+                Market.USA,
+                OptionStyle.American,
+                OptionRight.Call,
                 320m,
                 new DateTime(2020, 12, 18));
-            
+
             var subscriptionTypes = new List<Tuple<Type, TickType>>
             {
                 new Tuple<Type, TickType>(typeof(TradeBar), TickType.Trade),
@@ -198,7 +214,7 @@ namespace QuantConnect.Tests.Common.Securities
 
             var configs = _subscriptionManager.SubscriptionDataConfigService.Add(equityOption, Resolution.Minute, true, false, false, false, false, subscriptionTypes);
             var equityOptionSecurity = (QuantConnect.Securities.Option.Option)_securityService.CreateSecurity(equityOption, configs, 1.0m);
-            
+
             Assert.AreEqual(100, equityOptionSecurity.ContractMultiplier);
             Assert.AreEqual(100,equityOptionSecurity.ContractUnitOfTrade);
         }
@@ -212,13 +228,13 @@ namespace QuantConnect.Tests.Common.Securities
                 new DateTime(2020, 12, 18));
 
             var futureOption = Symbol.CreateOption(
-                underlying, 
-                Market.CME, 
-                OptionStyle.American, 
-                OptionRight.Call, 
+                underlying,
+                Market.CME,
+                OptionStyle.American,
+                OptionRight.Call,
                 3250m,
                 new DateTime(2020, 12, 18));
-            
+
             var subscriptionTypes = new List<Tuple<Type, TickType>>
             {
                 new Tuple<Type, TickType>(typeof(TradeBar), TickType.Trade),
@@ -228,7 +244,7 @@ namespace QuantConnect.Tests.Common.Securities
 
             var configs = _subscriptionManager.SubscriptionDataConfigService.Add(futureOption, Resolution.Minute, true, false, false, false, false, subscriptionTypes);
             var futureOptionSecurity = (QuantConnect.Securities.Option.Option)_securityService.CreateSecurity(futureOption, configs, 1.0m);
-            
+
             Assert.AreEqual(50, futureOptionSecurity.ContractMultiplier);
             Assert.AreEqual(1, futureOptionSecurity.ContractUnitOfTrade);
         }
@@ -239,7 +255,7 @@ namespace QuantConnect.Tests.Common.Securities
             // Arrange
             var equitySymbol = Symbol.Create("AAPL", SecurityType.Equity, Market.USA);
             var mockedPrimaryExchangeProvider = new Mock<IPrimaryExchangeProvider>();
-            mockedPrimaryExchangeProvider.Setup(pep => pep.GetPrimaryExchange(equitySymbol.ID)).Returns(PrimaryExchange.NASDAQ);
+            mockedPrimaryExchangeProvider.Setup(pep => pep.GetPrimaryExchange(equitySymbol.ID)).Returns(Exchange.NASDAQ);
 
             var algorithm = new AlgorithmStub();
             var securityService = new SecurityService(algorithm.Portfolio.CashBook,
@@ -247,11 +263,11 @@ namespace QuantConnect.Tests.Common.Securities
                 SymbolPropertiesDatabase.FromDataFolder(),
                 algorithm,
                 new RegisteredSecurityDataTypesProvider(),
-                new SecurityCacheProvider(algorithm.Portfolio), 
-                mockedPrimaryExchangeProvider.Object);
-
+                new SecurityCacheProvider(algorithm.Portfolio),
+                mockedPrimaryExchangeProvider.Object,
+                algorithm: algorithm);
             var configs = _subscriptionManager.SubscriptionDataConfigService.Add(typeof(TradeBar), equitySymbol, Resolution.Second, false, false, false);
-            
+
             // Act
             var equity = securityService.CreateSecurity(equitySymbol, configs, 1.0m, false);
 
@@ -259,7 +275,7 @@ namespace QuantConnect.Tests.Common.Securities
             Assert.AreEqual(equity.Subscriptions.Count(), 1);
             Assert.AreEqual(equity.Subscriptions.First().Type, typeof(TradeBar));
             Assert.AreEqual(equity.Subscriptions.First().TickType, TickType.Trade);
-            Assert.AreEqual(((QuantConnect.Securities.Equity.Equity)equity).PrimaryExchange, PrimaryExchange.NASDAQ);
+            Assert.AreEqual(((QuantConnect.Securities.Equity.Equity)equity).PrimaryExchange, Exchange.NASDAQ);
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,35 +11,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("System")
-AddReference("QuantConnect.Algorithm")
-AddReference("QuantConnect.Common")
-
-from System import *
-from QuantConnect import *
-from QuantConnect.Algorithm import *
+from AlgorithmImports import *
 
 ### <summary>
 ### Related to GH issue 4275, reproduces a failed string to symbol implicit conversion asserting the exception
 ### thrown contains the used ticker
 ### </summary>
 class StringToSymbolImplicitConversionRegressionAlgorithm(QCAlgorithm):
-    def Initialize(self):
+    def initialize(self):
         '''Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. All algorithms must initialized.'''
-        self.SetStartDate(2013,10, 7)
-        self.SetEndDate(2013,10, 8)
+        self.set_start_date(2013,10, 7)
+        self.set_end_date(2013,10, 8)
 
-        self.AddEquity("SPY", Resolution.Minute)
+        self.add_equity("SPY", Resolution.MINUTE)
 
-    def OnData(self, data):
+    def on_data(self, data):
         '''OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
 
         Arguments:
             data: Slice object keyed by symbol containing the stock data
         '''
         try:
-            self.MarketOrder("PEPE", 1)
+            self.market_order("PEPE", 1)
         except Exception as exception:
-            if "This asset symbol (PEPE 0) was not found in your security list" in str(exception) and not self.Portfolio.Invested:
-                self.SetHoldings("SPY", 1)
+            if "PEPE was not found" in str(exception) and not self.portfolio.invested:
+                self.set_holdings("SPY", 1)

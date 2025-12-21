@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,24 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("System")
-AddReference("QuantConnect.Algorithm")
-AddReference("QuantConnect.Common")
-
-from System import *
-from QuantConnect import *
-from QuantConnect.Orders import *
-from QuantConnect.Algorithm import *
-from QuantConnect.Algorithm.Framework import *
-from QuantConnect.Algorithm.Framework.Alphas import *
-from QuantConnect.Algorithm.Framework.Execution import *
-from QuantConnect.Algorithm.Framework.Selection import *
-from QuantConnect.Algorithm.Framework.Portfolio import *
-from Risk.CompositeRiskManagementModel import CompositeRiskManagementModel
-from Risk.MaximumUnrealizedProfitPercentPerSecurity import MaximumUnrealizedProfitPercentPerSecurity
-from Risk.MaximumDrawdownPercentPerSecurity import MaximumDrawdownPercentPerSecurity
-from datetime import timedelta
+from AlgorithmImports import *
 
 ### <summary>
 ### Show cases how to use the CompositeRiskManagementModel.
@@ -36,23 +19,23 @@ from datetime import timedelta
 class CompositeRiskManagementModelFrameworkAlgorithm(QCAlgorithm):
     '''Show cases how to use the CompositeRiskManagementModel.'''
 
-    def Initialize(self):
+    def initialize(self):
 
         # Set requested data resolution
-        self.UniverseSettings.Resolution = Resolution.Minute
+        self.universe_settings.resolution = Resolution.MINUTE
 
-        self.SetStartDate(2013,10,7)   #Set Start Date
-        self.SetEndDate(2013,10,11)    #Set End Date
-        self.SetCash(100000)           #Set Strategy Cash
+        self.set_start_date(2013,10,7)   #Set Start Date
+        self.set_end_date(2013,10,11)    #Set End Date
+        self.set_cash(100000)           #Set Strategy Cash
 
         # set algorithm framework models
-        self.SetUniverseSelection(ManualUniverseSelectionModel([Symbol.Create("SPY", SecurityType.Equity, Market.USA)]))
-        self.SetAlpha(ConstantAlphaModel(InsightType.Price, InsightDirection.Up, timedelta(minutes = 20), 0.025, None))
-        self.SetPortfolioConstruction(EqualWeightingPortfolioConstructionModel())
-        self.SetExecution(ImmediateExecutionModel())
+        self.set_universe_selection(ManualUniverseSelectionModel([Symbol.create("SPY", SecurityType.EQUITY, Market.USA)]))
+        self.set_alpha(ConstantAlphaModel(InsightType.PRICE, InsightDirection.UP, timedelta(minutes = 20), 0.025, None))
+        self.set_portfolio_construction(EqualWeightingPortfolioConstructionModel())
+        self.set_execution(ImmediateExecutionModel())
 
         # define risk management model as a composite of several risk management models
-        self.SetRiskManagement(CompositeRiskManagementModel(
+        self.set_risk_management(CompositeRiskManagementModel(
             MaximumUnrealizedProfitPercentPerSecurity(0.01),
             MaximumDrawdownPercentPerSecurity(0.01)
         ))

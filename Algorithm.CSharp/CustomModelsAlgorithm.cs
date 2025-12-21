@@ -15,6 +15,7 @@
 
 using System;
 using System.Collections.Generic;
+using QuantConnect.Data;
 using QuantConnect.Data.Market;
 using QuantConnect.Interfaces;
 using QuantConnect.Orders;
@@ -54,7 +55,7 @@ namespace QuantConnect.Algorithm.CSharp
             _security.SetBuyingPowerModel(new CustomBuyingPowerModel(this));
         }
 
-        public void OnData(TradeBars data)
+        public override void OnData(Slice slice)
         {
             var openOrders = Transactions.GetOpenOrders(_spy);
             if (openOrders.Count != 0) return;
@@ -178,6 +179,89 @@ namespace QuantConnect.Algorithm.CSharp
         }
 
         /// <summary>
+        /// The simple fill model shows how to implement a simpler version of 
+        /// the most popular order fills: Market, Stop Market and Limit
+        /// </summary>
+        public class SimpleCustomFillModel : FillModel
+        {
+            private static OrderEvent CreateOrderEvent(Security asset, Order order)
+            {
+                var utcTime = asset.LocalTime.ConvertToUtc(asset.Exchange.TimeZone);
+                return new OrderEvent(order, utcTime, OrderFee.Zero);
+            }
+
+            private static OrderEvent SetOrderEventToFilled(OrderEvent fill, decimal fillPrice, decimal fillQuantity)
+            {
+                fill.Status = OrderStatus.Filled;
+                fill.FillQuantity = fillQuantity;
+                fill.FillPrice = fillPrice;
+                return fill;
+            }
+
+            private static TradeBar GetTradeBar(Security asset, OrderDirection orderDirection)
+            {
+                var tradeBar = asset.Cache.GetData<TradeBar>();
+                if (tradeBar != null) return tradeBar;
+                
+                // Tick-resolution data doesn't have TradeBar, use the asset price
+                var price = asset.Price;
+                return new TradeBar(asset.LocalTime, asset.Symbol, price, price, price, price, 0);
+            }
+
+            public override OrderEvent MarketFill(Security asset, MarketOrder order)
+            {
+                var fill = CreateOrderEvent(asset, order);
+                if (order.Status == OrderStatus.Canceled) return fill;
+
+                return SetOrderEventToFilled(fill,
+                    order.Direction == OrderDirection.Buy
+                        ? asset.Cache.AskPrice
+                        : asset.Cache.BidPrice,
+                    order.Quantity);
+            }
+
+            public override OrderEvent StopMarketFill(Security asset, StopMarketOrder order)
+            {
+                var fill = CreateOrderEvent(asset, order);
+                if (order.Status == OrderStatus.Canceled) return fill;
+
+                var stopPrice = order.StopPrice;
+                var tradeBar = GetTradeBar(asset, order.Direction);
+                
+                return order.Direction switch
+                {
+                    OrderDirection.Buy => tradeBar.Low < stopPrice
+                        ? SetOrderEventToFilled(fill, stopPrice, order.Quantity)
+                        : fill,
+                    OrderDirection.Sell => tradeBar.High > stopPrice
+                        ? SetOrderEventToFilled(fill, stopPrice, order.Quantity)
+                        : fill,
+                    _ => fill
+                };
+            }
+
+            public override OrderEvent LimitFill(Security asset, LimitOrder order)
+            {
+                var fill = CreateOrderEvent(asset, order);
+                if (order.Status == OrderStatus.Canceled) return fill;
+
+                var limitPrice = order.LimitPrice;
+                var tradeBar = GetTradeBar(asset, order.Direction);
+
+                return order.Direction switch
+                {
+                    OrderDirection.Buy => tradeBar.High > limitPrice
+                        ? SetOrderEventToFilled(fill, limitPrice, order.Quantity)
+                        : fill,
+                    OrderDirection.Sell => tradeBar.Low < limitPrice
+                        ? SetOrderEventToFilled(fill, limitPrice, order.Quantity)
+                        : fill,
+                    _ => fill
+                };
+            }
+        }
+
+        /// <summary>
         /// This is used by the regression test system to indicate if the open source Lean repository has the required data to run this algorithm.
         /// </summary>
         public bool CanRunLocally { get; } = true;
@@ -185,54 +269,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 330;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "62"},
+            {"Total Orders", "63"},
             {"Average Win", "0.11%"},
             {"Average Loss", "-0.06%"},
             {"Compounding Annual Return", "-7.236%"},
             {"Drawdown", "2.400%"},
             {"Expectancy", "-0.187"},
+            {"Start Equity", "100000"},
+            {"End Equity", "99370.95"},
             {"Net Profit", "-0.629%"},
-            {"Sharpe Ratio", "-1.475"},
-            {"Probabilistic Sharpe Ratio", "23.597%"},
+            {"Sharpe Ratio", "-1.47"},
+            {"Sortino Ratio", "-2.086"},
+            {"Probabilistic Sharpe Ratio", "21.874%"},
             {"Loss Rate", "70%"},
             {"Win Rate", "30%"},
             {"Profit-Loss Ratio", "1.73"},
-            {"Alpha", "-0.136"},
-            {"Beta", "0.126"},
-            {"Annual Standard Deviation", "0.047"},
+            {"Alpha", "-0.102"},
+            {"Beta", "0.122"},
+            {"Annual Standard Deviation", "0.04"},
             {"Annual Variance", "0.002"},
-            {"Information Ratio", "-5.094"},
-            {"Tracking Error", "0.118"},
-            {"Treynor Ratio", "-0.547"},
+            {"Information Ratio", "-4.126"},
+            {"Tracking Error", "0.102"},
+            {"Treynor Ratio", "-0.479"},
             {"Total Fees", "$62.25"},
-            {"Estimated Strategy Capacity", "$45000000.00"},
-            {"Fitness Score", "0.16"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "-2.59"},
-            {"Return Over Maximum Drawdown", "-3.337"},
-            {"Portfolio Turnover", "2.562"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "1118fb362bfe261323a6b496d50bddde"}
+            {"Estimated Strategy Capacity", "$52000000.00"},
+            {"Lowest Capacity Asset", "SPY R735QTJ8XC9X"},
+            {"Portfolio Turnover", "197.95%"},
+            {"Drawdown Recovery", "2"},
+            {"OrderListHash", "709bbf9af9ec6b43a10617dc192a6a5b"}
         };
     }
 }

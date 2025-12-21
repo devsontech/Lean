@@ -29,8 +29,9 @@ namespace QuantConnect.Data.Consolidators
         /// Initializes a new instance of the <see cref="TickQuoteBarConsolidator"/> class
         /// </summary>
         /// <param name="period">The minimum span of time before emitting a consolidated bar</param>
-        public TickQuoteBarConsolidator(TimeSpan period)
-            : base(period)
+        /// <param name="startTime">Optionally the bar start time anchor to use</param>
+        public TickQuoteBarConsolidator(TimeSpan period, TimeSpan? startTime = null)
+            : base(period, startTime)
         {
         }
 
@@ -91,7 +92,7 @@ namespace QuantConnect.Data.Consolidators
         {
             if (workingBar == null)
             {
-                workingBar = new QuoteBar(GetRoundedBarTime(data.Time), data.Symbol, null, decimal.Zero, null, decimal.Zero, Period);
+                workingBar = new QuoteBar(GetRoundedBarTime(data), data.Symbol, null, decimal.Zero, null, decimal.Zero, Period);
 
                 // open ask and bid should match previous close ask and bid
                 if (Consolidated != null)

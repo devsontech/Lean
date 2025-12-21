@@ -14,7 +14,6 @@
  *
 */
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using QuantConnect.Data;
@@ -36,17 +35,17 @@ namespace QuantConnect.Algorithm.CSharp
     public class BasicTemplateOptionsFilterUniverseAlgorithm : QCAlgorithm, IRegressionAlgorithmDefinition
     {
         private const string UnderlyingTicker = "GOOG";
-        public Symbol OptionSymbol;
+        private Symbol _optionSymbol;
 
         public override void Initialize()
         {
             SetStartDate(2015, 12, 24);
-            SetEndDate(2015, 12, 24);
+            SetEndDate(2015, 12, 28);
             SetCash(100000);
 
             var equity = AddEquity(UnderlyingTicker);
             var option = AddOption(UnderlyingTicker);
-            OptionSymbol = option.Symbol;
+            _optionSymbol = option.Symbol;
 
             // Set our custom universe filter, Expires today, is a call, and is within 10 dollars of the current price
             option.SetFilter(universe => from symbol in universe.WeeklysOnly().Expiration(0, 1)
@@ -64,7 +63,7 @@ namespace QuantConnect.Algorithm.CSharp
             if (!Portfolio.Invested)
             {
                 OptionChain chain;
-                if (slice.OptionChains.TryGetValue(OptionSymbol, out chain))
+                if (slice.OptionChains.TryGetValue(_optionSymbol, out chain))
                 {
                     // Get the first ITM call expiring today
                     var contract = (
@@ -95,23 +94,41 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 12290;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "2"},
+            {"Total Orders", "2"},
             {"Average Win", "0%"},
-            {"Average Loss", "0%"},
-            {"Compounding Annual Return", "0%"},
-            {"Drawdown", "0%"},
-            {"Expectancy", "0"},
-            {"Net Profit", "0%"},
+            {"Average Loss", "-0.40%"},
+            {"Compounding Annual Return", "-20.338%"},
+            {"Drawdown", "0.300%"},
+            {"Expectancy", "-1"},
+            {"Start Equity", "100000"},
+            {"End Equity", "99689"},
+            {"Net Profit", "-0.311%"},
             {"Sharpe Ratio", "0"},
+            {"Sortino Ratio", "0"},
             {"Probabilistic Sharpe Ratio", "0%"},
-            {"Loss Rate", "0%"},
+            {"Loss Rate", "100%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
             {"Alpha", "0"},
@@ -123,26 +140,10 @@ namespace QuantConnect.Algorithm.CSharp
             {"Treynor Ratio", "0"},
             {"Total Fees", "$1.00"},
             {"Estimated Strategy Capacity", "$0"},
-            {"Fitness Score", "0"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "0"},
-            {"Return Over Maximum Drawdown", "0"},
-            {"Portfolio Turnover", "0"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "92d8a50efe230524512404dab66b19dd"}
+            {"Lowest Capacity Asset", "GOOCV VP83T1ZUHROL"},
+            {"Portfolio Turnover", "15.08%"},
+            {"Drawdown Recovery", "0"},
+            {"OrderListHash", "c53bc9318676161ed3b7797c945e2113"}
         };
     }
 }

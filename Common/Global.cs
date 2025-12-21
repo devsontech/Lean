@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -14,55 +14,16 @@
 */
 
 using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.Runtime.CompilerServices;
-using System.Runtime.Serialization;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
+using Newtonsoft.Json.Linq;
+using System.ComponentModel;
 using QuantConnect.Securities;
-using static QuantConnect.StringExtensions;
+using Newtonsoft.Json.Converters;
+using System.Runtime.Serialization;
+using System.Runtime.CompilerServices;
 
 namespace QuantConnect
 {
-    /// <summary>
-    /// Equity US exchanges
-    /// </summary>
-    /// <remarks>
-    /// The byte value of each entry are the byte representation of the exchange single letter code.
-    /// E.g.
-    ///     - 'Q' byte representation is 81 and it maps to NASDAQ
-    ///     - 'Z' byte representation is 90 and it maps to BATS
-    /// </remarks>
-    public enum PrimaryExchange : byte
-    {
-#pragma warning disable 1591
-        UNKNOWN=0,
-        NASDAQ=81,
-        BATS=90,
-        ARCA=80,
-        NYSE=78,
-        NSE=67,
-        FINRA=68,
-        ISE=73,
-        OPRA,
-        CSE=77,
-        CBOE=87,
-        AMEX=65,
-        SIAC,
-        EDGA=74,
-        EDGX=75,
-        NASDAQ_BX=66,
-        NASDAQ_PSX=88,
-        BATS_Y,
-        C2,
-        BOSTON,
-        MIAX,
-        ISE_GEMINI,
-        ISE_MERCURY,
-#pragma warning restore 1591
-    }
-
     /// <summary>
     /// Shortcut date format strings
     /// </summary>
@@ -75,11 +36,13 @@ namespace QuantConnect
         /// Daily and hourly time format
         public const string TwelveCharacter = "yyyyMMdd HH:mm";
         /// JSON Format Date Representation
-        public static string JsonFormat = "yyyy-MM-ddTHH:mm:ss";
+        public static string JsonFormat { get; } = "yyyy-MM-ddTHH:mm:ss";
         /// MySQL Format Date Representation
         public const string DB = "yyyy-MM-dd HH:mm:ss";
         /// QuantConnect UX Date Representation
         public const string UI = "yyyy-MM-dd HH:mm:ss";
+        /// ISO Date Representation
+        public const string ISOShort = "yyyy-MM-ddTHH:mm:ssZ";
         /// en-US Short Date and Time Pattern
         public const string USShort = "M/d/yy h:mm tt";
         /// en-US Short Date Pattern
@@ -101,41 +64,104 @@ namespace QuantConnect
     /// <summary>
     /// Singular holding of assets from backend live nodes:
     /// </summary>
-    [JsonObject]
+    [JsonConverter(typeof(HoldingJsonConverter))]
     public class Holding
     {
+        private decimal? _conversionRate;
+        private decimal _marketValue;
+        private decimal _unrealizedPnl;
+        private decimal _unrealizedPnLPercent;
+
         /// Symbol of the Holding:
-        public Symbol Symbol = Symbol.Empty;
+        [JsonIgnore]
+        public Symbol Symbol { get; set; } = Symbol.Empty;
 
         /// Type of the security
-        public SecurityType Type;
+        [JsonIgnore]
+        public SecurityType Type => Symbol.SecurityType;
 
         /// The currency symbol of the holding, such as $
-        public string CurrencySymbol;
+        [DefaultValue("$")]
+        [JsonProperty(PropertyName = "c", DefaultValueHandling = DefaultValueHandling.Ignore)]
+        public string CurrencySymbol { get; set; }
 
         /// Average Price of our Holding in the currency the symbol is traded in
-        [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
-        public decimal AveragePrice;
+        [JsonConverter(typeof(DecimalJsonConverter))]
+        [JsonProperty(PropertyName = "a", DefaultValueHandling = DefaultValueHandling.Ignore)]
+        public decimal AveragePrice { get; set; }
 
         /// Quantity of Symbol We Hold.
-        [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
-        public decimal Quantity;
+        [JsonConverter(typeof(DecimalJsonConverter))]
+        [JsonProperty(PropertyName = "q", DefaultValueHandling = DefaultValueHandling.Ignore)]
+        public decimal Quantity { get; set; }
 
         /// Current Market Price of the Asset in the currency the symbol is traded in
-        [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
-        public decimal MarketPrice;
+        [JsonConverter(typeof(DecimalJsonConverter))]
+        [JsonProperty(PropertyName = "p", DefaultValueHandling = DefaultValueHandling.Ignore)]
+        public decimal MarketPrice { get; set; }
 
         /// Current market conversion rate into the account currency
-        [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
-        public decimal? ConversionRate;
+        [JsonConverter(typeof(DecimalJsonConverter))]
+        [JsonProperty(PropertyName = "r", DefaultValueHandling = DefaultValueHandling.Ignore)]
+        public decimal? ConversionRate
+        {
+            get
+            {
+                return _conversionRate;
+            }
+            set
+            {
+                if (value != 1)
+                {
+                    _conversionRate = value;
+                }
+            }
+        }
 
         /// Current market value of the holding
-        [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
-        public decimal MarketValue;
+        [JsonConverter(typeof(DecimalJsonConverter))]
+        [JsonProperty(PropertyName = "v", DefaultValueHandling = DefaultValueHandling.Ignore)]
+        public decimal MarketValue
+        {
+            get
+            {
+                return _marketValue;
+            }
+            set
+            {
+                _marketValue = value.SmartRoundingShort();
+            }
+        }
 
         /// Current unrealized P/L of the holding
-        [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
-        public decimal UnrealizedPnL;
+        [JsonConverter(typeof(DecimalJsonConverter))]
+        [JsonProperty(PropertyName = "u", DefaultValueHandling = DefaultValueHandling.Ignore)]
+        public decimal UnrealizedPnL
+        {
+            get
+            {
+                return _unrealizedPnl;
+            }
+            set
+            {
+                _unrealizedPnl = value.SmartRoundingShort();
+            }
+        }
+
+        /// Current unrealized P/L % of the holding
+        [JsonConverter(typeof(DecimalJsonConverter))]
+        [JsonProperty(PropertyName = "up", DefaultValueHandling = DefaultValueHandling.Ignore)]
+        public decimal UnrealizedPnLPercent
+        {
+            get
+            {
+                return _unrealizedPnLPercent;
+            }
+            set
+            {
+                _unrealizedPnLPercent = value.SmartRoundingShort();
+            }
+        }
 
         /// Create a new default holding:
         public Holding()
@@ -153,27 +179,17 @@ namespace QuantConnect
             var holding = security.Holdings;
 
             Symbol = holding.Symbol;
-            Type = holding.Type;
             Quantity = holding.Quantity;
             MarketValue = holding.HoldingsValue;
             CurrencySymbol = Currencies.GetCurrencySymbol(security.QuoteCurrency.Symbol);
             ConversionRate = security.QuoteCurrency.ConversionRate;
 
-            var rounding = 2;
-            if (holding.Type == SecurityType.Forex || holding.Type == SecurityType.Cfd || holding.Type == SecurityType.Index)
-            {
-                rounding = 5;
-            }
-            //do not round crypto
-            else if (holding.Type == SecurityType.Crypto)
-            {
-                rounding = 28;
-            }
-
+            var rounding = security.SymbolProperties.MinimumPriceVariation.GetDecimalPlaces();
 
             AveragePrice = Math.Round(holding.AveragePrice, rounding);
             MarketPrice = Math.Round(holding.Price, rounding);
             UnrealizedPnL = Math.Round(holding.UnrealizedProfit, 2);
+            UnrealizedPnLPercent = Math.Round(holding.UnrealizedProfitPercent * 100, 2);
         }
 
         /// <summary>
@@ -186,11 +202,11 @@ namespace QuantConnect
             {
                 AveragePrice = AveragePrice,
                 Symbol = Symbol,
-                Type = Type,
                 Quantity = Quantity,
                 MarketPrice = MarketPrice,
                 MarketValue = MarketValue,
                 UnrealizedPnL = UnrealizedPnL,
+                UnrealizedPnLPercent = UnrealizedPnLPercent,
                 ConversionRate = ConversionRate,
                 CurrencySymbol = CurrencySymbol
             };
@@ -201,16 +217,55 @@ namespace QuantConnect
         /// </summary>
         public override string ToString()
         {
-            var value = Invariant($"{Symbol.Value}: {Quantity} @ ") +
-                Invariant($"{CurrencySymbol}{AveragePrice} - ") +
-                Invariant($"Market: {CurrencySymbol}{MarketPrice}");
+            return Messages.Holding.ToString(this);
+        }
 
-            if (ConversionRate != 1m)
+        private class DecimalJsonConverter : JsonConverter
+        {
+            public override bool CanRead => false;
+            public override bool CanConvert(Type objectType) => typeof(decimal) == objectType;
+            public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
             {
-                value += Invariant($" - Conversion: {ConversionRate}");
+                writer.WriteRawValue(((decimal)value).NormalizeToStr());
             }
-
-            return value;
+            public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+            {
+                throw new NotImplementedException();
+            }
+        }
+        private class HoldingJsonConverter : JsonConverter
+        {
+            public override bool CanWrite => false;
+            public override bool CanConvert(Type objectType) => typeof(Holding) == objectType;
+            public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+            {
+                var jObject = JObject.Load(reader);
+                var result = new Holding
+                {
+                    Symbol = jObject["symbol"]?.ToObject<Symbol>() ?? jObject["Symbol"]?.ToObject<Symbol>() ?? Symbol.Empty,
+                    CurrencySymbol = jObject["c"]?.Value<string>() ?? jObject["currencySymbol"]?.Value<string>() ?? jObject["CurrencySymbol"]?.Value<string>() ?? string.Empty,
+                    AveragePrice = jObject["a"]?.Value<decimal>() ?? jObject["averagePrice"]?.Value<decimal>() ?? jObject["AveragePrice"]?.Value<decimal>() ?? 0,
+                    Quantity = jObject["q"]?.Value<decimal>() ?? jObject["quantity"]?.Value<decimal>() ?? jObject["Quantity"]?.Value<decimal>() ?? 0,
+                    MarketPrice = jObject["p"]?.Value<decimal>() ?? jObject["marketPrice"]?.Value<decimal>() ?? jObject["MarketPrice"]?.Value<decimal>() ?? 0,
+                    ConversionRate = jObject["r"]?.Value<decimal>() ?? jObject["conversionRate"]?.Value<decimal>() ?? jObject["ConversionRate"]?.Value<decimal>() ?? null,
+                    MarketValue = jObject["v"]?.Value<decimal>() ?? jObject["marketValue"]?.Value<decimal>() ?? jObject["MarketValue"]?.Value<decimal>() ?? 0,
+                    UnrealizedPnL = jObject["u"]?.Value<decimal>() ?? jObject["unrealizedPnl"]?.Value<decimal>() ?? jObject["UnrealizedPnl"]?.Value<decimal>() ?? 0,
+                    UnrealizedPnLPercent = jObject["up"]?.Value<decimal>() ?? jObject["unrealizedPnLPercent"]?.Value<decimal>() ?? jObject["UnrealizedPnLPercent"]?.Value<decimal>() ?? 0,
+                };
+                if (!result.ConversionRate.HasValue)
+                {
+                    result.ConversionRate = 1;
+                }
+                if (string.IsNullOrEmpty(result.CurrencySymbol))
+                {
+                    result.CurrencySymbol = "$";
+                }
+                return result;
+            }
+            public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
+            {
+                throw new NotImplementedException();
+            }
         }
     }
 
@@ -221,13 +276,13 @@ namespace QuantConnect
     public enum BrokerageEnvironment
     {
         /// <summary>
-        /// Live trading
+        /// Live trading (0)
         /// </summary>
         [EnumMember(Value = "live")]
         Live,
 
         /// <summary>
-        /// Paper trading
+        /// Paper trading (1)
         /// </summary>
         [EnumMember(Value = "paper")]
         Paper
@@ -240,58 +295,35 @@ namespace QuantConnect
     public enum Language
     {
         /// <summary>
-        /// C# Language Project
+        /// C# Language Project (0)
         /// </summary>
         [EnumMember(Value = "C#")]
         CSharp,
 
         /// <summary>
-        /// FSharp Project
+        /// FSharp Project (1)
         /// </summary>
         [EnumMember(Value = "F#")]
         FSharp,
 
         /// <summary>
-        /// Visual Basic Project
+        /// Visual Basic Project (2)
         /// </summary>
         [EnumMember(Value = "VB")]
         VisualBasic,
 
         /// <summary>
-        /// Java Language Project
+        /// Java Language Project (3)
         /// </summary>
         [EnumMember(Value = "Ja")]
         Java,
 
         /// <summary>
-        /// Python Language Project
+        /// Python Language Project (4)
         /// </summary>
         [EnumMember(Value = "Py")]
         Python
     }
-
-
-    /// <summary>
-    /// User / Algorithm Job Subscription Level
-    /// </summary>
-    public enum UserPlan
-    {
-        /// <summary>
-        /// Free User (Backtesting).
-        /// </summary>
-        Free,
-
-        /// <summary>
-        /// Hobbyist User with Included 512mb Server.
-        /// </summary>
-        Hobbyist,
-
-        /// <summary>
-        /// Professional plan for financial advisors
-        /// </summary>
-        Professional
-    }
-
 
     /// <summary>
     /// Live server types available through the web IDE. / QC deployment.
@@ -299,17 +331,17 @@ namespace QuantConnect
     public enum ServerType
     {
         /// <summary>
-        /// Additional server
+        /// Additional server (0)
         /// </summary>
         Server512,
 
         /// <summary>
-        /// Upgraded server
+        /// Upgraded server (1)
         /// </summary>
         Server1024,
 
         /// <summary>
-        /// Server with 2048 MB Ram.
+        /// Server with 2048 MB Ram (2)
         /// </summary>
         Server2048
     }
@@ -320,47 +352,47 @@ namespace QuantConnect
     public enum SecurityType
     {
         /// <summary>
-        /// Base class for all security types:
+        /// Base class for all security types (0)
         /// </summary>
         Base,
 
         /// <summary>
-        /// US Equity Security
+        /// US Equity Security (1)
         /// </summary>
         Equity,
 
         /// <summary>
-        /// Option Security Type
+        /// Option Security Type (2)
         /// </summary>
         Option,
 
         /// <summary>
-        /// Commodity Security Type
+        /// Commodity Security Type (3)
         /// </summary>
         Commodity,
 
         /// <summary>
-        /// FOREX Security
+        /// FOREX Security (4)
         /// </summary>
         Forex,
 
         /// <summary>
-        /// Future Security Type
+        /// Future Security Type (5)
         /// </summary>
         Future,
 
         /// <summary>
-        /// Contract For a Difference Security Type.
+        /// Contract For a Difference Security Type (6)
         /// </summary>
         Cfd,
 
         /// <summary>
-        /// Cryptocurrency Security Type.
+        /// Cryptocurrency Security Type (7)
         /// </summary>
         Crypto,
 
         /// <summary>
-        /// Futures Options Security Type.
+        /// Futures Options Security Type (8)
         /// </summary>
         /// <remarks>
         /// Futures options function similar to equity options, but with a few key differences.
@@ -372,17 +404,22 @@ namespace QuantConnect
         FutureOption,
 
         /// <summary>
-        /// Index Security Type.
+        /// Index Security Type (9)
         /// </summary>
         Index,
 
         /// <summary>
-        /// Index Option Security Type.
+        /// Index Option Security Type (10)
         /// </summary>
         /// <remarks>
         /// For index options traded on American markets, they tend to be European-style options and are Cash-settled.
         /// </remarks>
         IndexOption,
+
+        /// <summary>
+        /// Crypto Future Type (11)
+        /// </summary>
+        CryptoFuture,
     }
 
     /// <summary>
@@ -391,12 +428,12 @@ namespace QuantConnect
     public enum AccountType
     {
         /// <summary>
-        /// Margin account type
+        /// Margin account type (0)
         /// </summary>
         Margin,
 
         /// <summary>
-        /// Cash account type
+        /// Cash account type (1)
         /// </summary>
         Cash
     }
@@ -406,19 +443,39 @@ namespace QuantConnect
     /// </summary>
     public enum MarketDataType
     {
-        /// Base market data type
+        /// <summary>
+        /// Base market data type (0)
+        /// </summary>
         Base,
-        /// TradeBar market data type (OHLC summary bar)
+
+        /// <summary>
+        /// TradeBar market data type (OHLC summary bar) (1)
+        /// </summary>
         TradeBar,
-        /// Tick market data type (price-time pair)
+
+        /// <summary>
+        /// Tick market data type (price-time pair) (2)
+        /// </summary>
         Tick,
-        /// Data associated with an instrument
+
+        /// <summary>
+        /// Data associated with an instrument (3)
+        /// </summary>
         Auxiliary,
-        /// QuoteBar market data type [Bid(OHLC), Ask(OHLC) and Mid(OHLC) summary bar]
+
+        /// <summary>
+        /// QuoteBar market data type (4) [Bid(OHLC), Ask(OHLC) and Mid(OHLC) summary bar]
+        /// </summary>
         QuoteBar,
-        /// Option chain data
+
+        /// <summary>
+        /// Option chain data (5)
+        /// </summary>
         OptionChain,
-        /// Futures chain data
+
+        /// <summary>
+        /// Futures chain data (6)
+        /// </summary>
         FuturesChain
     }
 
@@ -427,13 +484,24 @@ namespace QuantConnect
     /// </summary>
     public enum DataFeedEndpoint
     {
-        /// Backtesting Datafeed Endpoint
+        /// <summary>
+        /// Backtesting Datafeed Endpoint (0)
+        /// </summary>
         Backtesting,
-        /// Loading files off the local system
+
+        /// <summary>
+        /// Loading files off the local system (1)
+        /// </summary>
         FileSystem,
-        /// Getting datafeed from a QC-Live-Cloud
+
+        /// <summary>
+        /// Getting datafeed from a QC-Live-Cloud (2)
+        /// </summary>
         LiveTrading,
-        /// Database
+
+        /// <summary>
+        /// Database (3)
+        /// </summary>
         Database
     }
 
@@ -442,10 +510,14 @@ namespace QuantConnect
     /// </summary>
     public enum StoragePermissions
     {
-        /// Public Storage Permissions
+        /// <summary>
+        /// Public Storage Permissions (0)
+        /// </summary>
         Public,
 
-        /// Authenticated Read Storage Permissions
+        /// <summary>
+        /// Authenticated Read Storage Permissions (1)
+        /// </summary>
         Authenticated
     }
 
@@ -455,11 +527,19 @@ namespace QuantConnect
     /// <remarks>QuantConnect currently only has trade, quote, open interest tick data.</remarks>
     public enum TickType
     {
-        /// Trade type tick object.
+        /// <summary>
+        /// Trade type tick object (0)
+        /// </summary>
         Trade,
-        /// Quote type tick object.
+
+        /// <summary>
+        /// Quote type tick object (1)
+        /// </summary>
         Quote,
-        /// Open Interest type tick object (for options, futures)
+
+        /// <summary>
+        /// Open Interest type tick object (for options, futures) (2)
+        /// </summary>
         OpenInterest
     }
 
@@ -469,12 +549,12 @@ namespace QuantConnect
     public enum DelistingType
     {
         /// <summary>
-        /// Specifies a warning of an imminent delisting
+        /// Specifies a warning of an imminent delisting (0)
         /// </summary>
         Warning = 0,
 
         /// <summary>
-        /// Specifies the symbol has been delisted
+        /// Specifies the symbol has been delisted (1)
         /// </summary>
         Delisted = 1
     }
@@ -485,12 +565,12 @@ namespace QuantConnect
     public enum SplitType
     {
         /// <summary>
-        /// Specifies a warning of an imminent split event
+        /// Specifies a warning of an imminent split event (0)
         /// </summary>
         Warning = 0,
 
         /// <summary>
-        /// Specifies the symbol has been split
+        /// Specifies the symbol has been split (1)
         /// </summary>
         SplitOccurred = 1
     }
@@ -501,15 +581,29 @@ namespace QuantConnect
     /// <remarks>Always sort the enum from the smallest to largest resolution</remarks>
     public enum Resolution
     {
-        /// Tick Resolution (1)
+        /// <summary>
+        /// Tick Resolution (0)
+        /// </summary>
         Tick,
-        /// Second Resolution (2)
+
+        /// <summary>
+        /// Second Resolution (1)
+        /// </summary>
         Second,
-        /// Minute Resolution (3)
+
+        /// <summary>
+        /// Minute Resolution (2)
+        /// </summary>
         Minute,
-        /// Hour Resolution (4)
+
+        /// <summary>
+        /// Hour Resolution (3)
+        /// </summary>
         Hour,
-        /// Daily Resolution (5)
+
+        /// <summary>
+        /// Daily Resolution (4)
+        /// </summary>
         Daily
     }
 
@@ -519,17 +613,17 @@ namespace QuantConnect
     public enum PositionSide
     {
         /// <summary>
-        /// A short position, quantity less than zero
+        /// A short position, quantity less than zero (-1)
         /// </summary>
         Short = -1,
 
         /// <summary>
-        /// No position, quantity equals zero
+        /// No position, quantity equals zero (0)
         /// </summary>
         None = 0,
 
         /// <summary>
-        /// A long position, quantity greater than zero
+        /// A long position, quantity greater than zero (1)
         /// </summary>
         Long = 1
     }
@@ -540,12 +634,12 @@ namespace QuantConnect
     public enum OptionRight
     {
         /// <summary>
-        /// A call option, the right to buy at the strike price
+        /// A call option, the right to buy at the strike price (0)
         /// </summary>
         Call,
 
         /// <summary>
-        /// A put option, the right to sell at the strike price
+        /// A put option, the right to sell at the strike price (1)
         /// </summary>
         Put
     }
@@ -556,12 +650,12 @@ namespace QuantConnect
     public enum OptionStyle
     {
         /// <summary>
-        /// American style options are able to be exercised at any time on or before the expiration date
+        /// American style options are able to be exercised at any time on or before the expiration date (0)
         /// </summary>
         American,
 
         /// <summary>
-        /// European style options are able to be exercised on the expiration date only.
+        /// European style options are able to be exercised on the expiration date only (1)
         /// </summary>
         European
     }
@@ -572,12 +666,12 @@ namespace QuantConnect
     public enum SettlementType
     {
         /// <summary>
-        /// Physical delivery of the underlying security
+        /// Physical delivery of the underlying security (0)
         /// </summary>
         PhysicalDelivery,
 
         /// <summary>
-        /// Cash is paid/received on settlement
+        /// Cash is paid/received on settlement (1)
         /// </summary>
         Cash
     }
@@ -596,28 +690,28 @@ namespace QuantConnect
             Initialized = false;
             HasSubscribers = true;
             Status = AlgorithmStatus.Running;
-            ChartSubscription = "Strategy Equity";
+            ChartSubscription = Messages.AlgorithmControl.ChartSubscription;
         }
 
         /// <summary>
         /// Register this control packet as not defaults.
         /// </summary>
-        public bool Initialized;
+        public bool Initialized { get; set; }
 
         /// <summary>
         /// Current run status of the algorithm id.
         /// </summary>
-        public AlgorithmStatus Status;
+        public AlgorithmStatus Status { get; set; }
 
         /// <summary>
         /// Currently requested chart.
         /// </summary>
-        public string ChartSubscription;
+        public string ChartSubscription { get; set; }
 
         /// <summary>
         /// True if there's subscribers on the channel
         /// </summary>
-        public bool HasSubscribers;
+        public bool HasSubscribers { get; set; }
     }
 
     /// <summary>
@@ -625,29 +719,64 @@ namespace QuantConnect
     /// </summary>
     public enum AlgorithmStatus
     {
-        /// Error compiling algorithm at start
-        DeployError,    //1
-        /// Waiting for a server
-        InQueue,        //2
-        /// Running algorithm
-        Running,        //3
-        /// Stopped algorithm or exited with runtime errors
-        Stopped,        //4
-        /// Liquidated algorithm
-        Liquidated,     //5
-        /// Algorithm has been deleted
-        Deleted,        //6
-        /// Algorithm completed running
-        Completed,      //7
-        /// Runtime Error Stoped Algorithm
-        RuntimeError,    //8
-        /// Error in the algorithm id (not used).
+        /// <summary>
+        /// Error compiling algorithm at start (0)
+        /// </summary>
+        DeployError,
+
+        /// <summary>
+        /// Waiting for a server (1)
+        /// </summary>
+        InQueue,
+
+        /// <summary>
+        /// Running algorithm (2)
+        /// </summary>
+        Running,
+
+        /// <summary>
+        /// Stopped algorithm or exited with runtime errors (3)
+        /// </summary>
+        Stopped,
+
+        /// <summary>
+        /// Liquidated algorithm (4)
+        /// </summary>
+        Liquidated,
+
+        /// <summary>
+        /// Algorithm has been deleted (5)
+        /// </summary>
+        Deleted,
+
+        /// <summary>
+        /// Algorithm completed running (6)
+        /// </summary>
+        Completed,
+
+        /// <summary>
+        /// Runtime Error Stoped Algorithm (7)
+        /// </summary>
+        RuntimeError,
+
+        /// <summary>
+        /// Error in the algorithm id (not used) (8)
+        /// </summary>
         Invalid,
-        /// The algorithm is logging into the brokerage
+
+        /// <summary>
+        /// The algorithm is logging into the brokerage (9)
+        /// </summary>
         LoggingIn,
-        /// The algorithm is initializing
+
+        /// <summary>
+        /// The algorithm is initializing (10)
+        /// </summary>
         Initializing,
-        /// History status update
+
+        /// <summary>
+        /// History status update (11)
+        /// </summary>
         History
     }
 
@@ -657,24 +786,50 @@ namespace QuantConnect
     public enum SubscriptionTransportMedium
     {
         /// <summary>
-        /// The subscription's data comes from disk
+        /// The subscription's data comes from disk (0)
         /// </summary>
         LocalFile,
 
         /// <summary>
-        /// The subscription's data is downloaded from a remote source
+        /// The subscription's data is downloaded from a remote source (1)
         /// </summary>
         RemoteFile,
 
         /// <summary>
-        /// The subscription's data comes from a rest call that is polled and returns a single line/data point of information
+        /// The subscription's data comes from a rest call that is polled and returns a single line/data point of information (2)
         /// </summary>
         Rest,
 
         /// <summary>
-        /// The subscription's data is streamed
+        /// The subscription's data is streamed (3)
         /// </summary>
-        Streaming
+        Streaming,
+
+        /// <summary>
+        /// The subscription's data comes from the object store (4)
+        /// </summary>
+        ObjectStore
+    }
+
+    /// <summary>
+    /// Used by the <see cref="Data.LeanDataWriter"/> to determine which merge write policy should be applied
+    /// </summary>
+    public enum WritePolicy
+    {
+        /// <summary>
+        /// Will overwrite any existing file or zip entry with the new content (0)
+        /// </summary>
+        Overwrite = 0,
+
+        /// <summary>
+        /// Will inject and merge new content with the existings file content (1)
+        /// </summary>
+        Merge,
+
+        /// <summary>
+        /// Will append new data to the end of the file or zip entry (2)
+        /// </summary>
+        Append
     }
 
     /// <summary>
@@ -682,33 +837,74 @@ namespace QuantConnect
     /// </summary>
     public enum Period
     {
+        /// <summary>
         /// Period Short Codes - 10
+        /// </summary>
         TenSeconds = 10,
+
+        /// <summary>
         /// Period Short Codes - 30 Second
+        /// </summary>
         ThirtySeconds = 30,
+
+        /// <summary>
         /// Period Short Codes - 60 Second
+        /// </summary>
         OneMinute = 60,
+
+        /// <summary>
         /// Period Short Codes - 120 Second
+        /// </summary>
         TwoMinutes = 120,
+
+        /// <summary>
         /// Period Short Codes - 180 Second
+        /// </summary>
         ThreeMinutes = 180,
+
+        /// <summary>
         /// Period Short Codes - 300 Second
+        /// </summary>
         FiveMinutes = 300,
+
+        /// <summary>
         /// Period Short Codes - 600 Second
+        /// </summary>
         TenMinutes = 600,
+
+        /// <summary>
         /// Period Short Codes - 900 Second
+        /// </summary>
         FifteenMinutes = 900,
+
+        /// <summary>
         /// Period Short Codes - 1200 Second
+        /// </summary>
         TwentyMinutes = 1200,
+
+        /// <summary>
         /// Period Short Codes - 1800 Second
+        /// </summary>
         ThirtyMinutes = 1800,
+
+        /// <summary>
         /// Period Short Codes - 3600 Second
+        /// </summary>
         OneHour = 3600,
+
+        /// <summary>
         /// Period Short Codes - 7200 Second
+        /// </summary>
         TwoHours = 7200,
+
+        /// <summary>
         /// Period Short Codes - 14400 Second
+        /// </summary>
         FourHours = 14400,
+
+        /// <summary>
         /// Period Short Codes - 21600 Second
+        /// </summary>
         SixHours = 21600
     }
 
@@ -718,21 +914,85 @@ namespace QuantConnect
     public enum DataNormalizationMode
     {
         /// <summary>
-        /// The raw price with dividends added to cash book
+        /// No modifications to the asset price at all. For Equities, dividends are paid in cash and splits are applied directly to your portfolio quantity. (0)
         /// </summary>
         Raw,
         /// <summary>
-        /// The adjusted prices with splits and dividends factored in
+        /// Splits and dividends are backward-adjusted into the price of the asset. The price today is identical to the current market price. (1)
         /// </summary>
         Adjusted,
         /// <summary>
-        /// The adjusted prices with only splits factored in, dividends paid out to the cash book
+        /// Equity splits are applied to the price adjustment but dividends are paid in cash to your portfolio. This normalization mode allows you to manage dividend payments (e.g. reinvestment) while still giving a smooth time series of prices for indicators. (2)
         /// </summary>
         SplitAdjusted,
         /// <summary>
-        /// The split adjusted price plus dividends
+        /// Equity splits are applied to the price adjustment and the value of all future dividend payments is added to the initial asset price. (3)
         /// </summary>
-        TotalReturn
+        TotalReturn,
+        /// <summary>
+        /// Eliminates price jumps between two consecutive contracts, adding a factor based on the difference of their prices. The first contract has the true price. Factor 0. (4)
+        /// </summary>
+        /// <remarks>First contract is the true one, factor 0</remarks>
+        ForwardPanamaCanal,
+        /// <summary>
+        /// Eliminates price jumps between two consecutive contracts, adding a factor based on the difference of their prices. The last contract has the true price. Factor 0. (5)
+        /// </summary>
+        /// <remarks>Last contract is the true one, factor 0</remarks>
+        BackwardsPanamaCanal,
+        /// <summary>
+        /// Eliminates price jumps between two consecutive contracts, multiplying the prices by their ratio. The last contract has the true price. Factor 1. (6)
+        /// </summary>
+        /// <remarks>Last contract is the true one, factor 1</remarks>
+        BackwardsRatio,
+        /// <summary>
+        /// Splits and dividends are adjusted into the prices in a given date. Only for history requests. (7)
+        /// </summary>
+        ScaledRaw,
+    }
+
+    /// <summary>
+    /// Continuous contracts mapping modes
+    /// </summary>
+    public enum DataMappingMode
+    {
+        /// <summary>
+        /// The contract maps on the previous day of expiration of the front month (0)
+        /// </summary>
+        LastTradingDay,
+        /// <summary>
+        /// The contract maps on the first date of the delivery month of the front month. If the contract expires prior to this date,
+        /// then it rolls on the contract's last trading date instead (1)
+        /// </summary>
+        /// <remarks>For example, the Crude Oil WTI (CL) 'DEC 2021 CLZ1' contract expires on November, 19 2021, so the mapping date will be its expiration date.</remarks>
+        /// <remarks>Another example is the Corn 'DEC 2021 ZCZ1' contract, which expires on December, 14 2021, so the mapping date will be December 1, 2021.</remarks>
+        FirstDayMonth,
+        /// <summary>
+        /// The contract maps when the following back month contract has a higher open interest that the current front month (2)
+        /// </summary>
+        OpenInterest,
+        /// <summary>
+        /// The contract maps when any of the back month contracts of the next year have a higher volume that the current front month (3)
+        /// </summary>
+        OpenInterestAnnual,
+    }
+
+    /// <summary>
+    /// The different types of <see cref="CashBook.Updated"/> events
+    /// </summary>
+    public enum CashBookUpdateType
+    {
+        /// <summary>
+        /// A new <see cref="Cash.Symbol"/> was added (0)
+        /// </summary>
+        Added,
+        /// <summary>
+        /// One or more <see cref="Cash"/> instances were removed (1)
+        /// </summary>
+        Removed,
+        /// <summary>
+        /// An existing <see cref="Cash.Symbol"/> was updated (2)
+        /// </summary>
+        Updated
     }
 
     /// <summary>
@@ -744,19 +1004,11 @@ namespace QuantConnect
         /// Gets the exchange as single character representation.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static string GetPrimaryExchangeAsSingleCharacter(this string exchange)
+        public static string GetPrimaryExchangeCodeGetPrimaryExchange(this string exchange,
+            SecurityType securityType = SecurityType.Equity,
+            string market = Market.USA)
         {
-            return string.IsNullOrEmpty(exchange) ? null : ((char)exchange.GetPrimaryExchange()).ToString();
-        }
-
-        /// <summary>
-        /// Returns the main Exchange from the single character encoding.
-        /// </summary>
-        /// <param name="exchange"></param>
-        /// <returns></returns>
-        public static PrimaryExchange GetPrimaryExchange(char exchange)
-        {
-            return (PrimaryExchange)exchange;
+            return exchange.GetPrimaryExchange(securityType, market).Code;
         }
 
         /// <summary>
@@ -764,82 +1016,188 @@ namespace QuantConnect
         /// </summary>
         /// <remarks>Useful for performance</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static PrimaryExchange GetPrimaryExchange(this string exchange)
+        public static Exchange GetPrimaryExchange(this string exchange,
+            SecurityType securityType = SecurityType.Equity,
+            string market = Market.USA)
         {
-            var primaryExchange = PrimaryExchange.UNKNOWN;
-            if (string.IsNullOrEmpty(exchange) || Enum.TryParse(exchange, true, out primaryExchange))
+            var primaryExchange = Exchange.UNKNOWN;
+            if (string.IsNullOrEmpty(exchange))
             {
                 return primaryExchange;
             }
 
-            switch (exchange.LazyToUpper())
+            if (securityType == SecurityType.Equity)
             {
-                case "T":
-                case "Q":
-                case "NASDAQ":
-                case "NASDAQ OMX":
-                    return PrimaryExchange.NASDAQ;
-                case "Z":
-                case "BATS":
-                case "BATS Z":
-                    return PrimaryExchange.BATS;
-                case "P":
-                case "ARCA":
-                    return PrimaryExchange.ARCA;
-                case "N":
-                case "NYSE":
-                    return PrimaryExchange.NYSE;
-                case "C":
-                case "NSE":
-                    return PrimaryExchange.NSE;
-                case "D":
-                case "FINRA":
-                    return PrimaryExchange.FINRA;
-                case "I":
-                case "ISE":
-                    return PrimaryExchange.ISE;
-                case "OPRA":
-                    return PrimaryExchange.OPRA;
-                case "M":
-                case "CSE":
-                    return PrimaryExchange.CSE;
-                case "W":
-                case "CBOE":
-                    return PrimaryExchange.CBOE;
-                case "A":
-                case "AMEX":
-                    return PrimaryExchange.AMEX;
-                case "SIAC":
-                    return PrimaryExchange.SIAC;
-                case "J":
-                case "EDGA":
-                    return PrimaryExchange.EDGA;
-                case "K":
-                case "EDGX":
-                    return PrimaryExchange.EDGX;
-                case "B":
-                case "NASDAQ BX":
-                    return PrimaryExchange.NASDAQ_BX;
-                case "X":
-                case "NASDAQ PSX":
-                    return PrimaryExchange.NASDAQ_PSX;
-                case "Y":
-                case "BATS Y":
-                    return PrimaryExchange.BATS_Y;
-                case "C2":
-                    return PrimaryExchange.C2;
-                case "BOSTON":
-                    return PrimaryExchange.BOSTON;
-                case "MIAX":
-                    return PrimaryExchange.MIAX;
-                case "ISE_GEMINI":
-                    return PrimaryExchange.ISE_GEMINI;
-                case "ISE_MERCURY":
-                    return PrimaryExchange.ISE_MERCURY;
-                default:
-                case "UNKNOWN":
-                    return PrimaryExchange.UNKNOWN;
+                switch (exchange.LazyToUpper())
+                {
+                    case "T":
+                    case "Q":
+                    case "NASDAQ":
+                    case "NASDAQ_OMX":
+                        return Exchange.NASDAQ;
+                    case "Z":
+                    case "BATS":
+                    case "BATS Z":
+                    case "BATS_Z":
+                        return Exchange.BATS;
+                    case "P":
+                    case "ARCA":
+                        return Exchange.ARCA;
+                    case "N":
+                    case "NYSE":
+                        return Exchange.NYSE;
+                    case "C":
+                    case "NSX":
+                    case "NSE":
+                        if (market == Market.USA)
+                        {
+                            return Exchange.NSX;
+                        }
+                        else if (market == Market.India)
+                        {
+                            return Exchange.NSE;
+                        }
+                        return Exchange.UNKNOWN;
+                    case "D":
+                    case "FINRA":
+                        return Exchange.FINRA;
+                    case "I":
+                    case "ISE":
+                        return Exchange.ISE;
+                    case "M":
+                    case "CSE":
+                        return Exchange.CSE;
+                    case "W":
+                    case "CBOE":
+                        return Exchange.CBOE;
+                    case "A":
+                    case "AMEX":
+                        return Exchange.AMEX;
+                    case "SIAC":
+                        return Exchange.SIAC;
+                    case "J":
+                    case "EDGA":
+                        return Exchange.EDGA;
+                    case "K":
+                    case "EDGX":
+                        return Exchange.EDGX;
+                    case "B":
+                    case "NASDAQ BX":
+                    case "NASDAQ_BX":
+                        return Exchange.NASDAQ_BX;
+                    case "X":
+                    case "NASDAQ PSX":
+                    case "NASDAQ_PSX":
+                        return Exchange.NASDAQ_PSX;
+                    case "Y":
+                    case "BATS Y":
+                    case "BATS_Y":
+                    case "BYX":
+                        return Exchange.BATS_Y;
+                    case "BB":
+                    case "BOSTON":
+                        return Exchange.BOSTON;
+                    case "BSE":
+                        return Exchange.BSE;
+                    case "IEX":
+                        return Exchange.IEX;
+                    case "SMART":
+                        return Exchange.SMART;
+                    case "OTCX":
+                        return Exchange.OTCX;
+                    case "MP":
+                    case "MIAX PEARL":
+                    case "MIAX_PEARL":
+                        return Exchange.MIAX_PEARL;
+                    case "L":
+                    case "LTSE":
+                        return Exchange.LTSE;
+                    case "MM":
+                    case "MEMX":
+                        return Exchange.MEMX;
+                    case "CSFB":
+                        return Exchange.CSFB;
+                }
             }
+            else if (securityType == SecurityType.Option)
+            {
+                switch (exchange.LazyToUpper())
+                {
+                    case "A":
+                    case "AMEX":
+                        return Exchange.AMEX_Options;
+                    case "M":
+                    case "MIAX":
+                        return Exchange.MIAX;
+                    case "ME":
+                    case "MIAX EMERALD":
+                    case "MIAX_EMERALD":
+                        return Exchange.MIAX_EMERALD;
+                    case "MP":
+                    case "MIAX PEARL":
+                    case "MIAX_PEARL":
+                        return Exchange.MIAX_PEARL;
+                    case "I":
+                    case "ISE":
+                        return Exchange.ISE;
+                    case "H":
+                    case "ISE GEMINI":
+                    case "ISE_GEMINI":
+                        return Exchange.ISE_GEMINI;
+                    case "J":
+                    case "ISE MERCURY":
+                    case "ISE_MERCURY":
+                        return Exchange.ISE_MERCURY;
+                    case "O":
+                    case "OPRA":
+                        return Exchange.OPRA;
+                    case "W":
+                    case "C2":
+                        return Exchange.C2;
+                    case "XNDQ":
+                        return Exchange.NASDAQ_Options;
+                    case "ARCX":
+                        return Exchange.ARCA_Options;
+                    case "EDGO":
+                        return Exchange.EDGO;
+                    case "BOX":
+                    case "B":
+                        return Exchange.BOX;
+                    case "PHLX":
+                        return Exchange.PHLX;
+                    case "SPHR":
+                    case "MIAX SAPPHIRE":
+                    case "MIAX_SAPPHIRE":
+                        return Exchange.MIAX_SAPPHIRE;
+                    default:
+                        return Exchange.UNKNOWN;
+                }
+            }
+            else if (securityType == SecurityType.Future || securityType == SecurityType.FutureOption)
+            {
+                switch (exchange.LazyToUpper())
+                {
+                    case "CME":
+                        return Exchange.CME;
+                    case "CBOT":
+                        return Exchange.CBOT;
+                    case "NYMEX":
+                        return Exchange.NYMEX;
+                    case "ICE":
+                        return Exchange.ICE;
+                    case "CFE":
+                        return Exchange.CFE;
+                    case "COMEX":
+                        return Exchange.COMEX;
+                    case "NYSELIFFE":
+                        return Exchange.NYSELIFFE;
+                    case "EUREX":
+                        return Exchange.EUREX;
+                    default:
+                        return Exchange.UNKNOWN;
+                }
+            }
+            return Exchange.UNKNOWN;
         }
     }
 
@@ -860,281 +1218,51 @@ namespace QuantConnect
     }
 
     /// <summary>
-    /// US Public Holidays - Not Tradeable:
+    /// Represents the types deployment targets for algorithms
     /// </summary>
-    public static class USHoliday
+    [JsonConverter(typeof(StringEnumConverter))]
+    public enum DeploymentTarget
     {
         /// <summary>
-        /// Public Holidays
+        /// Cloud Platform (0)
         /// </summary>
-        public static readonly HashSet<DateTime> Dates = new HashSet<DateTime>
-        {
-            /* New Years Day*/
-            new DateTime(1998, 01, 01),
-            new DateTime(1999, 01, 01),
-            new DateTime(2001, 01, 01),
-            new DateTime(2002, 01, 01),
-            new DateTime(2003, 01, 01),
-            new DateTime(2004, 01, 01),
-            new DateTime(2006, 01, 02),
-            new DateTime(2007, 01, 01),
-            new DateTime(2008, 01, 01),
-            new DateTime(2009, 01, 01),
-            new DateTime(2010, 01, 01),
-            new DateTime(2011, 01, 01),
-            new DateTime(2012, 01, 02),
-            new DateTime(2013, 01, 01),
-            new DateTime(2014, 01, 01),
-            new DateTime(2015, 01, 01),
-            new DateTime(2016, 01, 01),
-            new DateTime(2017, 01, 02),
-            new DateTime(2018, 01, 01),
-            new DateTime(2019, 01, 01),
-            new DateTime(2020, 01, 01),
-            new DateTime(2021, 01, 01),
-            new DateTime(2022, 01, 01),
-            new DateTime(2023, 01, 02),
+        CloudPlatform,
 
-            /* Day of Mouring */
-            new DateTime(2007, 01, 02),
+        /// <summary>
+        /// Local Platform (1)
+        /// </summary>
+        LocalPlatform,
 
-            /* World Trade Center */
-            new DateTime(2001, 09, 11),
-            new DateTime(2001, 09, 12),
-            new DateTime(2001, 09, 13),
-            new DateTime(2001, 09, 14),
+        /// <summary>
+        /// Private Cloud Platform (2)
+        /// </summary>
+        PrivateCloudPlatform
+    }
 
-            /* Regan Funeral */
-            new DateTime(2004, 06, 11),
+    /// <summary>
+    /// Represents the deployment modes of an algorithm
+    /// </summary>
+    [JsonConverter(typeof(StringEnumConverter))]
+    public enum AlgorithmMode
+    {
+        /// <summary>
+        /// Live (0)
+        /// </summary>
+        Live,
 
-            /* Hurricane Sandy */
-            new DateTime(2012, 10, 29),
-            new DateTime(2012, 10, 30),
+        /// <summary>
+        /// Optimization (1)
+        /// </summary>
+        Optimization,
 
-            /* Martin Luther King Jnr Day*/
-            new DateTime(1998, 01, 19),
-            new DateTime(1999, 01, 18),
-            new DateTime(2000, 01, 17),
-            new DateTime(2001, 01, 15),
-            new DateTime(2002, 01, 21),
-            new DateTime(2003, 01, 20),
-            new DateTime(2004, 01, 19),
-            new DateTime(2005, 01, 17),
-            new DateTime(2006, 01, 16),
-            new DateTime(2007, 01, 15),
-            new DateTime(2008, 01, 21),
-            new DateTime(2009, 01, 19),
-            new DateTime(2010, 01, 18),
-            new DateTime(2011, 01, 17),
-            new DateTime(2012, 01, 16),
-            new DateTime(2013, 01, 21),
-            new DateTime(2014, 01, 20),
-            new DateTime(2015, 01, 19),
-            new DateTime(2016, 01, 18),
-            new DateTime(2017, 01, 16),
-            new DateTime(2018, 01, 15),
-            new DateTime(2019, 01, 21),
-            new DateTime(2020, 01, 20),
-            new DateTime(2021, 01, 18),
-            new DateTime(2022, 01, 17),
-            new DateTime(2023, 01, 16),
+        /// <summary>
+        /// Backtesting (2)
+        /// </summary>
+        Backtesting,
 
-            /* Washington / Presidents Day */
-            new DateTime(1998, 02, 16),
-            new DateTime(1999, 02, 15),
-            new DateTime(2000, 02, 21),
-            new DateTime(2001, 02, 19),
-            new DateTime(2002, 02, 18),
-            new DateTime(2003, 02, 17),
-            new DateTime(2004, 02, 16),
-            new DateTime(2005, 02, 21),
-            new DateTime(2006, 02, 20),
-            new DateTime(2007, 02, 19),
-            new DateTime(2008, 02, 18),
-            new DateTime(2009, 02, 16),
-            new DateTime(2010, 02, 15),
-            new DateTime(2011, 02, 21),
-            new DateTime(2012, 02, 20),
-            new DateTime(2013, 02, 18),
-            new DateTime(2014, 02, 17),
-            new DateTime(2015, 02, 16),
-            new DateTime(2016, 02, 15),
-            new DateTime(2017, 02, 20),
-            new DateTime(2018, 02, 19),
-            new DateTime(2019, 02, 18),
-            new DateTime(2020, 02, 17),
-            new DateTime(2021, 02, 15),
-            new DateTime(2022, 02, 21),
-            new DateTime(2023, 02, 20),
-
-            /* Good Friday */
-            new DateTime(1998, 04, 10),
-            new DateTime(1999, 04, 02),
-            new DateTime(2000, 04, 21),
-            new DateTime(2001, 04, 13),
-            new DateTime(2002, 03, 29),
-            new DateTime(2003, 04, 18),
-            new DateTime(2004, 04, 09),
-            new DateTime(2005, 03, 25),
-            new DateTime(2006, 04, 14),
-            new DateTime(2007, 04, 06),
-            new DateTime(2008, 03, 21),
-            new DateTime(2009, 04, 10),
-            new DateTime(2010, 04, 02),
-            new DateTime(2011, 04, 22),
-            new DateTime(2012, 04, 06),
-            new DateTime(2013, 03, 29),
-            new DateTime(2014, 04, 18),
-            new DateTime(2015, 04, 03),
-            new DateTime(2016, 03, 25),
-            new DateTime(2017, 04, 14),
-            new DateTime(2018, 03, 30),
-            new DateTime(2019, 04, 19),
-            new DateTime(2020, 04, 10),
-            new DateTime(2021, 04, 02),
-            new DateTime(2022, 04, 15),
-            new DateTime(2023, 04, 07),
-
-            /* Memorial Day */
-            new DateTime(1998, 05, 25),
-            new DateTime(1999, 05, 31),
-            new DateTime(2000, 05, 29),
-            new DateTime(2001, 05, 28),
-            new DateTime(2002, 05, 27),
-            new DateTime(2003, 05, 26),
-            new DateTime(2004, 05, 31),
-            new DateTime(2005, 05, 30),
-            new DateTime(2006, 05, 29),
-            new DateTime(2007, 05, 28),
-            new DateTime(2008, 05, 26),
-            new DateTime(2009, 05, 25),
-            new DateTime(2010, 05, 31),
-            new DateTime(2011, 05, 30),
-            new DateTime(2012, 05, 28),
-            new DateTime(2013, 05, 27),
-            new DateTime(2014, 05, 26),
-            new DateTime(2015, 05, 25),
-            new DateTime(2016, 05, 30),
-            new DateTime(2017, 05, 29),
-            new DateTime(2018, 05, 28),
-            new DateTime(2019, 05, 27),
-            new DateTime(2020, 05, 25),
-            new DateTime(2021, 05, 31),
-            new DateTime(2022, 05, 30),
-            new DateTime(2023, 05, 29),
-
-            /* Independence Day */
-            new DateTime(1998, 07, 03),
-            new DateTime(1999, 07, 05),
-            new DateTime(2000, 07, 04),
-            new DateTime(2001, 07, 04),
-            new DateTime(2002, 07, 04),
-            new DateTime(2003, 07, 04),
-            new DateTime(2004, 07, 05),
-            new DateTime(2005, 07, 04),
-            new DateTime(2006, 07, 04),
-            new DateTime(2007, 07, 04),
-            new DateTime(2008, 07, 04),
-            new DateTime(2009, 07, 03),
-            new DateTime(2010, 07, 05),
-            new DateTime(2011, 07, 04),
-            new DateTime(2012, 07, 04),
-            new DateTime(2013, 07, 04),
-            new DateTime(2014, 07, 04),
-            new DateTime(2014, 07, 04),
-            new DateTime(2015, 07, 03),
-            new DateTime(2016, 07, 04),
-            new DateTime(2017, 07, 04),
-            new DateTime(2018, 07, 04),
-            new DateTime(2019, 07, 04),
-            new DateTime(2020, 07, 04),
-            new DateTime(2021, 07, 05),
-            new DateTime(2022, 07, 04),
-            new DateTime(2023, 07, 04),
-
-            /* Labor Day */
-            new DateTime(1998, 09, 07),
-            new DateTime(1999, 09, 06),
-            new DateTime(2000, 09, 04),
-            new DateTime(2001, 09, 03),
-            new DateTime(2002, 09, 02),
-            new DateTime(2003, 09, 01),
-            new DateTime(2004, 09, 06),
-            new DateTime(2005, 09, 05),
-            new DateTime(2006, 09, 04),
-            new DateTime(2007, 09, 03),
-            new DateTime(2008, 09, 01),
-            new DateTime(2009, 09, 07),
-            new DateTime(2010, 09, 06),
-            new DateTime(2011, 09, 05),
-            new DateTime(2012, 09, 03),
-            new DateTime(2013, 09, 02),
-            new DateTime(2014, 09, 01),
-            new DateTime(2015, 09, 07),
-            new DateTime(2016, 09, 05),
-            new DateTime(2017, 09, 04),
-            new DateTime(2018, 09, 03),
-            new DateTime(2019, 09, 02),
-            new DateTime(2020, 09, 07),
-            new DateTime(2021, 09, 06),
-            new DateTime(2022, 09, 05),
-            new DateTime(2023, 09, 04),
-
-            /* Thanksgiving Day */
-            new DateTime(1998, 11, 26),
-            new DateTime(1999, 11, 25),
-            new DateTime(2000, 11, 23),
-            new DateTime(2001, 11, 22),
-            new DateTime(2002, 11, 28),
-            new DateTime(2003, 11, 27),
-            new DateTime(2004, 11, 25),
-            new DateTime(2005, 11, 24),
-            new DateTime(2006, 11, 23),
-            new DateTime(2007, 11, 22),
-            new DateTime(2008, 11, 27),
-            new DateTime(2009, 11, 26),
-            new DateTime(2010, 11, 25),
-            new DateTime(2011, 11, 24),
-            new DateTime(2012, 11, 22),
-            new DateTime(2013, 11, 28),
-            new DateTime(2014, 11, 27),
-            new DateTime(2015, 11, 26),
-            new DateTime(2016, 11, 24),
-            new DateTime(2017, 11, 23),
-            new DateTime(2018, 11, 22),
-            new DateTime(2019, 11, 28),
-            new DateTime(2020, 11, 26),
-            new DateTime(2021, 11, 25),
-            new DateTime(2022, 11, 24),
-            new DateTime(2023, 11, 23),
-
-            /* Christmas */
-            new DateTime(1998, 12, 25),
-            new DateTime(1999, 12, 24),
-            new DateTime(2000, 12, 25),
-            new DateTime(2001, 12, 25),
-            new DateTime(2002, 12, 25),
-            new DateTime(2003, 12, 25),
-            new DateTime(2004, 12, 24),
-            new DateTime(2005, 12, 26),
-            new DateTime(2006, 12, 25),
-            new DateTime(2007, 12, 25),
-            new DateTime(2008, 12, 25),
-            new DateTime(2009, 12, 25),
-            new DateTime(2010, 12, 24),
-            new DateTime(2011, 12, 26),
-            new DateTime(2012, 12, 25),
-            new DateTime(2013, 12, 25),
-            new DateTime(2014, 12, 25),
-            new DateTime(2015, 12, 25),
-            new DateTime(2016, 12, 26),
-            new DateTime(2017, 12, 25),
-            new DateTime(2018, 12, 25),
-            new DateTime(2019, 12, 25),
-            new DateTime(2020, 12, 25),
-            new DateTime(2021, 12, 24),
-            new DateTime(2022, 12, 26),
-            new DateTime(2023, 12, 25)
-        };
+        /// <summary>
+        /// Research (3)
+        /// </summary>
+        Research
     }
 }

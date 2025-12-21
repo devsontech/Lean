@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -36,9 +36,7 @@ namespace QuantConnect.Securities.Future
             {
                 // Use our FutureExpiryFunctions to determine standard contracts dates.
                 var expiryFunction = FuturesExpiryFunctions.FuturesExpiryFunction(symbol);
-                var monthsToAdd = FuturesExpiryUtilityFunctions.GetDeltaBetweenContractMonthAndContractExpiry(symbol.ID.Symbol, contractExpirationDate);
-                var contractMonth = contractExpirationDate.AddDays(-(contractExpirationDate.Day - 1))
-                    .AddMonths(monthsToAdd);
+                var contractMonth = FuturesExpiryUtilityFunctions.GetFutureContractMonth(symbol);
 
                 var standardExpirationDate = expiryFunction(contractMonth);
 
@@ -47,7 +45,7 @@ namespace QuantConnect.Securities.Future
             }
             catch
             {
-                Log.Error($"Could not find standard date for {symbol}, will be classified as standard");
+                Log.Error($"FutureSymbol.IsStandard(): Could not find standard date for {symbol}, will be classified as standard");
                 return true;
             }
         }

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -15,6 +15,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using QuantConnect.Data;
 using QuantConnect.Data.Fundamental;
 using QuantConnect.Data.Market;
 using QuantConnect.Data.UniverseSelection;
@@ -34,7 +35,7 @@ namespace QuantConnect.Algorithm.CSharp.Benchmarks
             UniverseSettings.Resolution = Resolution.Minute;
 
             SetStartDate(2017, 11, 01);
-            SetEndDate(2018, 01, 01);
+            SetEndDate(2018, 3, 01);
             SetCash(50000);
 
             AddUniverse(CoarseSelectionFunction, FineSelectionFunction);
@@ -68,8 +69,8 @@ namespace QuantConnect.Algorithm.CSharp.Benchmarks
             return topFine.Select(x => x.Symbol);
         }
 
-        //Data Event Handler: New data arrives here. "TradeBars" type is a dictionary of strings so you can access it by symbol.
-        public void OnData(TradeBars data)
+        //Data Event Handler: New data arrives here.
+        public override void OnData(Slice slice)
         {
             // if we have no changes, do nothing
             if (_changes == SecurityChanges.None) return;

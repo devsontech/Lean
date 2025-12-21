@@ -14,12 +14,11 @@
  *
 */
 
-using System;
-using System.Collections.Generic;
 using QuantConnect.Data;
-using QuantConnect.Data.Market;
 using QuantConnect.Orders;
 using QuantConnect.Interfaces;
+using System.Collections.Generic;
+using QuantConnect.Data.UniverseSelection;
 
 namespace QuantConnect.Algorithm.CSharp
 {
@@ -34,6 +33,7 @@ namespace QuantConnect.Algorithm.CSharp
     {
         private bool _receivedDelistedWarningEvent;
         private bool _receivedDelistedEvent;
+        private int _receivedSecurityChangesEvent;
         private int _dataCount;
 
         /// <summary>
@@ -41,7 +41,7 @@ namespace QuantConnect.Algorithm.CSharp
         /// </summary>
         public override void Initialize()
         {
-            SetStartDate(2007, 05, 16);  //Set Start Date
+            SetStartDate(2007, 05, 15);  //Set Start Date
             SetEndDate(2007, 05, 25);    //Set End Date
             SetCash(100000);             //Set Strategy Cash
             // Find more symbols here: http://quantconnect.com/data
@@ -52,17 +52,17 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
         /// </summary>
-        /// <param name="data">Slice object keyed by symbol containing the stock data</param>
-        public override void OnData(Slice data)
+        /// <param name="slice">Slice object keyed by symbol containing the stock data</param>
+        public override void OnData(Slice slice)
         {
-            _dataCount += data.Bars.Count;
+            _dataCount += slice.Bars.Count;
             if (Transactions.OrdersCount == 0)
             {
                 SetHoldings("AAA.1", 1);
                 Debug("Purchased Stock");
             }
 
-            foreach (var kvp in data.Bars)
+            foreach (var kvp in slice.Bars)
             {
                 var symbol = kvp.Key;
                 var tradeBar = kvp.Value;
@@ -74,14 +74,14 @@ namespace QuantConnect.Algorithm.CSharp
             var aaa = Securities["AAA.1"];
             if (aaa.IsDelisted && aaa.IsTradable)
             {
-                throw new Exception("Delisted security must NOT be tradable");
+                throw new RegressionTestException("Delisted security must NOT be tradable");
             }
             if (!aaa.IsDelisted && !aaa.IsTradable)
             {
-                throw new Exception("Securities must be marked as tradable until they're delisted or removed from the universe");
+                throw new RegressionTestException("Securities must be marked as tradable until they're delisted or removed from the universe");
             }
 
-            foreach (var kvp in data.Delistings)
+            foreach (var kvp in slice.Delistings)
             {
                 var symbol = kvp.Key;
                 var delisting = kvp.Value;
@@ -109,19 +109,34 @@ namespace QuantConnect.Algorithm.CSharp
             Debug($"OnOrderEvent(OrderEvent): {Time}: {orderEvent}");
         }
 
+        public override void OnSecuritiesChanged(SecurityChanges changes)
+        {
+            foreach (var removedSecurity in changes.RemovedSecurities)
+            {
+                if (removedSecurity.Symbol.Value == "AAA.1")
+                {
+                    _receivedSecurityChangesEvent++;
+                }
+            }
+        }
+
         public override void OnEndOfAlgorithm()
         {
             if (!_receivedDelistedEvent)
             {
-                throw new Exception("Did not receive expected delisted event");
+                throw new RegressionTestException("Did not receive expected delisted event");
             }
             if (!_receivedDelistedWarningEvent)
             {
-                throw new Exception("Did not receive expected delisted warning event");
+                throw new RegressionTestException("Did not receive expected delisted warning event");
             }
             if (_dataCount != 13)
             {
-                throw new Exception($"Unexpected data count {_dataCount}. Expected 13");
+                throw new RegressionTestException($"Unexpected data count {_dataCount}. Expected 13");
+            }
+            if (_receivedSecurityChangesEvent != 1)
+            {
+                throw new RegressionTestException($"Did not receive expected security changes removal! Got {_receivedSecurityChangesEvent}");
             }
         }
 
@@ -133,54 +148,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 87;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "3"},
+            {"Total Orders", "2"},
             {"Average Win", "0%"},
-            {"Average Loss", "-3.23%"},
-            {"Compounding Annual Return", "-79.990%"},
-            {"Drawdown", "4.300%"},
+            {"Average Loss", "-5.58%"},
+            {"Compounding Annual Return", "-85.973%"},
+            {"Drawdown", "5.600%"},
             {"Expectancy", "-1"},
-            {"Net Profit", "-4.312%"},
-            {"Sharpe Ratio", "-5.958"},
+            {"Start Equity", "100000"},
+            {"End Equity", "94421.6"},
+            {"Net Profit", "-5.578%"},
+            {"Sharpe Ratio", "-5.495"},
+            {"Sortino Ratio", "-10.306"},
             {"Probabilistic Sharpe Ratio", "0.000%"},
             {"Loss Rate", "100%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "-0.685"},
-            {"Beta", "-0.445"},
-            {"Annual Standard Deviation", "0.119"},
-            {"Annual Variance", "0.014"},
-            {"Information Ratio", "-4.887"},
-            {"Tracking Error", "0.155"},
-            {"Treynor Ratio", "1.589"},
-            {"Total Fees", "$55.05"},
-            {"Estimated Strategy Capacity", "$0"},
-            {"Fitness Score", "0.002"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "-15.687"},
-            {"Return Over Maximum Drawdown", "-18.549"},
-            {"Portfolio Turnover", "0.334"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "61f4d3c109fc4b6b9eb14d2e4eec4843"}
+            {"Alpha", "-0.585"},
+            {"Beta", "-1.085"},
+            {"Annual Standard Deviation", "0.15"},
+            {"Annual Variance", "0.023"},
+            {"Information Ratio", "-5.081"},
+            {"Tracking Error", "0.206"},
+            {"Treynor Ratio", "0.76"},
+            {"Total Fees", "$36.70"},
+            {"Estimated Strategy Capacity", "$110000.00"},
+            {"Lowest Capacity Asset", "AAA SEVKGI6HF885"},
+            {"Portfolio Turnover", "18.33%"},
+            {"Drawdown Recovery", "0"},
+            {"OrderListHash", "1450ea23a3a1ef4ee2398ec757c39223"}
         };
     }
 }

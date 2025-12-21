@@ -1,4 +1,19 @@
-﻿using System.Collections.Generic;
+/*
+ * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+ * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+using System.Collections.Generic;
 using McMaster.Extensions.CommandLineUtils;
 
 namespace QuantConnect.Configuration
@@ -27,8 +42,14 @@ namespace QuantConnect.Configuration
                 // the result destination folder this algorithm should use for logging and result.json
                 new CommandLineOption("results-destination-folder", CommandOptionType.SingleValue),
 
+                // the algorithm name
+                new CommandLineOption("backtest-name", CommandOptionType.SingleValue),
+
                 // the unique algorithm id
                 new CommandLineOption("algorithm-id", CommandOptionType.SingleValue),
+
+                // the unique optimization id
+                new CommandLineOption("optimization-id", CommandOptionType.SingleValue),
 
                 // Options grabbed from json file
                 new CommandLineOption("environment", CommandOptionType.SingleValue),
@@ -36,7 +57,7 @@ namespace QuantConnect.Configuration
                 // algorithm class selector
                 new CommandLineOption("algorithm-type-name", CommandOptionType.SingleValue),
 
-                // Algorithm language selector - options CSharp, FSharp, VisualBasic, Python, Java
+                // Algorithm language selector - options CSharp, Python
                 new CommandLineOption("algorithm-language", CommandOptionType.SingleValue),
 
                 //Physical DLL location
@@ -57,6 +78,7 @@ namespace QuantConnect.Configuration
                 new CommandLineOption("factor-file-provider", CommandOptionType.SingleValue),
                 new CommandLineOption("data-provider", CommandOptionType.SingleValue),
                 new CommandLineOption("alpha-handler", CommandOptionType.SingleValue),
+                new CommandLineOption("history-provider", CommandOptionType.SingleValue),
 
                 // limits on number of symbols to allow
                 new CommandLineOption("symbol-minute-limit", CommandOptionType.SingleValue),
@@ -73,6 +95,7 @@ namespace QuantConnect.Configuration
                 // To get your api access token go to quantconnect.com/account
                 new CommandLineOption("job-user-id", CommandOptionType.SingleValue),
                 new CommandLineOption("api-access-token", CommandOptionType.SingleValue),
+                new CommandLineOption("job-organization-id", CommandOptionType.SingleValue),
 
                 // live data configuration
                 new CommandLineOption("live-data-url", CommandOptionType.SingleValue),
@@ -108,16 +131,11 @@ namespace QuantConnect.Configuration
                 new CommandLineOption("fxcm-password", CommandOptionType.SingleValue),
                 new CommandLineOption("fxcm-account-id", CommandOptionType.SingleValue),
 
-                // iqfeed configuration
-                new CommandLineOption("iqfeed-username", CommandOptionType.SingleValue),
-                new CommandLineOption("iqfeed-password", CommandOptionType.SingleValue),
-                new CommandLineOption("iqfeed-productName", CommandOptionType.SingleValue),
-                new CommandLineOption("iqfeed-version", CommandOptionType.SingleValue),
-
-                // gdax configuration
-                new CommandLineOption("gdax-api-secret", CommandOptionType.SingleValue),
-                new CommandLineOption("gdax-api-key", CommandOptionType.SingleValue),
-                new CommandLineOption("gdax-passphrase", CommandOptionType.SingleValue),
+                // coinbase configuration
+                new CommandLineOption("coinbase-rest-api", CommandOptionType.SingleValue),
+                new CommandLineOption("coinbase-url", CommandOptionType.SingleValue),
+                new CommandLineOption("coinbase-api-key", CommandOptionType.SingleValue),
+                new CommandLineOption("coinbase-api-secret", CommandOptionType.SingleValue),
 
                 // Required to access data from Quandl
                 // To get your access token go to https://www.quandl.com/account/api

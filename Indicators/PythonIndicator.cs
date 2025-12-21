@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -13,36 +13,23 @@
  * limitations under the License.
 */
 
+using System;
 using Python.Runtime;
 using QuantConnect.Data;
-using System;
+using QuantConnect.Python;
 
 namespace QuantConnect.Indicators
 {
     /// <summary>
     /// Provides a wrapper for <see cref="IndicatorBase{IBaseData}"/> implementations written in python
     /// </summary>
-    public class PythonIndicator : IndicatorBase<IBaseData>
+    public class PythonIndicator : IndicatorBase<IBaseData>, IIndicatorWarmUpPeriodProvider
     {
+        private static string _isReadyName = nameof(IsReady).ToSnakeCase();
+        private PyObject _instance;
         private bool _isReady;
-        private dynamic _indicator;
-
-        /// <summary>
-        /// Get the indicator Name. If not defined, use the class name
-        /// </summary>
-        /// <param name="indicator">The python implementation of <see cref="IndicatorBase{IBaseDataBar}"/></param>
-        /// <returns>The indicator Name.</returns>
-        private static string GetIndicatorName(PyObject indicator)
-        {
-            using (Py.GIL())
-            {
-                var name = indicator.HasAttr("Name")
-                    ? indicator.GetAttr("Name")
-                    : indicator.GetAttr("__class__").GetAttr("__name__");
-
-                return name.GetAndDispose<string>();
-            }
-        }
+        private bool _pythonIsReadyProperty;
+        private BasePythonWrapper<IIndicator> _indicatorWrapper;
 
         /// <summary>
         /// Initializes a new instance of the PythonIndicator class using the specified name.
@@ -58,7 +45,7 @@ namespace QuantConnect.Indicators
         /// </summary>
         /// <remarks>This overload allows inheritance for python classes with multiple arguments</remarks>
         public PythonIndicator(params PyObject[] args)
-            : base (GetIndicatorName(args[0]))
+            : base(GetIndicatorName(args[0]))
         {
         }
 
@@ -78,35 +65,68 @@ namespace QuantConnect.Indicators
         /// <param name="indicator">The python implementation of <see cref="IndicatorBase{IBaseDataBar}"/></param>
         public void SetIndicator(PyObject indicator)
         {
-            using (Py.GIL())
+            _instance = indicator;
+            _indicatorWrapper = new BasePythonWrapper<IIndicator>(indicator, validateInterface: false);
+            foreach (var attributeName in new[] { "IsReady", "Update", "Value" })
             {
-                foreach (var attributeName in new[] {"IsReady", "Update", "Value"})
+                if (!_indicatorWrapper.HasAttr(attributeName))
                 {
-                    if (!indicator.HasAttr(attributeName))
+                    var name = GetIndicatorName(indicator);
+
+                    var message = $"Indicator.{attributeName.ToSnakeCase()} must be implemented. " +
+                                    $"Please implement this missing method in {name}";
+
+                    if (attributeName == "IsReady")
                     {
-                        var name = indicator.GetAttr("__class__").GetAttr("__name__");
+                        message += " or use PythonIndicator as base:" +
+                                    $"{Environment.NewLine}class {name}(PythonIndicator):";
+                    }
 
-                        var message = $"Indicator.{attributeName} must be implemented. " +
-                                      $"Please implement this missing method in {name}";
+                    throw new NotImplementedException(message);
+                }
 
-                        if (attributeName == "IsReady")
-                        {
-                            message += " or use PythonIndicator as base:" +
-                                       $"{Environment.NewLine}class {name}(PythonIndicator):";
-                        }
-
-                        throw new NotImplementedException(message);
+                if (attributeName == "IsReady")
+                {
+                    using (Py.GIL())
+                    {
+                        _pythonIsReadyProperty = indicator.GetPythonBoolPropertyWithChecks(_isReadyName) != null;
                     }
                 }
             }
 
-            _indicator = indicator;
+            WarmUpPeriod = GetIndicatorWarmUpPeriod();
         }
 
         /// <summary>
         /// Gets a flag indicating when this indicator is ready and fully initialized
         /// </summary>
-        public override bool IsReady => _isReady;
+        public override bool IsReady
+        {
+            get
+            {
+                if (_isReady)
+                {
+                    return true;
+                }
+
+                if (_pythonIsReadyProperty)
+                {
+                    using (Py.GIL())
+                    {
+                        /// We get the property again and convert it to bool
+                        var property = _instance.GetPythonBoolPropertyWithChecks(_isReadyName);
+                        return BasePythonWrapper<IIndicator>.PythonRuntimeChecker.ConvertAndDispose<bool>(property, _isReadyName, isMethod: false);
+                    }
+                }
+
+                return _isReady;
+            }
+        }
+
+        /// <summary>
+        /// Required period, in data points, for the indicator to be ready and fully initialized
+        /// </summary>
+        public int WarmUpPeriod { get; protected set; }
 
         /// <summary>
         /// Computes the next value of this indicator from the given state
@@ -115,10 +135,43 @@ namespace QuantConnect.Indicators
         /// <returns>A new value for this indicator</returns>
         protected override decimal ComputeNextValue(IBaseData input)
         {
+            _isReady = _indicatorWrapper.InvokeMethod<bool?>(nameof(Update), input)
+                ?? _indicatorWrapper.GetProperty<bool>(nameof(IsReady));
+            return _indicatorWrapper.GetProperty<decimal>("Value");
+        }
+
+        /// <summary>
+        /// Get the indicator WarmUpPeriod parameter. If not defined, use 0
+        /// </summary>
+        /// <returns>The WarmUpPeriod of the indicator.</returns>
+        private int GetIndicatorWarmUpPeriod()
+        {
+            return _indicatorWrapper.HasAttr(nameof(WarmUpPeriod)) ? _indicatorWrapper.GetProperty<int>(nameof(WarmUpPeriod)) : 0;
+        }
+
+        /// <summary>
+        /// Get the indicator Name. If not defined, use the class name
+        /// </summary>
+        /// <param name="indicator">The python implementation of <see cref="IndicatorBase{IBaseDataBar}"/></param>
+        /// <returns>The indicator Name.</returns>
+        private static string GetIndicatorName(PyObject indicator)
+        {
             using (Py.GIL())
             {
-                _isReady = _indicator.Update(input) ?? _indicator.IsReady;
-                return _indicator.Value;
+                PyObject name;
+                if (indicator.HasAttr("Name"))
+                {
+                    name = indicator.GetAttr("Name");
+                }
+                else if (indicator.HasAttr("name"))
+                {
+                    name = indicator.GetAttr("name");
+                }
+                else
+                {
+                    name = indicator.GetAttr("__class__").GetAttr("__name__");
+                }
+                return name.GetAndDispose<string>();
             }
         }
     }

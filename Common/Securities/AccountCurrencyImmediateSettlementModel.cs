@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -13,26 +13,23 @@
  * limitations under the License.
 */
 
-using System;
-
 namespace QuantConnect.Securities
 {
     /// <summary>
     /// Represents the model responsible for applying cash settlement rules
     /// </summary>
     /// <remarks>This model converts the amount to the account currency and applies cash settlement immediately</remarks>
-    public class AccountCurrencyImmediateSettlementModel : ISettlementModel
+    public class AccountCurrencyImmediateSettlementModel : ImmediateSettlementModel
     {
         /// <summary>
         /// Applies cash settlement rules
         /// </summary>
-        /// <param name="portfolio">The algorithm's portfolio</param>
-        /// <param name="security">The fill's security</param>
-        /// <param name="applicationTimeUtc">The fill time (in UTC)</param>
-        /// <param name="currency">The currency symbol</param>
-        /// <param name="amount">The amount of cash to apply</param>
-        public void ApplyFunds(SecurityPortfolioManager portfolio, Security security, DateTime applicationTimeUtc, string currency, decimal amount)
+        /// <param name="applyFundsParameters">The funds application parameters</param>
+        public override void ApplyFunds(ApplyFundsSettlementModelParameters applyFundsParameters)
         {
+            var currency = applyFundsParameters.CashAmount.Currency;
+            var amount = applyFundsParameters.CashAmount.Amount;
+            var portfolio = applyFundsParameters.Portfolio;
             var amountInAccountCurrency = portfolio.CashBook.ConvertToAccountCurrency(amount, currency);
 
             portfolio.CashBook[portfolio.CashBook.AccountCurrency].AddAmount(amountInAccountCurrency);

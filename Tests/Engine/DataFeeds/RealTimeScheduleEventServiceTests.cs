@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -23,13 +23,13 @@ using QuantConnect.Util;
 
 namespace QuantConnect.Tests.Engine.DataFeeds
 {
-    [TestFixture, Ignore("Performance test")]
+    [TestFixture, Explicit("Performance test")]
     public class RealTimeScheduleEventServiceTests
     {
         [Test]
         public void Accuracy()
         {
-            var scheduledEventService = new RealTimeScheduleEventService(RealTimeProvider.Instance);
+            using var scheduledEventService = new RealTimeScheduleEventService(RealTimeProvider.Instance);
             EventHandler handler = (_, __) =>
             {
                 Log.Trace($"{DateTime.UtcNow:O}");
@@ -41,7 +41,6 @@ namespace QuantConnect.Tests.Engine.DataFeeds
             scheduledEventService.NewEvent += handler;
             handler(this, null);
             Thread.Sleep(5000);
-            scheduledEventService.DisposeSafely();
         }
     }
 }

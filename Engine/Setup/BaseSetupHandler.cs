@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -15,18 +15,21 @@
 */
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using QuantConnect.AlgorithmFactory;
-using QuantConnect.Configuration;
+using Newtonsoft.Json;
 using QuantConnect.Data;
-using QuantConnect.Data.UniverseSelection;
-using QuantConnect.Interfaces;
-using QuantConnect.Lean.Engine.DataFeeds;
+using QuantConnect.Util;
 using QuantConnect.Logging;
 using QuantConnect.Packets;
-using QuantConnect.Util;
-using HistoryRequest = QuantConnect.Data.HistoryRequest;
+using QuantConnect.Interfaces;
+using QuantConnect.Brokerages;
+using System.Collections.Generic;
+using QuantConnect.Configuration;
+using QuantConnect.AlgorithmFactory;
+using QuantConnect.Lean.Engine.DataFeeds;
+using QuantConnect.Data.UniverseSelection;
+using QuantConnect.Lean.Engine.DataFeeds.WorkScheduling;
+using QuantConnect.Securities;
 
 namespace QuantConnect.Lean.Engine.Setup
 {
@@ -37,9 +40,32 @@ namespace QuantConnect.Lean.Engine.Setup
     public static class BaseSetupHandler
     {
         /// <summary>
+        /// Get the maximum time that the initialization of an algorithm can take
+        /// </summary>
+        public static TimeSpan InitializationTimeout { get; } = TimeSpan.FromSeconds(Config.GetDouble("initialization-timeout", 300));
+
+        /// <summary>
         /// Get the maximum time that the creation of an algorithm can take
         /// </summary>
         public static TimeSpan AlgorithmCreationTimeout { get; } = TimeSpan.FromSeconds(Config.GetDouble("algorithm-creation-timeout", 90));
+
+        /// <summary>
+        /// Primary entry point to setup a new algorithm
+        /// </summary>
+        /// <param name="parameters">The parameters object to use</param>
+        /// <returns>True on successfully setting up the algorithm state, or false on error.</returns>
+        public static bool Setup(SetupHandlerParameters parameters)
+        {
+            var algorithm = parameters.Algorithm;
+            var job = parameters.AlgorithmNodePacket;
+
+            algorithm?.SetDeploymentTarget(job.DeploymentTarget);
+
+            Log.Trace($"BaseSetupHandler.Setup({job.DeploymentTarget}): UID: {job.UserId.ToStringInvariant()}, " +
+                $"PID: {job.ProjectId.ToStringInvariant()}, Version: {job.Version}, Source: {job.RequestSource}"
+            );
+            return true;
+        }
 
         /// <summary>
         /// Will first check and add all the required conversion rate securities
@@ -47,63 +73,42 @@ namespace QuantConnect.Lean.Engine.Setup
         /// </summary>
         /// <param name="algorithm">The algorithm instance</param>
         /// <param name="universeSelection">The universe selection instance</param>
+        /// <param name="currenciesToUpdateWhiteList">
+        /// If passed, the currencies in the CashBook that are contained in this list will be updated.
+        /// By default, if not passed (null), all currencies in the cashbook without a properly set up currency conversion will be updated.
+        /// This is not intended for actual algorithms but for tests or for this method to be used as a helper.
+        /// </param>
         public static void SetupCurrencyConversions(
             IAlgorithm algorithm,
-            UniverseSelection universeSelection)
+            UniverseSelection universeSelection,
+            IReadOnlyCollection<string> currenciesToUpdateWhiteList = null)
         {
             // this is needed to have non-zero currency conversion rates during warmup
             // will also set the Cash.ConversionRateSecurity
             universeSelection.EnsureCurrencyDataFeeds(SecurityChanges.None);
 
             // now set conversion rates
-            var cashToUpdate = algorithm.Portfolio.CashBook.Values
-                .Where(x => x.ConversionRateSecurity != null && x.ConversionRate == 0)
+            Func<Cash, bool> cashToUpdateFilter = currenciesToUpdateWhiteList == null
+                ? (x) => x.CurrencyConversion != null && x.ConversionRate == 0
+                : (x) => currenciesToUpdateWhiteList.Contains(x.Symbol);
+            var cashToUpdate = algorithm.Portfolio.CashBook.Values.Where(cashToUpdateFilter).ToList();
+
+            var securitiesToUpdate = cashToUpdate
+                .SelectMany(x => x.CurrencyConversion.ConversionRateSecurities)
+                .Distinct()
                 .ToList();
 
-            var historyRequestFactory = new HistoryRequestFactory(algorithm);
-            var historyRequests = new List<HistoryRequest>();
+            AlgorithmUtils.SeedSecurities(securitiesToUpdate, algorithm);
+
             foreach (var cash in cashToUpdate)
             {
-                var configs = algorithm
-                    .SubscriptionManager
-                    .SubscriptionDataConfigService
-                    .GetSubscriptionDataConfigs(cash.ConversionRateSecurity.Symbol,
-                        includeInternalConfigs: true);
-
-                // we need to order and select a specific configuration type
-                // so the conversion rate is deterministic
-                var configToUse = configs.OrderBy(x => x.TickType).First();
-                var hours = cash.ConversionRateSecurity.Exchange.Hours;
-
-                var resolution = configs.GetHighestResolution();
-                var startTime = historyRequestFactory.GetStartTimeAlgoTz(
-                    cash.ConversionRateSecurity.Symbol,
-                    10,
-                    resolution,
-                    hours,
-                    configToUse.DataTimeZone);
-                var endTime = algorithm.Time;
-
-                historyRequests.Add(historyRequestFactory.CreateHistoryRequest(
-                    configToUse,
-                    startTime,
-                    endTime,
-                    cash.ConversionRateSecurity.Exchange.Hours,
-                    resolution));
+                cash.Update();
             }
 
-            var slices = algorithm.HistoryProvider.GetHistory(historyRequests, algorithm.TimeZone);
-            slices.PushThrough(data =>
-            {
-                foreach (var cash in cashToUpdate
-                    .Where(x => x.ConversionRateSecurity.Symbol == data.Symbol))
-                {
-                    cash.Update(data);
-                }
-            });
-
-            Log.Trace("BaseSetupHandler.SetupCurrencyConversions():" +
-                $"{Environment.NewLine}{algorithm.Portfolio.CashBook}");
+            Log.Trace($"BaseSetupHandler.SetupCurrencyConversions():{Environment.NewLine}" +
+                $"Account Type: {algorithm.BrokerageModel.AccountType}{Environment.NewLine}{Environment.NewLine}{algorithm.Portfolio.CashBook}");
+            // this is useful for debugging
+            algorithm.Portfolio.LogMarginInformation();
         }
 
         /// <summary>
@@ -115,7 +120,16 @@ namespace QuantConnect.Lean.Engine.Setup
         {
             var isolator = new Isolator();
             return isolator.ExecuteWithTimeLimit(TimeSpan.FromMinutes(5),
-                () => DebuggerHelper.Initialize(algorithmNodePacket.Language),
+                () =>
+                {
+                    DebuggerHelper.Initialize(algorithmNodePacket.Language, out var workersInitializationCallback);
+
+                    if (workersInitializationCallback != null)
+                    {
+                        // initialize workers for debugging if required
+                        WeightedWorkScheduler.Instance.AddSingleCallForAll(workersInitializationCallback);
+                    }
+                },
                 algorithmNodePacket.RamAllocation,
                 sleepIntervalMillis: 100,
                 workerThread: workerThread);
@@ -151,6 +165,49 @@ namespace QuantConnect.Lean.Engine.Setup
             {
                 algorithm.SetAccountCurrency(job.CashAmount.Value.Currency);
             }
+        }
+
+        /// <summary>
+        /// Get the available data feeds from config.json,
+        /// </summary>
+        public static Dictionary<SecurityType, List<TickType>> GetConfiguredDataFeeds()
+        {
+            var dataFeedsConfigString = Config.Get("security-data-feeds");
+
+            if (!dataFeedsConfigString.IsNullOrEmpty())
+            {
+                var dataFeeds = JsonConvert.DeserializeObject<Dictionary<SecurityType, List<TickType>>>(dataFeedsConfigString);
+                return dataFeeds;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Set the number of trading days per year based on the specified brokerage model.
+        /// </summary>
+        /// <param name="algorithm">The algorithm instance</param>
+        /// <returns>
+        /// The number of trading days per year. For specific brokerages (Coinbase, Binance, Bitfinex, Bybit, FTX, Kraken),
+        /// the value is 365. For other brokerages, the default value is 252.
+        /// </returns>
+        public static void SetBrokerageTradingDayPerYear(IAlgorithm algorithm)
+        {
+            if (algorithm == null)
+            {
+                throw new ArgumentNullException(nameof(algorithm));
+            }
+
+            algorithm.Settings.TradingDaysPerYear ??= algorithm.BrokerageModel switch
+            {
+                CoinbaseBrokerageModel
+                or BinanceBrokerageModel
+                or BitfinexBrokerageModel
+                or BybitBrokerageModel
+                or FTXBrokerageModel
+                or KrakenBrokerageModel => 365,
+                _ => 252
+            };
         }
     }
 }

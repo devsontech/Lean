@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -26,6 +26,8 @@ using QuantConnect.Securities.Equity;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using QuantConnect.Tests.Common.Data.UniverseSelection;
+using QuantConnect.Interfaces;
 
 namespace QuantConnect.Tests.Algorithm.Framework.Portfolio
 {
@@ -63,6 +65,7 @@ namespace QuantConnect.Tests.Algorithm.Framework.Portfolio
                     new SecurityCache()
                     );
 
+            var industryTemplateCodeDict = new Dictionary<SecurityIdentifier, string>();
             foreach (var kvp in prices)
             {
                 var symbol = kvp.Key;
@@ -73,17 +76,17 @@ namespace QuantConnect.Tests.Algorithm.Framework.Portfolio
                 // This procedure shows that the model ignores the securities without it
                 if (!string.IsNullOrEmpty(sectorCode))
                 {
-                    security.SetMarketPrice(new Fundamentals
+                    security.SetMarketPrice(new Fundamental(Algorithm.Time, symbol)
                     {
-                        Symbol = symbol,
-                        Time = Algorithm.Time,
-                        Value = price,
-                        CompanyReference = new CompanyReference() { IndustryTemplateCode = kvp.Value.Item2 }
+                        Value = price
                     });
+                    industryTemplateCodeDict[symbol.ID] = kvp.Value.Item2;
                 }
                 security.SetMarketPrice(new Tick(Algorithm.Time, symbol, price, price));
                 Algorithm.Securities.Add(symbol, security);
             }
+
+            FundamentalService.Initialize(TestGlobals.DataProvider, new TestFundamentalDataProvider(industryTemplateCodeDict), false);
         }
 
         [Test]
@@ -113,7 +116,7 @@ namespace QuantConnect.Tests.Algorithm.Framework.Portfolio
             // B => .166%, T => .25, X => 0% (removed)
             var sectorCount = 2;
             var groupedBySector = Algorithm.Securities
-                .Where(pair => pair.Value.Fundamentals?.CompanyReference?.IndustryTemplateCode != null)
+                .Where(pair => pair.Value.Fundamentals?.CompanyReference.IndustryTemplateCode != null)
                 .GroupBy(pair => pair.Value.Fundamentals.CompanyReference.IndustryTemplateCode);
 
             var expectedTargets = new List<PortfolioTarget>();
@@ -155,14 +158,14 @@ namespace QuantConnect.Tests.Algorithm.Framework.Portfolio
             Assert.AreEqual(1, targets.Count);
 
             // Removing SPY should clear the key in the insight collection
-            var changes = SecurityChanges.Removed(Algorithm.Securities[Symbols.SPY]);
+            var changes = SecurityChangesTests.RemovedNonInternal(Algorithm.Securities[Symbols.SPY]);
             Algorithm.PortfolioConstruction.OnSecuritiesChanged(Algorithm, changes);
 
             // Since we have 3 B, 2 T and 1 X, each security in each sector will get 
             // B => .166%, T => .25, X => 0% (removed)
             var sectorCount = 2;
             var groupedBySector = Algorithm.Securities
-                .Where(pair => pair.Value.Fundamentals?.CompanyReference?.IndustryTemplateCode != null)
+                .Where(pair => pair.Value.Fundamentals?.CompanyReference.IndustryTemplateCode != null)
                 .GroupBy(pair => pair.Value.Fundamentals.CompanyReference.IndustryTemplateCode);
 
             var expectedTargets = new List<PortfolioTarget>();
@@ -203,7 +206,7 @@ namespace QuantConnect.Tests.Algorithm.Framework.Portfolio
             // B => .166%, T => .25, X => 0% (removed)
             var sectorCount = 2;
             var groupedBySector = Algorithm.Securities
-                .Where(pair => pair.Value.Fundamentals?.CompanyReference?.IndustryTemplateCode != null)
+                .Where(pair => pair.Value.Fundamentals?.CompanyReference.IndustryTemplateCode != null)
                 .GroupBy(pair => pair.Value.Fundamentals.CompanyReference.IndustryTemplateCode);
 
             var expectedTargets = new List<PortfolioTarget>();
@@ -246,7 +249,7 @@ namespace QuantConnect.Tests.Algorithm.Framework.Portfolio
             // Since we have 3 B, 2 T and 1 X, each security in each secotr will get B => .11%, T => .165, X => .33%
             var sectorCount = 3;
             var groupedBySector = Algorithm.Securities
-                .Where(pair => pair.Value.Fundamentals?.CompanyReference?.IndustryTemplateCode != null)
+                .Where(pair => pair.Value.Fundamentals?.CompanyReference.IndustryTemplateCode != null)
                 .Where(pair => insights.Any(insight => pair.Key == insight.Symbol))
                 .GroupBy(pair => pair.Value.Fundamentals.CompanyReference.IndustryTemplateCode);
 
@@ -270,10 +273,11 @@ namespace QuantConnect.Tests.Algorithm.Framework.Portfolio
 
         public override Insight GetInsight(Symbol symbol, InsightDirection direction, DateTime generatedTimeUtc, TimeSpan? period = null, double? weight = _weight)
         {
-            period = period ?? TimeSpan.FromDays(1);
+            period ??= TimeSpan.FromDays(1);
             var insight = Insight.Price(symbol, period.Value, direction, weight: weight);
             insight.GeneratedTimeUtc = generatedTimeUtc;
             insight.CloseTimeUtc = generatedTimeUtc.Add(period.Value);
+            Algorithm.Insights.Add(insight);
             return insight;
         }
 
@@ -289,6 +293,41 @@ namespace QuantConnect.Tests.Algorithm.Framework.Portfolio
                 const string name = nameof(SectorWeightingPortfolioConstructionModel);
                 var instance = Py.Import(name).GetAttr(name).Invoke(((object)paramenter).ToPython());
                 return new PortfolioConstructionModelPythonWrapper(instance);
+            }
+        }
+
+        private class TestFundamentalDataProvider : IFundamentalDataProvider
+        {
+            private readonly Dictionary<SecurityIdentifier, string> _industryTemplateCodeDict;
+
+            public TestFundamentalDataProvider(Dictionary<SecurityIdentifier, string> industryTemplateCodeDict)
+            {
+                _industryTemplateCodeDict = industryTemplateCodeDict;
+            }
+            public T Get<T>(DateTime time, SecurityIdentifier securityIdentifier, FundamentalProperty name)
+            {
+                if (securityIdentifier == SecurityIdentifier.Empty)
+                {
+                    return default;
+                }
+                return Get(time, securityIdentifier, name);
+            }
+            private dynamic Get(DateTime time, SecurityIdentifier securityIdentifier, FundamentalProperty enumName)
+            {
+                var name = Enum.GetName(enumName);
+                switch (name)
+                {
+                    case "CompanyReference_IndustryTemplateCode":
+                        if(_industryTemplateCodeDict.TryGetValue(securityIdentifier, out var result))
+                        {
+                            return result;
+                        }
+                        return null;
+                }
+                return null;
+            }
+            public void Initialize(IDataProvider dataProvider, bool liveMode)
+            {
             }
         }
     }

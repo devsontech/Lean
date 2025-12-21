@@ -13,12 +13,11 @@
  * limitations under the License.
 */
 
-using System;
-using System.Collections.Generic;
 using System.Linq;
 using QuantConnect.Data;
-using QuantConnect.Data.UniverseSelection;
 using QuantConnect.Interfaces;
+using System.Collections.Generic;
+using QuantConnect.Data.UniverseSelection;
 
 namespace QuantConnect.Algorithm.CSharp
 {
@@ -30,7 +29,7 @@ namespace QuantConnect.Algorithm.CSharp
     public class CoarseSelectionTimeRegressionAlgorithm : QCAlgorithm, IRegressionAlgorithmDefinition
     {
         private Symbol _spy;
-        private decimal _historyCoarseSpyPrice;
+        private decimal _spyPrice;
 
         /// <summary>
         /// Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. All algorithms must initialized.
@@ -53,7 +52,12 @@ namespace QuantConnect.Algorithm.CSharp
                 .Where(fundamental => fundamental.Symbol != _spy) // ignore spy
                 .Take(1);
 
-            _historyCoarseSpyPrice = History(_spy, 1).First().Close;
+            var historyCoarseSpyPrice = History(_spy, 1).First().Close;
+            if (_spyPrice != 0 && (historyCoarseSpyPrice == 0 ||  historyCoarseSpyPrice != _spyPrice))
+            {
+                throw new RegressionTestException($"Unexpected SPY price: {historyCoarseSpyPrice}");
+            }
+            _spyPrice = 0;
 
             return top.Select(x => x.Symbol);
         }
@@ -61,23 +65,20 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
         /// </summary>
-        /// <param name="data">Slice object keyed by symbol containing the stock data</param>
-        public override void OnData(Slice data)
+        /// <param name="slice">Slice object keyed by symbol containing the stock data</param>
+        public override void OnData(Slice slice)
         {
-            if (data.Count != 2)
+            if (slice.Count != 2)
             {
-                throw new Exception($"Unexpected data count: {data.Count}");
+                throw new RegressionTestException($"Unexpected data count: {slice.Count}");
             }
             if (ActiveSecurities.Count != 2)
             {
-                throw new Exception($"Unexpected ActiveSecurities count: {ActiveSecurities.Count}");
+                throw new RegressionTestException($"Unexpected ActiveSecurities count: {ActiveSecurities.Count}");
             }
-            // the price obtained by the previous coarse selection should be the same as the current price
-            if (_historyCoarseSpyPrice != 0 && _historyCoarseSpyPrice != Securities[_spy].Price)
-            {
-                throw new Exception($"Unexpected SPY price: {_historyCoarseSpyPrice}");
-            }
-            _historyCoarseSpyPrice = 0;
+
+            // we get the data at 4PM, selection happening at midnight
+            _spyPrice = Securities[_spy].Price;
             if (!Portfolio.Invested)
             {
                 SetHoldings(_spy, 1);
@@ -93,54 +94,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp };
+        public List<Language> Languages { get; } = new() { Language.CSharp };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 49660;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 6;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "1"},
+            {"Total Orders", "1"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
-            {"Compounding Annual Return", "57.657%"},
-            {"Drawdown", "1.000%"},
+            {"Compounding Annual Return", "36.033%"},
+            {"Drawdown", "1.300%"},
             {"Expectancy", "0"},
-            {"Net Profit", "1.003%"},
-            {"Sharpe Ratio", "5.024"},
-            {"Probabilistic Sharpe Ratio", "68.421%"},
+            {"Start Equity", "100000"},
+            {"End Equity", "100676.75"},
+            {"Net Profit", "0.677%"},
+            {"Sharpe Ratio", "2.646"},
+            {"Sortino Ratio", "2.77"},
+            {"Probabilistic Sharpe Ratio", "58.013%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "0.312"},
-            {"Beta", "0.27"},
-            {"Annual Standard Deviation", "0.087"},
-            {"Annual Variance", "0.008"},
-            {"Information Ratio", "-0.242"},
-            {"Tracking Error", "0.105"},
-            {"Treynor Ratio", "1.616"},
-            {"Total Fees", "$3.08"},
-            {"Estimated Strategy Capacity", "$630000000.00"},
-            {"Fitness Score", "0.141"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "10.385"},
-            {"Return Over Maximum Drawdown", "58.709"},
-            {"Portfolio Turnover", "0.143"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "50145c3c1d58b09f38ec1b77cfe69eae"}
+            {"Alpha", "-0.264"},
+            {"Beta", "1.183"},
+            {"Annual Standard Deviation", "0.103"},
+            {"Annual Variance", "0.011"},
+            {"Information Ratio", "-8.158"},
+            {"Tracking Error", "0.022"},
+            {"Treynor Ratio", "0.231"},
+            {"Total Fees", "$3.07"},
+            {"Estimated Strategy Capacity", "$930000000.00"},
+            {"Lowest Capacity Asset", "SPY R735QTJ8XC9X"},
+            {"Portfolio Turnover", "12.65%"},
+            {"Drawdown Recovery", "5"},
+            {"OrderListHash", "87438e51988f37757a2d7f97389483ea"}
         };
     }
 }

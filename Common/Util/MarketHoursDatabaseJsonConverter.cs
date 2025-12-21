@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -22,6 +22,7 @@ using Newtonsoft.Json.Linq;
 using NodaTime;
 using QuantConnect.Logging;
 using QuantConnect.Securities;
+using QuantConnect.Securities.Option;
 
 namespace QuantConnect.Util
 {
@@ -73,7 +74,7 @@ namespace QuantConnect.Util
             /// The entries in the market hours database, keyed by <see cref="SecurityDatabaseKey"/>
             /// </summary>
             [JsonProperty("entries")]
-            public Dictionary<string, MarketHoursDatabaseEntryJson> Entries;
+            public Dictionary<string, MarketHoursDatabaseEntryJson> Entries { get; set; }
 
             /// <summary>
             /// Initializes a new instance of the <see cref="MarketHoursDatabaseJson"/> class
@@ -97,25 +98,64 @@ namespace QuantConnect.Util
             /// <returns>A new instance of the <see cref="MarketHoursDatabase"/> class</returns>
             public MarketHoursDatabase Convert()
             {
-                var entries = new Dictionary<SecurityDatabaseKey, MarketHoursDatabase.Entry>();
+                // first we parse the entries keys so that later we can sort by security type
+                var entries = new Dictionary<SecurityDatabaseKey, MarketHoursDatabaseEntryJson>(Entries.Count);
                 foreach (var entry in Entries)
                 {
                     try
                     {
                         var key = SecurityDatabaseKey.Parse(entry.Key);
-                        if (key == null)
+                        if (key != null)
                         {
-                            continue;
+                            entries[key] = entry.Value;
                         }
-
-                        entries[key] = entry.Value.Convert();
                     }
                     catch (Exception err)
                     {
                         Log.Error(err);
                     }
                 }
-                return new MarketHoursDatabase(entries);
+
+                var result = new Dictionary<SecurityDatabaseKey, MarketHoursDatabase.Entry>(Entries.Count);
+                // we sort so we process generic entries and non options first
+                foreach (var entry in entries.OrderBy(kvp => kvp.Key.Symbol != null ? 1 : 0).ThenBy(kvp => kvp.Key.SecurityType.IsOption() ? 1 : 0))
+                {
+                    try
+                    {
+                        result.TryGetValue(entry.Key.CreateCommonKey(), out var marketEntry);
+                        var underlyingEntry = GetUnderlyingEntry(entry.Key, result);
+                        result[entry.Key] = entry.Value.Convert(underlyingEntry, marketEntry);
+                    }
+                    catch (Exception err)
+                    {
+                        Log.Error(err);
+                    }
+                }
+                return new MarketHoursDatabase(result);
+            }
+
+            /// <summary>
+            /// Helper method to get the already processed underlying entry for options
+            /// </summary>
+            private static MarketHoursDatabase.Entry GetUnderlyingEntry(SecurityDatabaseKey key, Dictionary<SecurityDatabaseKey, MarketHoursDatabase.Entry> result)
+            {
+                MarketHoursDatabase.Entry underlyingEntry = null;
+                if (key.SecurityType.IsOption())
+                {
+                    // if option, let's get the underlyings entry
+                    var underlyingSecurityType = Symbol.GetUnderlyingFromOptionType(key.SecurityType);
+                    var underlying = OptionSymbol.MapToUnderlying(key.Symbol, key.SecurityType);
+                    var underlyingKey = new SecurityDatabaseKey(key.Market, underlying, underlyingSecurityType);
+
+                    if (!result.TryGetValue(underlyingKey, out underlyingEntry)
+                        // let's retry with the wildcard
+                        && underlying != SecurityDatabaseKey.Wildcard)
+                    {
+                        var underlyingKeyWildCard = new SecurityDatabaseKey(key.Market, SecurityDatabaseKey.Wildcard, underlyingSecurityType);
+                        result.TryGetValue(underlyingKeyWildCard, out underlyingEntry);
+                    }
+                }
+                return underlyingEntry;
             }
         }
 
@@ -129,73 +169,79 @@ namespace QuantConnect.Util
             /// The data's raw time zone
             /// </summary>
             [JsonProperty("dataTimeZone")]
-            public string DataTimeZone;
+            public string DataTimeZone { get; set; }
 
             /// <summary>
             /// The exchange's time zone id from the tzdb
             /// </summary>
             [JsonProperty("exchangeTimeZone")]
-            public string ExchangeTimeZone;
+            public string ExchangeTimeZone { get; set; }
 
             /// <summary>
             /// Sunday market hours segments
             /// </summary>
             [JsonProperty("sunday")]
-            public List<MarketHoursSegment> Sunday;
+            public List<MarketHoursSegment> Sunday { get; set; }
 
             /// <summary>
             /// Monday market hours segments
             /// </summary>
             [JsonProperty("monday")]
-            public List<MarketHoursSegment> Monday;
+            public List<MarketHoursSegment> Monday { get; set; }
 
             /// <summary>
             /// Tuesday market hours segments
             /// </summary>
             [JsonProperty("tuesday")]
-            public List<MarketHoursSegment> Tuesday;
+            public List<MarketHoursSegment> Tuesday { get; set; }
 
             /// <summary>
             /// Wednesday market hours segments
             /// </summary>
             [JsonProperty("wednesday")]
-            public List<MarketHoursSegment> Wednesday;
+            public List<MarketHoursSegment> Wednesday { get; set; }
 
             /// <summary>
             /// Thursday market hours segments
             /// </summary>
             [JsonProperty("thursday")]
-            public List<MarketHoursSegment> Thursday;
+            public List<MarketHoursSegment> Thursday { get; set; }
 
             /// <summary>
             /// Friday market hours segments
             /// </summary>
             [JsonProperty("friday")]
-            public List<MarketHoursSegment> Friday;
+            public List<MarketHoursSegment> Friday { get; set; }
 
             /// <summary>
             /// Saturday market hours segments
             /// </summary>
             [JsonProperty("saturday")]
-            public List<MarketHoursSegment> Saturday;
+            public List<MarketHoursSegment> Saturday { get; set; }
 
             /// <summary>
             /// Holiday date strings
             /// </summary>
             [JsonProperty("holidays")]
-            public List<string> Holidays;
+            public List<string> Holidays { get; set; } = new();
 
             /// <summary>
             /// Early closes by date
             /// </summary>
             [JsonProperty("earlyCloses")]
-            public Dictionary<string, TimeSpan> EarlyCloses = new Dictionary<string, TimeSpan>();
+            public Dictionary<string, TimeSpan> EarlyCloses { get; set; } = new Dictionary<string, TimeSpan>();
 
             /// <summary>
             /// Late opens by date
             /// </summary>
             [JsonProperty("lateOpens")]
-            public Dictionary<string, TimeSpan> LateOpens = new Dictionary<string, TimeSpan>();
+            public Dictionary<string, TimeSpan> LateOpens { get; set; } = new Dictionary<string, TimeSpan>();
+
+            /// <summary>
+            /// Bank holidays date strings
+            /// </summary>
+            [JsonProperty("bankHolidays")]
+            public List<string> BankHolidays { get; set; } = new();
 
             /// <summary>
             /// Initializes a new instance of the <see cref="MarketHoursDatabaseEntryJson"/> class
@@ -207,13 +253,20 @@ namespace QuantConnect.Util
                 DataTimeZone = entry.DataTimeZone.Id;
                 var hours = entry.ExchangeHours;
                 ExchangeTimeZone = hours.TimeZone.Id;
-                SetSegmentsForDay(hours, DayOfWeek.Sunday, out Sunday);
-                SetSegmentsForDay(hours, DayOfWeek.Monday, out Monday);
-                SetSegmentsForDay(hours, DayOfWeek.Tuesday, out Tuesday);
-                SetSegmentsForDay(hours, DayOfWeek.Wednesday, out Wednesday);
-                SetSegmentsForDay(hours, DayOfWeek.Thursday, out Thursday);
-                SetSegmentsForDay(hours, DayOfWeek.Friday, out Friday);
-                SetSegmentsForDay(hours, DayOfWeek.Saturday, out Saturday);
+                SetSegmentsForDay(hours, DayOfWeek.Sunday, out var sunday);
+                Sunday = sunday;
+                SetSegmentsForDay(hours, DayOfWeek.Monday, out var monday);
+                Monday = monday;
+                SetSegmentsForDay(hours, DayOfWeek.Tuesday, out var tuesday);
+                Tuesday = tuesday;
+                SetSegmentsForDay(hours, DayOfWeek.Wednesday, out var wednesday);
+                Wednesday = wednesday;
+                SetSegmentsForDay(hours, DayOfWeek.Thursday, out var thursday);
+                Thursday = thursday;
+                SetSegmentsForDay(hours, DayOfWeek.Friday, out var friday);
+                Friday = friday;
+                SetSegmentsForDay(hours, DayOfWeek.Saturday, out var saturday);
+                Saturday = saturday;
                 Holidays = hours.Holidays.Select(x => x.ToString("M/d/yyyy", CultureInfo.InvariantCulture)).ToList();
                 EarlyCloses = entry.ExchangeHours.EarlyCloses.ToDictionary(pair => pair.Key.ToString("M/d/yyyy", CultureInfo.InvariantCulture), pair => pair.Value);
                 LateOpens = entry.ExchangeHours.LateOpens.ToDictionary(pair => pair.Key.ToString("M/d/yyyy", CultureInfo.InvariantCulture), pair => pair.Value);
@@ -223,7 +276,7 @@ namespace QuantConnect.Util
             /// Converts this json representation to the <see cref="MarketHoursDatabase.Entry"/> type
             /// </summary>
             /// <returns>A new instance of the <see cref="MarketHoursDatabase.Entry"/> class</returns>
-            public MarketHoursDatabase.Entry Convert()
+            public MarketHoursDatabase.Entry Convert(MarketHoursDatabase.Entry underlyingEntry, MarketHoursDatabase.Entry marketEntry)
             {
                 var hours = new Dictionary<DayOfWeek, LocalMarketHours>
                 {
@@ -236,9 +289,55 @@ namespace QuantConnect.Util
                     { DayOfWeek.Saturday, new LocalMarketHours(DayOfWeek.Saturday, Saturday) }
                 };
                 var holidayDates = Holidays.Select(x => DateTime.ParseExact(x, "M/d/yyyy", CultureInfo.InvariantCulture)).ToHashSet();
-                var earlyCloses = EarlyCloses.ToDictionary(x => DateTime.ParseExact(x.Key, "M/d/yyyy", CultureInfo.InvariantCulture), x => x.Value);
-                var lateOpens = LateOpens.ToDictionary(x => DateTime.ParseExact(x.Key, "M/d/yyyy", CultureInfo.InvariantCulture), x => x.Value);
-                var exchangeHours = new SecurityExchangeHours(DateTimeZoneProviders.Tzdb[ExchangeTimeZone], holidayDates, hours, earlyCloses, lateOpens);
+                var bankHolidayDates = BankHolidays.Select(x => DateTime.ParseExact(x, "M/d/yyyy", CultureInfo.InvariantCulture)).ToHashSet();
+                IReadOnlyDictionary<DateTime, TimeSpan> earlyCloses = EarlyCloses.ToDictionary(x => DateTime.ParseExact(x.Key, "M/d/yyyy", CultureInfo.InvariantCulture), x => x.Value);
+                IReadOnlyDictionary<DateTime, TimeSpan> lateOpens = LateOpens.ToDictionary(x => DateTime.ParseExact(x.Key, "M/d/yyyy", CultureInfo.InvariantCulture), x => x.Value);
+
+                if(underlyingEntry != null)
+                {
+                    // If we have no entries but the underlying does, let's use the underlyings
+                    if (holidayDates.Count == 0)
+                    {
+                        holidayDates = underlyingEntry.ExchangeHours.Holidays;
+                    }
+                    if (bankHolidayDates.Count == 0)
+                    {
+                        bankHolidayDates = underlyingEntry.ExchangeHours.BankHolidays;
+                    }
+                    if (earlyCloses.Count == 0)
+                    {
+                        earlyCloses = underlyingEntry.ExchangeHours.EarlyCloses;
+                    }
+                    if (lateOpens.Count == 0)
+                    {
+                        lateOpens = underlyingEntry.ExchangeHours.LateOpens;
+                    }
+                }
+
+                if(marketEntry != null)
+                {
+                    if (marketEntry.ExchangeHours.Holidays.Count > 0)
+                    {
+                        holidayDates.UnionWith(marketEntry.ExchangeHours.Holidays);
+                    }
+
+                    if (marketEntry.ExchangeHours.BankHolidays.Count > 0)
+                    {
+                        bankHolidayDates.UnionWith(marketEntry.ExchangeHours.BankHolidays);
+                    }
+
+                    if (marketEntry.ExchangeHours.EarlyCloses.Count > 0 )
+                    {
+                        earlyCloses = MergeLateOpensAndEarlyCloses(marketEntry.ExchangeHours.EarlyCloses, earlyCloses);
+                    }
+
+                    if (marketEntry.ExchangeHours.LateOpens.Count > 0)
+                    {
+                        lateOpens = MergeLateOpensAndEarlyCloses(marketEntry.ExchangeHours.LateOpens, lateOpens);
+                    }
+                }
+
+                var exchangeHours = new SecurityExchangeHours(DateTimeZoneProviders.Tzdb[ExchangeTimeZone], holidayDates, hours, earlyCloses, lateOpens, bankHolidayDates);
                 return new MarketHoursDatabase.Entry(DateTimeZoneProviders.Tzdb[DataTimeZone], exchangeHours);
             }
 
@@ -253,6 +352,23 @@ namespace QuantConnect.Util
                 {
                     segments = new List<MarketHoursSegment>();
                 }
+            }
+
+            /// <summary>
+            /// Merges the late opens or early closes from the common entry (with wildcards) with the specific entry
+            /// (e.g. Indices-usa-[*] with Indices-usa-VIX).
+            /// The specific entry takes precedence.
+            /// </summary>
+            private static Dictionary<DateTime, TimeSpan> MergeLateOpensAndEarlyCloses(IReadOnlyDictionary<DateTime, TimeSpan> common,
+                IReadOnlyDictionary<DateTime, TimeSpan> specific)
+            {
+                var result = common.ToDictionary();
+                foreach (var (key, value) in specific)
+                {
+                    result[key] = value;
+                }
+
+                return result;
             }
         }
     }

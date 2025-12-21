@@ -11,65 +11,60 @@
 ### See the License for the specific language governing permissions and
 ### limitations under the License.
 
-from datetime import datetime
-
-from System import *
-from System.Reflection import *
-import QuantConnect
-from QuantConnect import *
-from QuantConnect.Algorithm import *
-from QuantConnect.Data import *
-from QuantConnect.Data.Market import *
-from QuantConnect.Orders import *
-from QuantConnect.Securities import *
-from QuantConnect.Securities.Future import *
-from QuantConnect import Market
+from AlgorithmImports import *
 
 ### <summary>
 ### This regression test tests for the loading of futures options contracts with a contract month of 2020-03 can live
 ### and be loaded from the same ZIP file that the 2020-04 contract month Future Option contract lives in.
 ### </summary>
 class FutureOptionMultipleContractsInDifferentContractMonthsWithSameUnderlyingFutureRegressionAlgorithm(QCAlgorithm):
-    def Initialize(self):
-        self.expectedSymbols = {
-            self._createOption(datetime(2020, 3, 26), OptionRight.Call, 1650.0): False,
-            self._createOption(datetime(2020, 3, 26), OptionRight.Put, 1540.0): False,
-            self._createOption(datetime(2020, 2, 25), OptionRight.Call, 1600.0): False,
-            self._createOption(datetime(2020, 2, 25), OptionRight.Put, 1545.0): False
+
+    def initialize(self):
+        self.expected_symbols = {
+            self._create_option(datetime(2020, 3, 26), OptionRight.CALL, 1650.0): False,
+            self._create_option(datetime(2020, 3, 26), OptionRight.PUT, 1540.0): False,
+            self._create_option(datetime(2020, 2, 25), OptionRight.CALL, 1600.0): False,
+            self._create_option(datetime(2020, 2, 25), OptionRight.PUT, 1545.0): False
         }
+        
+        # Required for FOPs to use extended hours, until GH #6491 is addressed
+        self.universe_settings.extended_market_hours = True
 
-        self.SetStartDate(2020, 1, 5)
-        self.SetEndDate(2020, 1, 6)
+        self.set_start_date(2020, 1, 4)
+        self.set_end_date(2020, 1, 6)
 
-        goldFutures = self.AddFuture("GC", Resolution.Minute, QuantConnect.Market.COMEX)
-        goldFutures.SetFilter(0, 365)
+        gold_futures = self.add_future("GC", Resolution.MINUTE, Market.COMEX, extended_market_hours=True)
+        gold_futures.SetFilter(0, 365)
 
-        self.AddFutureOption(goldFutures.Symbol)
+        self.add_future_option(gold_futures.Symbol)
 
-    def OnData(self, data: Slice):
-        for symbol in data.QuoteBars.Keys:
-            if symbol in self.expectedSymbols:
-                invested = self.expectedSymbols[symbol]
+    def on_data(self, data: Slice):
+        for symbol in data.quote_bars.keys():
+            # Check that we are in regular hours, we can place a market order (on extended hours, limit orders should be used)
+            if symbol in self.expected_symbols and self.is_in_regular_hours(symbol):
+                invested = self.expected_symbols[symbol]
                 if not invested:
-                    self.MarketOrder(symbol, 1)
+                    self.market_order(symbol, 1)
 
-                self.expectedSymbols[symbol] = True
+                self.expected_symbols[symbol] = True
 
-    def OnEndOfAlgorithm(self):
-        notEncountered = [str(k) for k,v in self.expectedSymbols.items() if not v]
-        if any(notEncountered):
-            raise AggregateException(f"Expected all Symbols encountered and invested in, but the following were not found: {', '.join(notEncountered)}")
+    def on_end_of_algorithm(self):
+        not_encountered = [str(k) for k,v in self.expected_symbols.items() if not v]
+        if any(not_encountered):
+            raise AssertionError(f"Expected all Symbols encountered and invested in, but the following were not found: {', '.join(not_encountered)}")
 
-        if not self.Portfolio.Invested:
-            raise AggregateException("Expected holdings at the end of algorithm, but none were found.")
+        if not self.portfolio.invested:
+            raise AssertionError("Expected holdings at the end of algorithm, but none were found.")
 
+    def is_in_regular_hours(self, symbol):
+        return self.securities[symbol].exchange.exchange_open
 
-    def _createOption(self, expiry: datetime, optionRight: OptionRight, strikePrice: float) -> Symbol:
-        return QuantConnect.Symbol.CreateOption(
-            QuantConnect.Symbol.CreateFuture("GC", QuantConnect.Market.COMEX, datetime(2020, 4, 28)),
-            QuantConnect.Market.COMEX,
-            OptionStyle.American,
-            optionRight,
-            strikePrice,
+    def _create_option(self, expiry: datetime, option_right: OptionRight, strike_price: float) -> Symbol:
+        return Symbol.create_option(
+            Symbol.create_future("GC", Market.COMEX, datetime(2020, 4, 28)),
+            Market.COMEX,
+            OptionStyle.AMERICAN,
+            option_right,
+            strike_price,
             expiry
         )

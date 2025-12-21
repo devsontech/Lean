@@ -27,8 +27,6 @@ namespace QuantConnect.Indicators
     /// </summary>
     public class DonchianChannel : BarIndicator, IIndicatorWarmUpPeriodProvider
     {
-        private IBaseDataBar _previousInput;
-
         /// <summary>
         /// Gets the upper band of the Donchian Channel.
         /// </summary>
@@ -77,7 +75,7 @@ namespace QuantConnect.Indicators
         public DonchianChannel(string name, int upperPeriod, int lowerPeriod)
             : base(name)
         {
-            WarmUpPeriod = 1 + Math.Max(upperPeriod, lowerPeriod);
+            WarmUpPeriod = Math.Max(upperPeriod, lowerPeriod);
             UpperBand = new Maximum(name + "_UpperBand", upperPeriod);
             LowerBand = new Minimum(name + "_LowerBand", lowerPeriod);
         }
@@ -99,14 +97,9 @@ namespace QuantConnect.Indicators
         /// <returns>A new value for this indicator, which by convention is the mean value of the upper band and lower band.</returns>
         protected override decimal ComputeNextValue(IBaseDataBar input)
         {
-            if (_previousInput != null)
-            {
-                UpperBand.Update(_previousInput.Time, _previousInput.High);
-                LowerBand.Update(_previousInput.Time, _previousInput.Low);
-            }
-
-            _previousInput = input;
-            return (UpperBand.Current.Value + LowerBand.Current.Value) / 2;
+            UpperBand.Update(input.EndTime, input.High);
+            LowerBand.Update(input.EndTime, input.Low);
+            return (UpperBand + LowerBand) / 2;
         }
 
         /// <summary>

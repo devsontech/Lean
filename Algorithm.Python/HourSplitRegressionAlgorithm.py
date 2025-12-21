@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,15 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("System")
-AddReference("QuantConnect.Algorithm")
-AddReference("QuantConnect.Common")
-
-from System import *
-from QuantConnect import *
-from QuantConnect.Algorithm import *
-
+from AlgorithmImports import *
 
 ### <summary>
 ### Regression test for consistency of hour data over a reverse split event in US equities.
@@ -28,15 +20,15 @@ from QuantConnect.Algorithm import *
 ### <meta name="tag" content="regression test" />
 class HourSplitRegressionAlgorithm(QCAlgorithm):
 
-    def Initialize(self):
-        self.SetStartDate(2014, 6, 6)
-        self. SetEndDate(2014, 6, 9)
-        self.SetCash(100000)
-        self.SetBenchmark(lambda x: 0)
+    def initialize(self):
+        self.set_start_date(2014, 6, 6)
+        self.set_end_date(2014, 6, 9)
+        self.set_cash(100000)
+        self.set_benchmark(lambda x: 0)
 
-        self.symbol = self.AddEquity("AAPL", Resolution.Hour).Symbol
+        self._symbol = self.add_equity("AAPL", Resolution.HOUR).symbol
     
-    def OnData(self, slice):
-        if slice.Bars.Count == 0: return
-        if (not self.Portfolio.Invested) and self.Time.date() == self.EndDate.date():
-            self.Buy(self.symbol, 1)
+    def on_data(self, slice):
+        if slice.bars.count == 0: return
+        if (not self.portfolio.invested) and self.time.date() == self.end_date.date():
+            self.buy(self._symbol, 1)

@@ -33,7 +33,11 @@ namespace QuantConnect.Lean.Engine.DataFeeds
     {
         private bool _removedFromUniverse;
         private readonly IEnumerator<SubscriptionData> _enumerator;
-        private List<SubscriptionRequest> _subscriptionRequests;
+
+        /// <summary>
+        /// The subcription requests associated with this subscription
+        /// </summary>
+        internal List<SubscriptionRequest> SubscriptionRequests { get; private set; }
 
         /// <summary>
         /// Event fired when a new data point is available
@@ -43,19 +47,19 @@ namespace QuantConnect.Lean.Engine.DataFeeds
         /// <summary>
         /// Gets the universe for this subscription
         /// </summary>
-        public IEnumerable<Universe> Universes => _subscriptionRequests
+        public IEnumerable<Universe> Universes => SubscriptionRequests
             .Where(x => x.Universe != null)
             .Select(x => x.Universe);
 
         /// <summary>
         /// Gets the security this subscription points to
         /// </summary>
-        public readonly ISecurityPrice Security;
+        public ISecurityPrice Security { get; init; }
 
         /// <summary>
         /// Gets the configuration for this subscritions
         /// </summary>
-        public readonly SubscriptionDataConfig Configuration;
+        public SubscriptionDataConfig Configuration { get; init; }
 
         /// <summary>
         /// Gets the exchange time zone associated with this subscription
@@ -65,7 +69,7 @@ namespace QuantConnect.Lean.Engine.DataFeeds
         /// <summary>
         /// Gets the offset provider for time zone conversions to and from the data's local time
         /// </summary>
-        public readonly TimeZoneOffsetProvider OffsetProvider;
+        public TimeZoneOffsetProvider OffsetProvider { get; init; }
 
         /// <summary>
         /// Gets the most current value from the subscription source
@@ -108,7 +112,7 @@ namespace QuantConnect.Lean.Engine.DataFeeds
             IEnumerator<SubscriptionData> enumerator,
             TimeZoneOffsetProvider timeZoneOffsetProvider)
         {
-            _subscriptionRequests = new List<SubscriptionRequest> { subscriptionRequest };
+            SubscriptionRequests = new List<SubscriptionRequest> { subscriptionRequest };
             _enumerator = enumerator;
             Security = subscriptionRequest.Security;
             IsUniverseSelectionSubscription = subscriptionRequest.IsUniverseSubscription;
@@ -130,6 +134,11 @@ namespace QuantConnect.Lean.Engine.DataFeeds
             if (IsUniverseSelectionSubscription
                 || subscriptionRequest.IsUniverseSubscription)
             {
+                if (subscriptionRequest.Universe is UserDefinedUniverse)
+                {
+                    // for different reasons a user defined universe can trigger a subscription request, likes additions/removals
+                    return false;
+                }
                 throw new Exception("Subscription.AddSubscriptionRequest(): Universe selection" +
                     " subscriptions should not have more than 1 SubscriptionRequest");
             }
@@ -144,7 +153,7 @@ namespace QuantConnect.Lean.Engine.DataFeeds
             // Only allow one subscription request per universe
             if (!Universes.Contains(subscriptionRequest.Universe))
             {
-                _subscriptionRequests.Add(subscriptionRequest);
+                SubscriptionRequests.Add(subscriptionRequest);
                 // TODO this might update the 'UtcStartTime' and 'UtcEndTime' of this subscription
                 return true;
             }
@@ -163,18 +172,18 @@ namespace QuantConnect.Lean.Engine.DataFeeds
             IEnumerable<Universe> removedUniverses;
             if (universe == null)
             {
-                var subscriptionRequests = _subscriptionRequests;
-                _subscriptionRequests = new List<SubscriptionRequest>();
+                var subscriptionRequests = SubscriptionRequests;
+                SubscriptionRequests = new List<SubscriptionRequest>();
                 removedUniverses = subscriptionRequests.Where(x => x.Universe != null)
                     .Select(x => x.Universe);
             }
             else
             {
-                _subscriptionRequests.RemoveAll(x => x.Universe == universe);
+                SubscriptionRequests.RemoveAll(x => x.Universe == universe);
                 removedUniverses = new[] {universe};
             }
 
-            var emptySubscription = !_subscriptionRequests.Any();
+            var emptySubscription = !SubscriptionRequests.Any();
             if (emptySubscription)
             {
                 // if the security is no longer a member of the universe, then mark the subscription properly
@@ -242,7 +251,7 @@ namespace QuantConnect.Lean.Engine.DataFeeds
         public void Dispose()
         {
             EndOfStream = true;
-            _enumerator.Dispose();
+            _enumerator.DisposeSafely();
         }
 
         /// <summary>

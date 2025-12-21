@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -18,6 +18,7 @@ using QuantConnect.Indicators;
 using QuantConnect.Interfaces;
 using QuantConnect.Storage;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace QuantConnect.Algorithm.CSharp
@@ -29,7 +30,7 @@ namespace QuantConnect.Algorithm.CSharp
     /// history call. This pattern can be equally applied to a machine learning model being
     /// trained and then saving the model weights in the object store.
     /// </summary>
-    public class ObjectStoreExampleAlgorithm : QCAlgorithm
+    public class ObjectStoreExampleAlgorithm : QCAlgorithm, IRegressionAlgorithmDefinition
     {
         private const string SPY_Close_ObjectStore_Key = "spy_close";
         private Symbol SPY;
@@ -38,9 +39,9 @@ namespace QuantConnect.Algorithm.CSharp
         private ExponentialMovingAverage SPY_Close_EMA50;
 
         // track last year of close and EMA10/EMA50
-        public readonly RollingWindow<IndicatorDataPoint> SPY_Close_History = new RollingWindow<IndicatorDataPoint>(252);
-        public readonly RollingWindow<IndicatorDataPoint> SPY_Close_EMA10_History = new RollingWindow<IndicatorDataPoint>(252);
-        public readonly RollingWindow<IndicatorDataPoint> SPY_Close_EMA50_History = new RollingWindow<IndicatorDataPoint>(252);
+        private readonly RollingWindow<IndicatorDataPoint> SPY_Close_History = new RollingWindow<IndicatorDataPoint>(252);
+        private readonly RollingWindow<IndicatorDataPoint> SPY_Close_EMA10_History = new RollingWindow<IndicatorDataPoint>(252);
+        private readonly RollingWindow<IndicatorDataPoint> SPY_Close_EMA50_History = new RollingWindow<IndicatorDataPoint>(252);
 
         public override void Initialize()
         {
@@ -127,5 +128,65 @@ namespace QuantConnect.Algorithm.CSharp
                 }
             }
         }
+
+        /// <summary>
+        /// This is used by the regression test system to indicate if the open source Lean repository has the required data to run this algorithm.
+        /// </summary>
+        public bool CanRunLocally { get; } = true;
+
+        /// <summary>
+        /// This is used by the regression test system to indicate which languages this algorithm is written in.
+        /// </summary>
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 3943;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 249;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
+
+        /// <summary>
+        /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
+        /// </summary>
+        public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
+        {
+            {"Total Orders", "1"},
+            {"Average Win", "0%"},
+            {"Average Loss", "0%"},
+            {"Compounding Annual Return", "271.453%"},
+            {"Drawdown", "2.200%"},
+            {"Expectancy", "0"},
+            {"Start Equity", "100000"},
+            {"End Equity", "101691.92"},
+            {"Net Profit", "1.692%"},
+            {"Sharpe Ratio", "8.854"},
+            {"Sortino Ratio", "0"},
+            {"Probabilistic Sharpe Ratio", "67.609%"},
+            {"Loss Rate", "0%"},
+            {"Win Rate", "0%"},
+            {"Profit-Loss Ratio", "0"},
+            {"Alpha", "-0.005"},
+            {"Beta", "0.996"},
+            {"Annual Standard Deviation", "0.222"},
+            {"Annual Variance", "0.049"},
+            {"Information Ratio", "-14.565"},
+            {"Tracking Error", "0.001"},
+            {"Treynor Ratio", "1.97"},
+            {"Total Fees", "$3.44"},
+            {"Estimated Strategy Capacity", "$56000000.00"},
+            {"Lowest Capacity Asset", "SPY R735QTJ8XC9X"},
+            {"Portfolio Turnover", "19.93%"},
+            {"Drawdown Recovery", "3"},
+            {"OrderListHash", "3da9fa60bf95b9ed148b95e02e0cfc9e"}
+        };
     }
 }

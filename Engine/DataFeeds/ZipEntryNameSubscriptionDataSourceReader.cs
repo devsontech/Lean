@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -14,40 +14,39 @@
 */
 
 using System;
-using System.Collections.Generic;
-using Ionic.Zip;
 using QuantConnect.Data;
+using QuantConnect.Interfaces;
+using System.Collections.Generic;
+using QuantConnect.Lean.Engine.DataFeeds.Transport;
 
 namespace QuantConnect.Lean.Engine.DataFeeds
 {
     /// <summary>
     /// Provides an implementation of <see cref="ISubscriptionDataSourceReader"/> that reads zip entry names
     /// </summary>
-    public class ZipEntryNameSubscriptionDataSourceReader : ISubscriptionDataSourceReader
+    public class ZipEntryNameSubscriptionDataSourceReader : BaseSubscriptionDataSourceReader
     {
+        private readonly IDataCacheProvider _dataProvider;
         private readonly SubscriptionDataConfig _config;
         private readonly DateTime _date;
         private readonly bool _isLiveMode;
         private readonly BaseData _factory;
 
         /// <summary>
-        /// Event fired when the specified source is considered invalid, this may
-        /// be from a missing file or failure to download a remote source
-        /// </summary>
-        public event EventHandler<InvalidSourceEventArgs> InvalidSource;
-
-        /// <summary>
         /// Initializes a new instance of the <see cref="ZipEntryNameSubscriptionDataSourceReader"/> class
         /// </summary>
+        /// <param name="dataProvider">Used to fetch data</param>
         /// <param name="config">The subscription's configuration</param>
         /// <param name="date">The date this factory was produced to read data for</param>
         /// <param name="isLiveMode">True if we're in live mode, false for backtesting</param>
-        public ZipEntryNameSubscriptionDataSourceReader(SubscriptionDataConfig config, DateTime date, bool isLiveMode)
+        public ZipEntryNameSubscriptionDataSourceReader(IDataCacheProvider dataProvider, SubscriptionDataConfig config, DateTime date, bool isLiveMode)
+            : base(dataProvider, isLiveMode, null)
         {
-            _config = config;
             _date = date;
+            _config = config;
             _isLiveMode = isLiveMode;
-            _factory = _factory = config.GetBaseDataInstance();
+            _dataProvider = dataProvider;
+            _factory = config.GetBaseDataInstance();
         }
 
         /// <summary>
@@ -55,17 +54,25 @@ namespace QuantConnect.Lean.Engine.DataFeeds
         /// </summary>
         /// <param name="source">The source to be read</param>
         /// <returns>An <see cref="IEnumerable{BaseData}"/> that contains the data in the source</returns>
-        public IEnumerable<BaseData> Read(SubscriptionDataSource source)
+        public override IEnumerable<BaseData> Read(SubscriptionDataSource source)
         {
-            ICollection<string> entryNames;
-            try
+            var fileName = source.Source;
+
+            if (source.TransportMedium == SubscriptionTransportMedium.RemoteFile)
             {
-                using (var zip = new ZipFile(source.Source))
+                using var reader = CreateStreamReader(source) as RemoteFileSubscriptionStreamReader;
+                if (reader != null)
                 {
-                    entryNames = zip.EntryFileNames;
+                    fileName = reader.LocalFileName;
                 }
             }
-            catch (ZipException err)
+
+            List<string> entryNames;
+            try
+            {
+                entryNames = _dataProvider.GetZipEntries(fileName);
+            }
+            catch (Exception err)
             {
                 OnInvalidSource(source, err);
                 yield break;
@@ -82,13 +89,13 @@ namespace QuantConnect.Lean.Engine.DataFeeds
         }
 
         /// <summary>
-        /// Event invocator for the <see cref="InvalidSource"/> event
+        /// Event invocator for the <see cref="BaseSubscriptionDataSourceReader.InvalidSource"/> event
         /// </summary>
         /// <param name="source">The <see cref="SubscriptionDataSource"/> that was invalid</param>
         /// <param name="exception">The exception if one was raised, otherwise null</param>
         private void OnInvalidSource(SubscriptionDataSource source, Exception exception)
         {
-            InvalidSource?.Invoke(this, new InvalidSourceEventArgs(source, exception));
+            OnInvalidSource(source, exception);
         }
     }
 }

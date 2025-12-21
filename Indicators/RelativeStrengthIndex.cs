@@ -13,6 +13,8 @@
  * limitations under the License.
 */
 
+using System;
+
 namespace QuantConnect.Indicators
 {
     /// <summary>
@@ -82,13 +84,13 @@ namespace QuantConnect.Indicators
         {
             if (_previousInput != null && input.Value >= _previousInput.Value)
             {
-                AverageGain.Update(input.Time, input.Value - _previousInput.Value);
-                AverageLoss.Update(input.Time, 0m);
+                AverageGain.Update(input.EndTime, input.Value - _previousInput.Value);
+                AverageLoss.Update(input.EndTime, 0m);
             }
             else if (_previousInput != null && input.Value < _previousInput.Value)
             {
-                AverageGain.Update(input.Time, 0m);
-                AverageLoss.Update(input.Time, _previousInput.Value - input.Value);
+                AverageGain.Update(input.EndTime, 0m);
+                AverageLoss.Update(input.EndTime, _previousInput.Value - input.Value);
             }
 
             _previousInput = input;
@@ -98,7 +100,8 @@ namespace QuantConnect.Indicators
             var averageLoss = AverageLoss < 0 ? 0 : AverageLoss.Current.Value;
             var averageGain = AverageGain < 0 ? 0 : AverageGain.Current.Value;
 
-            if (averageLoss == 0m)
+            // Round AverageLoss to avoid computing RSI with very small numbers that lead to overflow exception on the division operation below
+            if (Math.Round(averageLoss, 10) == 0m)
             {
                 // all up days is 100
                 return 100m;

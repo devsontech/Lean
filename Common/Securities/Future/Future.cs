@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -20,6 +20,7 @@ using QuantConnect.Orders.Fills;
 using QuantConnect.Orders.Slippage;
 using Python.Runtime;
 using QuantConnect.Util;
+using QuantConnect.Data.UniverseSelection;
 
 namespace QuantConnect.Securities.Future
 {
@@ -27,8 +28,27 @@ namespace QuantConnect.Securities.Future
     /// Futures Security Object Implementation for Futures Assets
     /// </summary>
     /// <seealso cref="Security"/>
-    public class Future : Security, IDerivativeSecurity
+    public class Future : Security, IContinuousSecurity
     {
+        private bool _isTradable;
+
+        /// <summary>
+        /// Gets or sets whether or not this security should be considered tradable
+        /// </summary>
+        /// <remarks>Canonical futures are not tradable</remarks>
+        public override bool IsTradable
+        {
+            get
+            {
+                // once a future is removed it is no longer tradable
+                return _isTradable && !Symbol.IsCanonical();
+            }
+            set
+            {
+                _isTradable = value;
+            }
+        }
+
         /// <summary>
         /// The default number of days required to settle a futures sale
         /// </summary>
@@ -37,7 +57,7 @@ namespace QuantConnect.Securities.Future
         /// <summary>
         /// The default time of day for settlement
         /// </summary>
-        public static readonly TimeSpan DefaultSettlementTime = new TimeSpan(8, 0, 0);
+        public static readonly TimeSpan DefaultSettlementTime = new TimeSpan(6, 0, 0);
 
         /// <summary>
         /// Constructor for the Future security
@@ -62,23 +82,24 @@ namespace QuantConnect.Securities.Future
                 new FutureExchange(exchangeHours),
                 new FutureCache(),
                 new SecurityPortfolioModel(),
-                new ImmediateFillModel(),
+                new FutureFillModel(),
                 new InteractiveBrokersFeeModel(),
-                new ConstantSlippageModel(0),
-                new ImmediateSettlementModel(),
+                NullSlippageModel.Instance,
+                new FutureSettlementModel(),
                 Securities.VolatilityModel.Null,
-                new FutureMarginModel(),
+                null,
                 new SecurityDataFilter(),
                 new SecurityPriceVariationModel(),
                 currencyConverter,
-                registeredTypes
+                registeredTypes,
+                Securities.MarginInterestRateModel.Null
                 )
         {
+            BuyingPowerModel = new FutureMarginModel(0, this);
             // for now all futures are cash settled as we don't allow underlying (Live Cattle?) to be posted on the account
             SettlementType = SettlementType.Cash;
             Holdings = new FutureHolding(this, currencyConverter);
-            _symbolProperties = symbolProperties;
-            SetFilter(TimeSpan.Zero, TimeSpan.FromDays(35));
+            ContractFilter = new EmptyContractFilter<FutureUniverse>();
         }
 
         /// <summary>
@@ -98,35 +119,32 @@ namespace QuantConnect.Securities.Future
             SymbolProperties symbolProperties,
             ICurrencyConverter currencyConverter,
             IRegisteredSecurityDataTypesProvider registeredTypes,
-            SecurityCache securityCache
-            )
+            SecurityCache securityCache)
             : base(symbol,
                 quoteCurrency,
                 symbolProperties,
                 new FutureExchange(exchangeHours),
                 securityCache,
                 new SecurityPortfolioModel(),
-                new ImmediateFillModel(),
+                new FutureFillModel(),
                 new InteractiveBrokersFeeModel(),
-                new ConstantSlippageModel(0),
-                new ImmediateSettlementModel(),
+                NullSlippageModel.Instance,
+                new FutureSettlementModel(),
                 Securities.VolatilityModel.Null,
-                new FutureMarginModel(),
+                null,
                 new SecurityDataFilter(),
                 new SecurityPriceVariationModel(),
                 currencyConverter,
-                registeredTypes
+                registeredTypes,
+                Securities.MarginInterestRateModel.Null
                 )
         {
+            BuyingPowerModel = new FutureMarginModel(0, this);
             // for now all futures are cash settled as we don't allow underlying (Live Cattle?) to be posted on the account
             SettlementType = SettlementType.Cash;
             Holdings = new FutureHolding(this, currencyConverter);
-            _symbolProperties = symbolProperties;
-            SetFilter(TimeSpan.Zero, TimeSpan.FromDays(35));
+            ContractFilter = new EmptyContractFilter<FutureUniverse>();
         }
-
-        // save off a strongly typed version of symbol properties
-        private readonly SymbolProperties _symbolProperties;
 
         /// <summary>
         /// Returns true if this is the future chain security, false if it is a specific future contract
@@ -155,9 +173,9 @@ namespace QuantConnect.Securities.Future
         }
 
         /// <summary>
-        /// Gets or sets the underlying security object.
+        /// Gets or sets the currently mapped symbol for the security
         /// </summary>
-        public Security Underlying
+        public Symbol Mapped
         {
             get; set;
         }
@@ -165,9 +183,25 @@ namespace QuantConnect.Securities.Future
         /// <summary>
         /// Gets or sets the contract filter
         /// </summary>
-        public IDerivativeSecurityFilter ContractFilter
+        public IDerivativeSecurityFilter<FutureUniverse> ContractFilter
         {
             get; set;
+        }
+
+        /// <summary>
+        /// Sets the <see cref="LocalTimeKeeper"/> to be used for this <see cref="Security"/>.
+        /// This is the source of this instance's time.
+        /// </summary>
+        /// <param name="localTimeKeeper">The source of this <see cref="Security"/>'s time.</param>
+        public override void SetLocalTimeKeeper(LocalTimeKeeper localTimeKeeper)
+        {
+            base.SetLocalTimeKeeper(localTimeKeeper);
+
+            var model = SettlementModel as FutureSettlementModel;
+            if (model != null)
+            {
+                model.SetLocalDateTimeFrontier(LocalTime);
+            }
         }
 
         /// <summary>
@@ -175,12 +209,12 @@ namespace QuantConnect.Securities.Future
         /// using the specified expiration range values
         /// </summary>
         /// <param name="minExpiry">The minimum time until expiry to include, for example, TimeSpan.FromDays(10)
-        /// would exclude contracts expiring in more than 10 days</param>
-        /// <param name="maxExpiry">The maximum time until expiry to include, for example, TimeSpan.FromDays(10)
         /// would exclude contracts expiring in less than 10 days</param>
+        /// <param name="maxExpiry">The maximum time until expiry to include, for example, TimeSpan.FromDays(10)
+        /// would exclude contracts expiring in more than 10 days</param>
         public void SetFilter(TimeSpan minExpiry, TimeSpan maxExpiry)
         {
-            SetFilter(universe => universe.Expiration(minExpiry, maxExpiry));
+            SetFilterImp(universe => universe.Expiration(minExpiry, maxExpiry));
         }
 
         /// <summary>
@@ -188,12 +222,12 @@ namespace QuantConnect.Securities.Future
         /// using the specified expiration range values
         /// </summary>
         /// <param name="minExpiryDays">The minimum time, expressed in days, until expiry to include, for example, 10
-        /// would exclude contracts expiring in more than 10 days</param>
-        /// <param name="maxExpiryDays">The maximum time, expressed in days, until expiry to include, for example, 10
         /// would exclude contracts expiring in less than 10 days</param>
+        /// <param name="maxExpiryDays">The maximum time, expressed in days, until expiry to include, for example, 10
+        /// would exclude contracts expiring in more than 10 days</param>
         public void SetFilter(int minExpiryDays, int maxExpiryDays)
         {
-            SetFilter(universe => universe.Expiration(minExpiryDays, maxExpiryDays));
+            SetFilterImp(universe => universe.Expiration(minExpiryDays, maxExpiryDays));
         }
 
         /// <summary>
@@ -202,14 +236,8 @@ namespace QuantConnect.Securities.Future
         /// <param name="universeFunc">new universe selection function</param>
         public void SetFilter(Func<FutureFilterUniverse, FutureFilterUniverse> universeFunc)
         {
-            Func<IDerivativeSecurityFilterUniverse, IDerivativeSecurityFilterUniverse> func = universe =>
-            {
-                var futureUniverse = universe as FutureFilterUniverse;
-                var result = universeFunc(futureUniverse);
-                return result.ApplyTypesFilter();
-            };
-
-            ContractFilter = new FuncSecurityDerivativeFilter(func);
+            SetFilterImp(universeFunc);
+            ContractFilter.Asynchronous = false;
         }
 
         /// <summary>
@@ -221,5 +249,21 @@ namespace QuantConnect.Securities.Future
             var pyUniverseFunc = PythonUtil.ToFunc<FutureFilterUniverse, FutureFilterUniverse>(universeFunc);
             SetFilter(pyUniverseFunc);
         }
+
+        private void SetFilterImp(Func<FutureFilterUniverse, FutureFilterUniverse> universeFunc)
+        {
+            Func<IDerivativeSecurityFilterUniverse<FutureUniverse>, IDerivativeSecurityFilterUniverse<FutureUniverse>> func = universe =>
+            {
+                var futureUniverse = universe as FutureFilterUniverse;
+                var result = universeFunc(futureUniverse);
+                return result.ApplyTypesFilter();
+            };
+            ContractFilter = new FuncSecurityDerivativeFilter<FutureUniverse>(func);
+        }
+
+        /// <summary>
+        /// Returns the securities symbol
+        /// </summary>
+        public static implicit operator Symbol(Future security) => security.Symbol;
     }
 }

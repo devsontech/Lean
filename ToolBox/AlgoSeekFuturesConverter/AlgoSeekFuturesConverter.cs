@@ -33,7 +33,6 @@ namespace QuantConnect.ToolBox.AlgoSeekFuturesConverter
     /// </summary>
     public class AlgoSeekFuturesConverter
     {
-        private const int ExecTimeout = 60;// sec
         private readonly DirectoryInfo _source;
         private readonly DirectoryInfo _remote;
         private readonly string _destination;
@@ -73,11 +72,11 @@ namespace QuantConnect.ToolBox.AlgoSeekFuturesConverter
                 .Select(remote => remote.CopyTo(Path.Combine(Path.GetTempPath(), remote.Name), true))
                 .ToList();
 
-            Log.Trace("AlgoSeekFuturesConverter.Convert(): Loading {0} AlgoSeekFuturesReader for {1} ", files.Count(), _referenceDate);
+            Log.Trace("AlgoSeekFuturesConverter.Convert(): Loading {0} AlgoSeekFuturesReader for {1} ", files.Count, _referenceDate);
 
             //Initialize parameters
             var totalLinesProcessed = 0L;
-            var totalFiles = files.Count();
+            var totalFiles = files.Count;
             var totalFilesProcessed = 0;
             var start = DateTime.MinValue;
 
@@ -102,7 +101,9 @@ namespace QuantConnect.ToolBox.AlgoSeekFuturesConverter
 
                         Log.Trace("AlgoSeekFuturesConverter.Convert(): Extracting " + file);
 
-                        Compression.Extract7ZipArchive(file.FullName, _source.FullName);
+                        // Never time out extracting an archive; they can be pretty big
+                        // and take a while to extract depending on the computer running this application
+                        Compression.Extract7ZipArchive(file.FullName, _source.FullName, -1);
                     }
 
                     // setting up local processors
@@ -120,6 +121,12 @@ namespace QuantConnect.ToolBox.AlgoSeekFuturesConverter
                         {
                             var tick = reader.Current as Tick;
 
+                            if (tick.Symbol.ID.Symbol == "VX" && (
+                                tick.BidPrice >= 998m || tick.AskPrice >= 998m))
+                            {
+                                // Invalid value for VX futures. Invalid prices in raw data are 998/999
+                                continue;
+                            }
                             //Add or create the consolidator-flush mechanism for symbol:
                             List<List<AlgoSeekFuturesProcessor>> symbolProcessors;
                             if (!processors.TryGetValue(tick.Symbol, out symbolProcessors))
@@ -143,7 +150,7 @@ namespace QuantConnect.ToolBox.AlgoSeekFuturesConverter
                             if (Interlocked.Increment(ref totalLinesProcessed) % 1000000m == 0)
                             {
                                 var pro = (double)processors.Values.SelectMany(p => p.SelectMany(x => x)).Count();
-                                var symbols = (double)processors.Keys.Count();
+                                var symbols = (double)processors.Keys.Count;
                                 Log.Trace("AlgoSeekFuturesConverter.Convert(): Processed {0,3}M ticks( {1}k / sec); Memory in use: {2} MB; Total progress: {3}%, Processor per symbol {4}", Math.Round(totalLinesProcessed / 1000000m, 2), Math.Round(totalLinesProcessed / 1000L / (DateTime.Now - start).TotalSeconds), Process.GetCurrentProcess().WorkingSet64 / (1024 * 1024), 100 * totalFilesProcessed / totalFiles, pro / symbols);
                             }
 

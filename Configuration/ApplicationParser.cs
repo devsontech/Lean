@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -52,14 +52,16 @@ namespace QuantConnect.Configuration
             {
                 foreach (var commandOption in listOfOptions.Where(option => option.HasValue()))
                 {
-#pragma warning disable CS0618 // Type or member is obsolete; Works fine, will use until replacement is required
                     var optionKey = commandOption.Template.Replace("--", "");
-#pragma warning restore CS0618
                     var matchingOption = options.Find(o => o.Name == optionKey);
                     switch (matchingOption.Type)
                     {
-                        // Booleans, string and numbers
+                        // Booleans
                         case CommandOptionType.NoValue:
+                            optionsObject[optionKey] = true;
+                            break;
+
+                        // Strings and numbers
                         case CommandOptionType.SingleValue:
                             optionsObject[optionKey] = commandOption.Value();
                             break;
@@ -90,6 +92,48 @@ namespace QuantConnect.Configuration
                 application.ShowHelp();
             }
             return optionsObject;
+        }
+
+        /// <summary>
+        /// Prints a message advising the user to use the --help parameter for more information
+        /// </summary>
+        public static void PrintMessageAndExit(int exitCode = 0, string message = "")
+        {
+            if (!string.IsNullOrEmpty(message))
+            {
+                Console.WriteLine("\n" + message);
+            }
+            Console.WriteLine("\nUse the '--help' parameter for more information");
+            Console.WriteLine("Press any key to quit");
+            Console.ReadLine();
+            Environment.Exit(exitCode);
+        }
+
+        /// <summary>
+        /// Gets the parameter object from the given parameter (if it exists)
+        /// </summary>
+        public static string GetParameterOrExit(IReadOnlyDictionary<string, object> optionsObject, string parameter)
+        {
+            if (!optionsObject.ContainsKey(parameter))
+            {
+                PrintMessageAndExit(1, "ERROR: REQUIRED parameter --" + parameter + "= is missing");
+            }
+            return optionsObject[parameter].ToString();
+        }
+
+        /// <summary>
+        /// Gets the parameter object from the given parameter. If it does not exists, it returns a default parameter object
+        /// </summary>
+        public static string GetParameterOrDefault(IReadOnlyDictionary<string, object> optionsObject, string parameter, string defaultValue)
+        {
+            object value;
+            if (!optionsObject.TryGetValue(parameter, out value))
+            {
+                Console.WriteLine($"'{parameter}' was not specified. Using default value: '{defaultValue}'");
+                return defaultValue;
+            }
+
+            return value.ToString();
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -15,6 +15,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using NodaTime;
 using NUnit.Framework;
@@ -26,6 +27,16 @@ namespace QuantConnect.Tests.Common
     [TestFixture]
     public class TimeTests
     {
+        [TestCase("20230605 08:00", "04:00")]
+        [TestCase("20230605 15:00", "21:00")]
+        public void AuxiliaryDataDueTime(string utcNow, string expectedDueTime)
+        {
+            var result = Time.GetNextLiveAuxiliaryDataDueTime(Time.ParseDate(utcNow));
+            var expected  = TimeSpan.ParseExact(expectedDueTime, "hh\\:mm", CultureInfo.InvariantCulture);
+
+            Assert.AreEqual(expected, result);
+        }
+
         [Test]
         public void UnixTimeStampSecondsToDateTimeHasSubMillisecondPrecision()
         {
@@ -38,8 +49,27 @@ namespace QuantConnect.Tests.Common
         [Test]
         public void UnixTimeStampMillisecondsToDateTimeHasSubMillisecondPrecision()
         {
-            const double stamp = 1520711961000.55;
+            const decimal stamp = 1520711961000.55m;
             var expected = new DateTime(2018, 3, 10, 19, 59, 21, 0).AddTicks(5500);
+            var time = Time.UnixMillisecondTimeStampToDateTime(stamp);
+            Assert.AreEqual(expected, time);
+        }
+
+
+        [Test]
+        public void UnixTimeStampSecondsToDateTimeSubMillisecondPrecision()
+        {
+            const decimal stamp = 1520711961.00055m;
+            var expected = new DateTime(2018, 3, 10, 19, 59, 21, 0).AddTicks(5500);
+            var time = Time.UnixTimeStampToDateTime(stamp);
+            Assert.AreEqual(expected, time);
+        }
+
+        [Test]
+        public void UnixTimeStampSecondsToDateTime()
+        {
+            const long stamp = 1520711961000;
+            var expected = new DateTime(2018, 3, 10, 19, 59, 21, 0);
             var time = Time.UnixMillisecondTimeStampToDateTime(stamp);
             Assert.AreEqual(expected, time);
         }
@@ -96,6 +126,44 @@ namespace QuantConnect.Tests.Common
             var barSize = TimeSpan.FromMinutes(1);
             var hours = SecurityExchangeHoursTests.CreateUsEquitySecurityExchangeHours();
             var start = Time.GetStartTimeForTradeBars(hours, end, barSize, 10, false, dataTimeZone);
+            Assert.AreEqual(expectedStart, start);
+        }
+
+        private static IEnumerable<TestCaseData> GetStartTimeFromNonTradableDateTestCases()
+        {
+            foreach (var date in new[]
+                    {
+                        // Labor day
+                        new DateTime(2025, 09, 01),
+                        // Saturday
+                        new DateTime(2025, 08, 30),
+                        // Sunday
+                        new DateTime(2025, 08, 31)
+                    })
+            {
+                foreach (var timeOfDay in new[] { 0, 12, 17 })
+                {
+                    foreach (var useStrictDailyEndTimes in new[] { true, false })
+                    {
+                        yield return new TestCaseData(date.AddHours(timeOfDay), useStrictDailyEndTimes);
+                    }
+                }
+            }
+        }
+
+        [TestCaseSource(nameof(GetStartTimeFromNonTradableDateTestCases))]
+        public void GetStartTimeFromNonTradableDate(DateTime dateTime, bool useStrictDailyEndTimes)
+        {
+            var symbol = Symbols.SPY;
+            var mhdbEntry = MarketHoursDatabase.FromDataFolder().GetEntry(Market.USA, symbol, SecurityType.Equity);
+            var hours = mhdbEntry.ExchangeHours;
+            Assert.IsFalse(hours.IsDateOpen(dateTime.Date));
+
+            var barSize = Time.OneDay;
+            var periods = 10;
+            var expectedStart = new DateTime(2025, 08, 18);
+
+            var start = Time.GetStartTimeForTradeBars(hours, dateTime, barSize, periods, false, mhdbEntry.DataTimeZone, useStrictDailyEndTimes);
             Assert.AreEqual(expectedStart, start);
         }
 
@@ -204,7 +272,11 @@ namespace QuantConnect.Tests.Common
 
             var earlyCloses = new Dictionary<DateTime, TimeSpan>();
             var lateOpens = new Dictionary<DateTime, TimeSpan>();
-            return new SecurityExchangeHours(TimeZones.NewYork, USHoliday.Dates.Select(x => x.Date), new[]
+            var holidays = MarketHoursDatabase.FromDataFolder()
+                        .GetEntry(Market.USA, (string)null, SecurityType.Equity)
+                        .ExchangeHours
+                        .Holidays;
+            return new SecurityExchangeHours(TimeZones.NewYork, holidays, new[]
             {
                 sunday, monday, tuesday, wednesday, thursday, friday, saturday
             }.ToDictionary(x => x.DayOfWeek), earlyCloses, lateOpens);
@@ -258,7 +330,7 @@ namespace QuantConnect.Tests.Common
         {
             var expected = new DateTime(year, month, day, hour, minute, second, millisecond);
             Assert.AreEqual(
-                expected, 
+                expected,
                 Parse.DateTimeExact(parseDate, DateFormat.FIXWithMillisecond));
 
             Assert.AreEqual(

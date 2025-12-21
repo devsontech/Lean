@@ -37,6 +37,10 @@ namespace QuantConnect.Algorithm.CSharp
             // Set requested data resolution
             UniverseSettings.Resolution = Resolution.Daily;
 
+            // Order margin value has to have a minimum of 0.5% of Portfolio value, allows filtering out small trades and reduce fees.
+            // Commented so regression algorithm is more sensitive
+            //Settings.MinimumOrderMarginPortfolioPercentage = 0.005m;
+
             SetStartDate(2014, 03, 24);
             SetEndDate(2014, 04, 07);
             SetCash(100000);
@@ -64,14 +68,14 @@ namespace QuantConnect.Algorithm.CSharp
         {
             if (UniverseManager.Count != 3)
             {
-                throw new Exception("Unexpected universe count");
+                throw new RegressionTestException("Unexpected universe count");
             }
             if (UniverseManager.ActiveSecurities.Count != 3
                 || UniverseManager.ActiveSecurities.Keys.All(symbol => symbol.Value != "SPY")
                 || UniverseManager.ActiveSecurities.Keys.All(symbol => symbol.Value != "AAPL")
                 || UniverseManager.ActiveSecurities.Keys.All(symbol => symbol.Value != "FB"))
             {
-                throw new Exception("Unexpected active securities");
+                throw new RegressionTestException("Unexpected active securities");
             }
         }
 
@@ -83,54 +87,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp };
+        public List<Language> Languages { get; } = new() { Language.CSharp };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 234015;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "23"},
+            {"Total Orders", "21"},
             {"Average Win", "0.01%"},
             {"Average Loss", "-0.01%"},
-            {"Compounding Annual Return", "-75.293%"},
-            {"Drawdown", "5.800%"},
-            {"Expectancy", "-0.822"},
-            {"Net Profit", "-5.584%"},
-            {"Sharpe Ratio", "-3.264"},
-            {"Probabilistic Sharpe Ratio", "5.887%"},
-            {"Loss Rate", "92%"},
-            {"Win Rate", "8%"},
-            {"Profit-Loss Ratio", "1.13"},
-            {"Alpha", "-0.593"},
-            {"Beta", "0.711"},
-            {"Annual Standard Deviation", "0.204"},
-            {"Annual Variance", "0.042"},
-            {"Information Ratio", "-2.924"},
-            {"Tracking Error", "0.193"},
-            {"Treynor Ratio", "-0.935"},
-            {"Total Fees", "$25.95"},
-            {"Estimated Strategy Capacity", "$69000000.00"},
-            {"Fitness Score", "0.004"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "1"},
-            {"Sortino Ratio", "-4.452"},
-            {"Return Over Maximum Drawdown", "-13.058"},
-            {"Portfolio Turnover", "0.083"},
-            {"Total Insights Generated", "33"},
-            {"Total Insights Closed", "30"},
-            {"Total Insights Analysis Completed", "30"},
-            {"Long Insight Count", "33"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "be3b0d8b0e2cb312aae1b043e1bef9aa"}
+            {"Compounding Annual Return", "-77.566%"},
+            {"Drawdown", "6.000%"},
+            {"Expectancy", "-0.811"},
+            {"Start Equity", "100000"},
+            {"End Equity", "94042.73"},
+            {"Net Profit", "-5.957%"},
+            {"Sharpe Ratio", "-3.345"},
+            {"Sortino Ratio", "-3.766"},
+            {"Probabilistic Sharpe Ratio", "4.557%"},
+            {"Loss Rate", "89%"},
+            {"Win Rate", "11%"},
+            {"Profit-Loss Ratio", "0.70"},
+            {"Alpha", "-0.519"},
+            {"Beta", "1.491"},
+            {"Annual Standard Deviation", "0.2"},
+            {"Annual Variance", "0.04"},
+            {"Information Ratio", "-3.878"},
+            {"Tracking Error", "0.147"},
+            {"Treynor Ratio", "-0.449"},
+            {"Total Fees", "$29.11"},
+            {"Estimated Strategy Capacity", "$680000000.00"},
+            {"Lowest Capacity Asset", "AAPL R735QTJ8XC9X"},
+            {"Portfolio Turnover", "7.48%"},
+            {"Drawdown Recovery", "0"},
+            {"OrderListHash", "2c814c55e7d7c56482411c065b861b33"}
         };
     }
 }

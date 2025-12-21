@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -26,11 +26,24 @@ namespace QuantConnect.Securities.Index
     /// <seealso cref="Security"/>
     public class Index : Security
     {
+        private bool _isTradable;
+
         /// <summary>
         /// Gets or sets whether or not this security should be considered tradable
         /// </summary>
-        /// <remarks>Index are non tradable always</remarks>
-        public override bool IsTradable => false;
+        public override bool IsTradable {
+            get => _isTradable;
+            set
+            {
+                if (value) ManualSetIsTradable = true;
+                _isTradable = value;
+            }
+        }
+
+        /// <summary>
+        /// Field to check if the user has manually set IsTradable field to true
+        /// </summary>
+        internal bool ManualSetIsTradable { get; set; }
 
         /// <summary>
         /// Constructor for the INDEX security
@@ -56,16 +69,18 @@ namespace QuantConnect.Securities.Index
                 new SecurityPortfolioModel(),
                 new ImmediateFillModel(),
                 new ConstantFeeModel(0),
-                new ConstantSlippageModel(0),
+                NullSlippageModel.Instance,
                 new ImmediateSettlementModel(),
                 Securities.VolatilityModel.Null,
                 new SecurityMarginModel(50m),
                 new IndexDataFilter(),
                 new SecurityPriceVariationModel(),
                 currencyConverter,
-                registeredTypes
+                registeredTypes,
+                Securities.MarginInterestRateModel.Null
                 )
         {
+            IsTradable = false;   //Index are non tradable by default
             Holdings = new IndexHolding(this, currencyConverter);
         }
 
@@ -95,17 +110,34 @@ namespace QuantConnect.Securities.Index
                 new SecurityPortfolioModel(),
                 new ImmediateFillModel(),
                 new ConstantFeeModel(0),
-                new ConstantSlippageModel(0),
+                NullSlippageModel.Instance,
                 new ImmediateSettlementModel(),
                 Securities.VolatilityModel.Null,
                 new SecurityMarginModel(50m),
                 new IndexDataFilter(),
                 new SecurityPriceVariationModel(),
                 currencyConverter,
-                registeredTypes
+                registeredTypes,
+                Securities.MarginInterestRateModel.Null
                 )
         {
+            IsTradable = false;   //Index are non tradable by default
             Holdings = new IndexHolding(this, currencyConverter);
         }
+
+        /// <summary>
+        /// Resets the security to its initial state by marking it as uninitialized and non-tradable
+        /// and clearing the subscriptions.
+        /// </summary>
+        public override void Reset()
+        {
+            base.Reset();
+            ManualSetIsTradable = false;
+        }
+
+        /// <summary>
+        /// Returns the securities symbol
+        /// </summary>
+        public static implicit operator Symbol(Index security) => security.Symbol;
     }
 }

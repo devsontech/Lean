@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,17 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("System")
-AddReference("QuantConnect.Algorithm")
-AddReference("QuantConnect.Indicators")
-AddReference("QuantConnect.Common")
-
-from System import *
-from QuantConnect import *
-from QuantConnect.Data import *
-from QuantConnect.Algorithm import *
-from QuantConnect.Indicators import *
+from AlgorithmImports import *
 
 ### <summary>
 ### This algorithm demonstrates using the history provider to retrieve data
@@ -33,41 +23,41 @@ from QuantConnect.Indicators import *
 ### <meta name="tag" content="using data" />
 class WarmupHistoryAlgorithm(QCAlgorithm):
 
-    def Initialize(self):
+    def initialize(self):
         '''Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. All algorithms must initialized.'''
 
-        self.SetStartDate(2014,5,2)   #Set Start Date
-        self.SetEndDate(2014,5,2)     #Set End Date
-        self.SetCash(100000)          #Set Strategy Cash
+        self.set_start_date(2014,5,2)   #Set Start Date
+        self.set_end_date(2014,5,2)     #Set End Date
+        self.set_cash(100000)          #Set Strategy Cash
         # Find more symbols here: http://quantconnect.com/data
-        forex = self.AddForex("EURUSD", Resolution.Second)
-        forex = self.AddForex("NZDUSD", Resolution.Second)
+        forex = self.add_forex("EURUSD", Resolution.SECOND)
+        forex = self.add_forex("NZDUSD", Resolution.SECOND)
 
         fast_period = 60
         slow_period = 3600
-        self.fast = self.EMA("EURUSD", fast_period)
-        self.slow = self.EMA("EURUSD", slow_period)
+        self.fast = self.ema("EURUSD", fast_period)
+        self.slow = self.ema("EURUSD", slow_period)
 
         # "slow_period + 1" because rolling window waits for one to fall off the back to be considered ready
-        # History method returns a dict with a pandas.DataFrame
-        history = self.History(["EURUSD", "NZDUSD"], slow_period + 1)
+        # History method returns a dict with a pandas.data_frame
+        history = self.history(["EURUSD", "NZDUSD"], slow_period + 1)
 
         # prints out the tail of the dataframe
-        self.Log(str(history.loc["EURUSD"].tail()))
-        self.Log(str(history.loc["NZDUSD"].tail()))
+        self.log(str(history.loc["EURUSD"].tail()))
+        self.log(str(history.loc["NZDUSD"].tail()))
 
         for index, row in history.loc["EURUSD"].iterrows():
-            self.fast.Update(index, row["close"])
-            self.slow.Update(index, row["close"])
+            self.fast.update(index, row["close"])
+            self.slow.update(index, row["close"])
 
-        self.Log("FAST {0} READY. Samples: {1}".format("IS" if self.fast.IsReady else "IS NOT", self.fast.Samples))
-        self.Log("SLOW {0} READY. Samples: {1}".format("IS" if self.slow.IsReady else "IS NOT", self.slow.Samples))
+        self.log("FAST {0} READY. Samples: {1}".format("IS" if self.fast.is_ready else "IS NOT", self.fast.samples))
+        self.log("SLOW {0} READY. Samples: {1}".format("IS" if self.slow.is_ready else "IS NOT", self.slow.samples))
 
 
-    def OnData(self, data):
+    def on_data(self, data):
         '''OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.'''
 
-        if self.fast.Current.Value > self.slow.Current.Value:
-            self.SetHoldings("EURUSD", 1)
+        if self.fast.current.value > self.slow.current.value:
+            self.set_holdings("EURUSD", 1)
         else:
-            self.SetHoldings("EURUSD", -1)
+            self.set_holdings("EURUSD", -1)

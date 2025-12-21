@@ -36,7 +36,7 @@ namespace QuantConnect.Algorithm.CSharp
             SetEndDate(2014, 06, 09);
 
             var equitySymbol = AddEquity("TWX").Symbol;
-            var contracts = OptionChainProvider.GetOptionContractList(equitySymbol, UtcTime).ToList();
+            var contracts = OptionChain(equitySymbol).ToList();
 
             var callOptionSymbol = contracts
                 .Where(c => c.ID.OptionRight == OptionRight.Call)
@@ -50,7 +50,7 @@ namespace QuantConnect.Algorithm.CSharp
         {
             if (!ReferenceEquals(_canonicalOptionContract, _optionContract.Canonical))
             {
-                throw new Exception("Canonical Symbol reference changed!");
+                throw new RegressionTestException("Canonical Symbol reference changed!");
             }
 
             _canonicalOptionContract = _optionContract.Canonical;
@@ -72,21 +72,39 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp };
+        public List<Language> Languages { get; } = new() { Language.CSharp };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 4713;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 1;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "1"},
+            {"Total Orders", "1"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
             {"Compounding Annual Return", "-11.148%"},
             {"Drawdown", "0.200%"},
             {"Expectancy", "0"},
+            {"Start Equity", "100000"},
+            {"End Equity", "99849"},
             {"Net Profit", "-0.151%"},
             {"Sharpe Ratio", "0"},
+            {"Sortino Ratio", "0"},
             {"Probabilistic Sharpe Ratio", "0%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
@@ -95,31 +113,15 @@ namespace QuantConnect.Algorithm.CSharp
             {"Beta", "0"},
             {"Annual Standard Deviation", "0"},
             {"Annual Variance", "0"},
-            {"Information Ratio", "-22.995"},
-            {"Tracking Error", "0.046"},
+            {"Information Ratio", "-11.639"},
+            {"Tracking Error", "0.037"},
             {"Treynor Ratio", "0"},
             {"Total Fees", "$1.00"},
-            {"Estimated Strategy Capacity", "$110000000.00"},
-            {"Fitness Score", "0.007"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "79228162514264337593543950335"},
-            {"Return Over Maximum Drawdown", "-85.302"},
-            {"Portfolio Turnover", "0.014"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "244df60d462d98848974044e20c75174"}
+            {"Estimated Strategy Capacity", "$5700000.00"},
+            {"Lowest Capacity Asset", "AOL VRKS95ENPM9Y|AOL R735QTJ8XC9X"},
+            {"Portfolio Turnover", "0.59%"},
+            {"Drawdown Recovery", "0"},
+            {"OrderListHash", "4351c4e0db0da9c6c9e032a08ee861ff"}
         };
     }
 }

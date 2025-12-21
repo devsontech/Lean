@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,19 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("System")
-AddReference("QuantConnect.Algorithm")
-AddReference("QuantConnect.Common")
-
-from System import *
-from QuantConnect import *
-from QuantConnect.Data import *
-from QuantConnect.Algorithm import *
-from QuantConnect.Indicators import *
-from QuantConnect.Securities import *
-from QuantConnect.Data.Consolidators import *
-from datetime import timedelta
+from AlgorithmImports import *
 
 ### <summary>
 ### A demonstration of consolidating futures data into larger bars for your algorithm.
@@ -34,36 +22,36 @@ from datetime import timedelta
 ### <meta name="tag" content="futures" />
 class BasicTemplateFuturesConsolidationAlgorithm(QCAlgorithm):
 
-    def Initialize(self):
-        self.SetStartDate(2013, 10, 7)
-        self.SetEndDate(2013, 10, 11)
-        self.SetCash(1000000)
+    def initialize(self):
+        self.set_start_date(2013, 10, 7)
+        self.set_end_date(2013, 10, 11)
+        self.set_cash(1000000)
 
         # Subscribe and set our expiry filter for the futures chain
-        futureSP500 = self.AddFuture(Futures.Indices.SP500EMini)
+        futureSP500 = self.add_future(Futures.Indices.SP_500_E_MINI)
         # set our expiry filter for this future chain
         # SetFilter method accepts timedelta objects or integer for days.
         # The following statements yield the same filtering criteria
-        futureSP500.SetFilter(0, 182);
-        # future.SetFilter(timedelta(0), timedelta(182))
+        futureSP500.set_filter(0, 182)
+        # future.set_filter(timedelta(0), timedelta(182))
 
         self.consolidators = dict()
 
-    def OnData(self,slice):
+    def on_data(self,slice):
         pass
 
-    def OnDataConsolidated(self, sender, quoteBar):
-        self.Log("OnDataConsolidated called on " + str(self.Time))
-        self.Log(str(quoteBar))
+    def on_data_consolidated(self, sender, quote_bar):
+        self.log("OnDataConsolidated called on " + str(self.time))
+        self.log(str(quote_bar))
         
-    def OnSecuritiesChanged(self, changes):
-        for security in changes.AddedSecurities:
+    def on_securities_changed(self, changes):
+        for security in changes.added_securities:
             consolidator = QuoteBarConsolidator(timedelta(minutes=5))
-            consolidator.DataConsolidated += self.OnDataConsolidated
-            self.SubscriptionManager.AddConsolidator(security.Symbol, consolidator)
-            self.consolidators[security.Symbol] = consolidator
+            consolidator.data_consolidated += self.on_data_consolidated
+            self.subscription_manager.add_consolidator(security.symbol, consolidator)
+            self.consolidators[security.symbol] = consolidator
             
-        for security in changes.RemovedSecurities:
-            consolidator = self.consolidators.pop(security.Symbol)
-            self.SubscriptionManager.RemoveConsolidator(security.Symbol, consolidator)
-            consolidator.DataConsolidated -= self.OnDataConsolidated
+        for security in changes.removed_securities:
+            consolidator = self.consolidators.pop(security.symbol)
+            self.subscription_manager.remove_consolidator(security.symbol, consolidator)
+            consolidator.data_consolidated -= self.on_data_consolidated

@@ -15,8 +15,8 @@
 */
 
 using System;
-using QuantConnect.Data.Market;
 using Python.Runtime;
+using QuantConnect.Data.Market;
 
 namespace QuantConnect.Data.Consolidators
 {
@@ -26,16 +26,17 @@ namespace QuantConnect.Data.Consolidators
     public class QuoteBarConsolidator : PeriodCountConsolidatorBase<QuoteBar, QuoteBar>
     {
         /// <summary>
-        /// Initializes a new instance of the <see cref="TickQuoteBarConsolidator"/> class
+        /// Initializes a new instance of the <see cref="QuoteBarConsolidator"/> class
         /// </summary>
         /// <param name="period">The minimum span of time before emitting a consolidated bar</param>
-        public QuoteBarConsolidator(TimeSpan period)
-            : base(period)
+        /// <param name="startTime">Optionally the bar start time anchor to use</param>
+        public QuoteBarConsolidator(TimeSpan period, TimeSpan? startTime = null)
+            : base(period, startTime)
         {
         }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="TickQuoteBarConsolidator"/> class
+        /// Initializes a new instance of the <see cref="QuoteBarConsolidator"/> class
         /// </summary>
         /// <param name="maxCount">The number of pieces to accept before emitting a consolidated bar</param>
         public QuoteBarConsolidator(int maxCount)
@@ -44,7 +45,7 @@ namespace QuantConnect.Data.Consolidators
         }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="TickQuoteBarConsolidator"/> class
+        /// Initializes a new instance of the <see cref="QuoteBarConsolidator"/> class
         /// </summary>
         /// <param name="maxCount">The number of pieces to accept before emitting a consolidated bar</param>
         /// <param name="period">The minimum span of time before emitting a consolidated bar</param>
@@ -84,7 +85,7 @@ namespace QuantConnect.Data.Consolidators
 
             if (workingBar == null)
             {
-                workingBar = new QuoteBar(GetRoundedBarTime(data.Time), data.Symbol, null, 0, null, 0, IsTimeBased && Period.HasValue ? Period : data.Period);
+                workingBar = new QuoteBar(GetRoundedBarTime(data), data.Symbol, null, 0, null, 0, IsTimeBased && Period.HasValue ? Period : data.Period);
 
                 // open ask and bid should match previous close ask and bid
                 if (Consolidated != null)
@@ -126,7 +127,6 @@ namespace QuantConnect.Data.Consolidators
             }
 
             workingBar.Value = data.Value;
-            if (!IsTimeBased) workingBar.Period += data.Period;
         }
     }
 }

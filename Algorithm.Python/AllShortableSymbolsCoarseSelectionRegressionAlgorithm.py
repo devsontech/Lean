@@ -1,111 +1,137 @@
-### QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
-### Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
-###
-### Licensed under the Apache License, Version 2.0 (the "License");
-### you may not use this file except in compliance with the License.
-### You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-###
-### Unless required by applicable law or agreed to in writing, software
-### distributed under the License is distributed on an "AS IS" BASIS,
-### WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-### See the License for the specific language governing permissions and
-### limitations under the License.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-from datetime import date
-
-import QuantConnect 
-from QuantConnect import *
-from QuantConnect.Algorithm import *
-from QuantConnect.Brokerages import *
-from QuantConnect.Data import *
-from QuantConnect.Data.Shortable import *
-from QuantConnect.Data.UniverseSelection import *
-from QuantConnect.Interfaces import *
-from QuantConnect import *
-
-
-class AllShortableSymbolsRegressionAlgorithmBrokerageModel(DefaultBrokerageModel):
-    def __init__(self):
-        self.ShortableProvider = LocalDiskShortableProvider(SecurityType.Equity, "testbrokerage", Market.USA)
+from AlgorithmImports import *
 
 ### <summary>
 ### Tests filtering in coarse selection by shortable quantity
 ### </summary>
 class AllShortableSymbolsCoarseSelectionRegressionAlgorithm(QCAlgorithm):
-    def Initialize(self):
-        self._20140325 = date(2014, 3, 25);
-        self._20140326 = date(2014, 3, 26);
-        self._20140327 = date(2014, 3, 27);
-        self._20140328 = date(2014, 3, 28);
-        self._20140329 = date(2014, 3, 29);
+    def initialize(self):
+        self._20140325 = datetime(2014, 3, 25)
+        self._20140326 = datetime(2014, 3, 26)
+        self._20140327 = datetime(2014, 3, 27)
+        self._20140328 = datetime(2014, 3, 28)
+        self._20140329 = datetime(2014, 3, 29)
+        self.last_trade_date = date(1,1,1)
 
-        self.aapl = QuantConnect.Symbol.Create("AAPL", SecurityType.Equity, Market.USA);
-        self.bac = QuantConnect.Symbol.Create("BAC", SecurityType.Equity, Market.USA);
-        self.gme = QuantConnect.Symbol.Create("GME", SecurityType.Equity, Market.USA);
-        self.goog = QuantConnect.Symbol.Create("GOOG", SecurityType.Equity, Market.USA);
-        self.qqq = QuantConnect.Symbol.Create("QQQ", SecurityType.Equity, Market.USA);
-        self.spy = QuantConnect.Symbol.Create("SPY", SecurityType.Equity, Market.USA);
-        self.lastTradeDate = date(1, 1, 1);
+        self._aapl = Symbol.create("AAPL", SecurityType.EQUITY, Market.USA)
+        self._bac = Symbol.create("BAC", SecurityType.EQUITY, Market.USA)
+        self._gme = Symbol.create("GME", SecurityType.EQUITY, Market.USA)
+        self._goog = Symbol.create("GOOG", SecurityType.EQUITY, Market.USA)
+        self._qqq = Symbol.create("QQQ", SecurityType.EQUITY, Market.USA)
+        self._spy = Symbol.create("SPY", SecurityType.EQUITY, Market.USA)
 
-        self.coarseSelected = {
-            self._20140325: False,
-            self._20140326: False,
-            self._20140327: False,
-            self._20140328: False
-        }
+        self.coarse_selected = { self._20140325: False, self._20140326: False, self._20140327:False, self._20140328:False }
+        self.expected_symbols = { self._20140325: [ self._bac, self._qqq, self._spy ],
+                                self._20140326: [ self._spy ],
+                                self._20140327: [ self._aapl, self._bac, self._gme, self._qqq, self._spy ],
+                                self._20140328: [ self._goog ],
+                                self._20140329: []}
 
-        self.expectedSymbols = {
-            self._20140325: [self.bac, self.qqq, self.spy],
-            self._20140326: [self.spy],
-            self._20140327: [self.aapl, self.bac, self.gme, self.qqq, self.spy],
-            self._20140328: [self.goog],
-            self._20140329: []
-        }
+        self.set_start_date(2014, 3, 25)
+        self.set_end_date(2014, 3, 29)
+        self.set_cash(10000000)
+        self.shortable_provider = RegressionTestShortableProvider()
+        self.security = self.add_equity(self._spy)
 
-        self.SetStartDate(2014, 3, 25);
-        self.SetEndDate(2014, 3, 29);
-        self.SetCash(10000000);
+        self.add_universe(self.coarse_selection)
+        self.universe_settings.resolution = Resolution.DAILY
 
-        self.AddUniverse(self.CoarseSelectionFunc);
-        self.UniverseSettings.Resolution = QuantConnect.Resolution.Daily;
+        self.set_brokerage_model(AllShortableSymbolsRegressionAlgorithmBrokerageModel(self.shortable_provider))
 
-        self.SetBrokerageModel(AllShortableSymbolsRegressionAlgorithmBrokerageModel());
-
-    def OnData(self, data):
-        if self.Time.date() == self.lastTradeDate:
+    def on_data(self, data):
+        if self.time.date() == self.last_trade_date:
             return
 
-        for symbol in self.ActiveSecurities.Keys:
-            if not symbol in self.Portfolio or not self.Portfolio[symbol].Invested:
-                if not self.Shortable(symbol):
-                    raise Exception(f"Expected {symbol} to be shortable on {self.Time}")
+        for (symbol, security) in {x.key: x.value for x in sorted(self.active_securities, key = lambda kvp:kvp.key)}.items():
+            if security.invested:
+                continue
+            shortable_quantity = security.shortable_provider.shortable_quantity(symbol, self.time)
+            if not shortable_quantity:
+                raise AssertionError(f"Expected {symbol} to be shortable on {self.time.strftime('%Y%m%d')}")
 
-                # Buy at least once into all Symbols. Since daily data will always use
-                # MOO orders, it makes the testing of liquidating buying into Symbols difficult
-                self.MarketOrder(symbol, -float(self.ShortableQuantity(symbol)))
-                self.lastTradeDate = self.Time.date()
+            """
+            Buy at least once into all Symbols. Since daily data will always use
+            MOO orders, it makes the testing of liquidating buying into Symbols difficult.
+            """
+            self.market_order(symbol, -shortable_quantity)
+            self.last_trade_date = self.time.date()
 
-    def CoarseSelectionFunc(self, coarse):
-        shortableSymbols = self.AllShortableSymbols();
-        selectedSymbols = list(sorted([x.Symbol for x in coarse if x.Symbol in shortableSymbols and shortableSymbols[x.Symbol] >= 500]))
+    def coarse_selection(self, coarse):
+        shortable_symbols = self.shortable_provider.all_shortable_symbols(self.time)
+        selected_symbols = list(sorted(filter(lambda x: (x in shortable_symbols.keys()) and (shortable_symbols[x] >= 500), map(lambda x: x.symbol, coarse)), key= lambda x: x.value))
 
-        expectedMissing = 0;
-        if self.Time.date() == self._20140327:
-            gme = QuantConnect.Symbol.Create("GME", SecurityType.Equity, Market.USA);
-            if gme not in shortableSymbols:
-                raise Exception("Expected unmapped GME in shortable symbols list on 2014-03-27");
-            if len([x.Symbol.Value for x in coarse if x.Symbol.Value == "GME"]) == 0:
-                raise Exception("Expected mapped GME in coarse symbols on 2014-03-27");
+        expected_missing = 0
+        if self.time.date() == self._20140327.date():
+            gme = Symbol.create("GME", SecurityType.EQUITY, Market.USA)
+            if gme not in shortable_symbols.keys():
+                raise AssertionError("Expected unmapped GME in shortable symbols list on 2014-03-27")
+            if "GME" not in list(map(lambda x: x.symbol.value, coarse)):
+                raise AssertionError("Expected mapped GME in coarse symbols on 2014-03-27")
 
-            expectedMissing = 1;
+            expected_missing = 1
 
-        missing = [i for i in self.expectedSymbols[self.Time.date()] if i not in selectedSymbols]
-        if (len(missing) != expectedMissing):
-            raise Exception(f"Expected Symbols selected on {self.Time.date()} to match expected Symbols, but the following Symbols were missing: {', '.join([str(s) for s in missing])}")
+        missing = list(filter(lambda x: x not in selected_symbols, self.expected_symbols[self.time]))
+        if len(missing) != expected_missing:
+            raise AssertionError(f"Expected Symbols selected on {self.time.strftime('%Y%m%d')} to match expected Symbols, but the following Symbols were missing: {', '.join(list(map(lambda x:x.value, missing)))}")
 
-        self.coarseSelected[self.Time.date()] = True;
-        return selectedSymbols
+        self.coarse_selected[self.time] = True
+        return selected_symbols
 
-    def OnEndOfAlgorithm(self):
-        if not all(list(self.coarseSelected.values())):
-            raise Exception(f"Expected coarse selection on all dates, but didn't run on: {', '.join([str(k) for k, v in self.coarseSelected.items() if not v])}")
+    def on_end_of_algorithm(self):
+        if not all(x for x in self.coarse_selected.values()):
+            raise AssertionError(f"Expected coarse selection on all dates, but didn't run on: {', '.join(list(map(lambda x: x[0].strftime('%Y%m%d'), filter(lambda x:not x[1], self.coarse_selected.items()))))}")
+
+class AllShortableSymbolsRegressionAlgorithmBrokerageModel(DefaultBrokerageModel):
+    def __init__(self, shortable_provider):
+        self.shortable_provider = shortable_provider
+        super().__init__()
+
+    def get_shortable_provider(self, security):
+        return self.shortable_provider
+
+class RegressionTestShortableProvider(LocalDiskShortableProvider):
+    def __init__(self):
+        super().__init__("testbrokerage")
+
+    """
+    Gets a list of all shortable Symbols, including the quantity shortable as a Dictionary.
+    """
+    def all_shortable_symbols(self, localtime):
+        shortable_data_directory = os.path.join(Globals.data_folder, "equity", Market.USA, "shortable", self.brokerage)
+        all_symbols = {}
+
+        """
+        Check backwards up to one week to see if we can source a previous file.
+        If not, then we return a list of all Symbols with quantity set to zero.
+        """
+        i = 0
+        while i <= 7:
+            shortable_list_file = os.path.join(shortable_data_directory, "dates", f"{(localtime - timedelta(days=i)).strftime('%Y%m%d')}.csv")
+
+            for line in Extensions.read_lines(self.data_provider, shortable_list_file):
+                csv = line.split(',')
+                ticker = csv[0]
+
+                symbol = Symbol(SecurityIdentifier.generate_equity(ticker, Market.USA, mapping_resolve_date = localtime), ticker)
+                quantity = int(csv[1])
+                all_symbols[symbol] = quantity
+
+            if len(all_symbols) > 0:
+                return all_symbols
+
+            i += 1
+
+        # Return our empty dictionary if we did not find a file to extract
+        return all_symbols

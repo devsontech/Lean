@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  * 
@@ -19,7 +19,7 @@ using QuantConnect.Indicators;
 
 namespace QuantConnect.Tests.Indicators
 {
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.Fixtures)]
     public class WilderSwingIndexTests : CommonIndicatorTests<TradeBar>
     {
         protected override IndicatorBase<TradeBar> CreateIndicator()
@@ -35,6 +35,16 @@ namespace QuantConnect.Tests.Indicators
         protected override string TestColumnName
         {
             get { return "SI"; }
+        }
+
+        /// <summary>
+        /// The final value of this indicator after being warmed up with VolumeRenkoBar's, is zero
+        /// since sometimes it receives two consecutive bars with the same open and close values.
+        /// Therefore we skip this test.
+        /// </summary>
+        /// <param name="indicator"></param>
+        protected override void IndicatorValueIsNotZeroAfterReceiveVolumeRenkoBars(IndicatorBase indicator)
+        {
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -13,6 +13,7 @@
  * limitations under the License.
 */
 
+using System;
 using QuantConnect.Data;
 
 namespace QuantConnect.Indicators
@@ -20,7 +21,7 @@ namespace QuantConnect.Indicators
     /// <summary>
     /// Represents an indicator that acts on a rolling window of data
     /// </summary>
-    public abstract class WindowIndicator<T> : IndicatorBase<T>
+    public abstract class WindowIndicator<T> : IndicatorBase<T>, IIndicatorWarmUpPeriodProvider
         where T : IBaseData
     {
         // a window of data over a certain look back period
@@ -39,6 +40,10 @@ namespace QuantConnect.Indicators
         protected WindowIndicator(string name, int period)
             : base(name)
         {
+            if (period < 1)
+            {
+                throw new ArgumentException(Messages.RollingWindow.InvalidSize(1), nameof(period));
+            }
             _window = new RollingWindow<T>(period);
         }
 
@@ -46,6 +51,11 @@ namespace QuantConnect.Indicators
         /// Gets a flag indicating when this indicator is ready and fully initialized
         /// </summary>
         public override bool IsReady => _window.IsReady;
+
+        /// <summary>
+        /// Required period, in data points, to the indicator to be ready and fully initialized
+        /// </summary>
+        public virtual int WarmUpPeriod => Period;
 
         /// <summary>
         /// Computes the next value of this indicator from the given state

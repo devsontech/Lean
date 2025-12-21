@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -33,7 +33,7 @@ namespace QuantConnect.Algorithm.Framework.Selection
 
         // rebalances at the start of each month
         private int _lastMonth = -1;
-        private readonly Dictionary<Symbol, decimal> _dollarVolumeBySymbol = new Dictionary<Symbol, decimal>();
+        private readonly Dictionary<Symbol, double> _dollarVolumeBySymbol = new();
 
         /// <summary>
         /// Initializes a new default instance of the <see cref="QC500UniverseSelectionModel"/>
@@ -47,9 +47,8 @@ namespace QuantConnect.Algorithm.Framework.Selection
         /// Initializes a new instance of the <see cref="QC500UniverseSelectionModel"/>
         /// </summary>
         /// <param name="universeSettings">Universe settings defines what subscription properties will be applied to selected securities</param>
-        /// <param name="securityInitializer">Security initializer initializes newly selected securities</param>
-        public QC500UniverseSelectionModel(UniverseSettings universeSettings, ISecurityInitializer securityInitializer)
-            : base(true, universeSettings, securityInitializer)
+        public QC500UniverseSelectionModel(UniverseSettings universeSettings)
+            : base(true, universeSettings)
         {
         }
 
@@ -61,6 +60,12 @@ namespace QuantConnect.Algorithm.Framework.Selection
         /// </summary>
         public override IEnumerable<Symbol> SelectCoarse(QCAlgorithm algorithm, IEnumerable<CoarseFundamental> coarse)
         {
+            // Check if this method was overridden in Python
+            if (TryInvokePythonOverride(nameof(SelectCoarse), out IEnumerable<Symbol> result, algorithm, coarse))
+            {
+                return result;
+            }
+
             if (algorithm.Time.Month == _lastMonth)
             {
                 return Universe.Unchanged;
@@ -97,6 +102,12 @@ namespace QuantConnect.Algorithm.Framework.Selection
         /// </summary>
         public override IEnumerable<Symbol> SelectFine(QCAlgorithm algorithm, IEnumerable<FineFundamental> fine)
         {
+            // Check if this method was overridden in Python
+            if (TryInvokePythonOverride(nameof(SelectFine), out IEnumerable<Symbol> result, algorithm, fine))
+            {
+                return result;
+            }
+
             var filteredFine =
                 (from x in fine
                  where x.CompanyReference.CountryId == "USA" &&
@@ -122,7 +133,7 @@ namespace QuantConnect.Algorithm.Framework.Selection
             // select stocks with top dollar volume in every single sector
             var topFineBySector =
                 (from x in filteredFine
-                 // Group by sector
+                     // Group by sector
                  group x by x.CompanyReference.IndustryTemplateCode into g
                  let y = from item in g
                          orderby _dollarVolumeBySymbol[item.Symbol] descending

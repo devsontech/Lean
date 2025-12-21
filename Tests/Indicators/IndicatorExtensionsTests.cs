@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -14,11 +14,14 @@
 */
 
 using System;
+using System.Collections.Generic;
 using NUnit.Framework;
 using QuantConnect.Indicators;
 using System.Linq;
 using Python.Runtime;
 using QuantConnect.Data;
+using QuantConnect.Data.Market;
+using QuantConnect.Statistics;
 
 namespace QuantConnect.Tests.Indicators
 {
@@ -404,6 +407,112 @@ namespace QuantConnect.Tests.Indicators
             indicatorB1.Of(indicatorB2);
         }
 
+        protected static TestCaseData[] IndicatorOfDifferentBaseCases()
+        {
+            // Helper for getting all permutations of the indicators listed below
+            static IEnumerable<IEnumerable<T>>
+                GetPermutations<T>(IEnumerable<T> list, int length)
+            {
+                if (length == 1) return list.Select(t => new T[] { t });
+                return GetPermutations(list, length - 1)
+                    .SelectMany(t => list.Where(o => !t.Contains(o)),
+                        (t1, t2) => t1.Concat(new T[] { t2 }));
+            }
+
+            // Define our indicators to test on
+            var testIndicators = new IIndicator[]
+            {
+                new TestIndicator<BaseData>("BD"),
+                new TestIndicator<QuoteBar>("QB"),
+                new TestIndicator<TradeBar>("TB"),
+                new TestIndicator<IndicatorDataPoint>("IDP")
+            };
+
+            // Methods defined in CompositeTestRunner
+            var methods = new string[]
+            {
+                "minus", "plus", "over", "times"
+            };
+
+            // Create every combination of indicators
+            var combinations = GetPermutations(testIndicators, 2);
+
+            // Create a case for each method with each combination of indicators
+            var cases = new List<TestCaseData>();
+            foreach (var combo in combinations)
+            {
+                foreach (var method in methods)
+                {
+                    var newCase = new TestCaseData(combo, method);
+                    cases.Add(newCase);
+                }
+            }
+
+            return cases.ToArray();
+        }
+
+        [TestCaseSource(nameof(IndicatorOfDifferentBaseCases))]
+        public void DifferentBaseIndicators(IEnumerable<IIndicator> indicators, string method)
+        {
+            CompositeTestRunner(indicators.ElementAt(0), indicators.ElementAt(1), method);
+        }
+        
+        [TestCaseSource(nameof(IndicatorOfDifferentBaseCases))]
+        public void DifferentBaseIndicatorsPy(IEnumerable<IIndicator> indicators, string method)
+        {
+            using (Py.GIL())
+            {
+                CompositeTestRunner(indicators.ElementAt(0).ToPython(), indicators.ElementAt(1).ToPython(), method);
+            }
+        }
+
+        public static void CompositeTestRunner(dynamic left, dynamic right, string method)
+        {
+            // Reset before every test; the permutation setup in test cases uses the same instance for each permutation
+            left.Reset();
+            right.Reset();
+
+            double expected;
+            CompositeIndicator compositeIndicator;
+
+            switch (method)
+            {
+                case "minus":
+                    expected = -5; // 5 - 10
+                    compositeIndicator = IndicatorExtensions.Minus(left, right);
+                    break;
+                case "plus":
+                    expected = 15; // 5 + 10
+                    compositeIndicator = IndicatorExtensions.Plus(left, right);
+                    break;
+                case "over":
+                    expected = .5; // 5 / 10
+                    compositeIndicator = IndicatorExtensions.Over(left, right);
+                    break;
+                case "times":
+                    expected = 50; // 5 * 10
+                    compositeIndicator = IndicatorExtensions.Times(left, right);
+                    break;
+                default:
+                    Assert.Fail($"Method '{method}' not handled by this test, please implement");
+                    throw new ArgumentException($"Cannot proceed with test using method {method}");
+            }
+
+            // Check our values are all zero
+            Assert.AreEqual(0, (int)right.Current.Value);
+            Assert.AreEqual(0, (int)left.Current.Value);
+            Assert.AreEqual(0, compositeIndicator.Current.Value);
+
+            // Use our test indicator method to update left and right
+            left.UpdateValue(5);
+            right.UpdateValue(10);
+
+            // Check final expected values, this ensures that composites are updating correctly
+            Assert.AreEqual(5, (int)left.Current.Value);
+            Assert.AreEqual(10, (int)right.Current.Value);
+            Assert.AreEqual(expected, compositeIndicator.Current.Value);
+        }
+
         [Test]
         public void MinusSubtractsLeftAndConstant_Py()
         {
@@ -540,6 +649,43 @@ namespace QuantConnect.Tests.Indicators
             }
         }
 
+        [Test]
+        public void RunPythonRegressionAlgorithmWithIndicatorExtensions()
+        {
+            var parameter = new RegressionTests.AlgorithmStatisticsTestParameters("IndicatorExtensionsSMAWithCustomIndicatorsRegressionAlgorithm",
+                new Dictionary<string, string> {
+                    {PerformanceMetrics.TotalOrders, "0"},
+                    {"Average Win", "0%"},
+                    {"Average Loss", "0%"},
+                    {"Compounding Annual Return", "0%"},
+                    {"Drawdown", "0%"},
+                    {"Expectancy", "0"},
+                    {"Net Profit", "0%"},
+                    {"Sharpe Ratio", "0"},
+                    {"Probabilistic Sharpe Ratio", "0%"},
+                    {"Loss Rate", "0%"},
+                    {"Win Rate", "0%"},
+                    {"Profit-Loss Ratio", "0"},
+                    {"Alpha", "0"},
+                    {"Beta", "0"},
+                    {"Annual Standard Deviation", "0"},
+                    {"Annual Variance", "0"},
+                    {"Information Ratio", "0.717"},
+                    {"Tracking Error", "0.593"},
+                    {"Treynor Ratio", "0"},
+                    {"Total Fees", "$0.00"},
+                    {"OrderListHash", "d41d8cd98f00b204e9800998ecf8427e"}
+                },
+                Language.Python,
+                AlgorithmStatus.Completed);
+
+            AlgorithmRunner.RunLocalBacktest(parameter.Algorithm,
+                parameter.Statistics,
+                parameter.Language,
+                parameter.ExpectedFinalStatus,
+                initialCash: 100000);
+        }
+
         private class TestIndicatorA : IndicatorBase<IBaseData>
         {
             public TestIndicatorA(string name) : base(name)
@@ -567,6 +713,35 @@ namespace QuantConnect.Tests.Indicators
             protected override decimal ComputeNextValue(IndicatorDataPoint input)
             {
                 throw new NotImplementedException();
+            }
+        }
+
+        private class TestIndicator<T> : IndicatorBase<T>
+            where T : IBaseData
+        {
+            public TestIndicator(string name)
+                : base(name)
+            {
+
+            }
+
+            public override bool IsReady
+            {
+                get
+                {
+                    return true;
+                }
+            }
+
+            public void UpdateValue(int value)
+            {
+                Current = new IndicatorDataPoint(DateTime.MinValue, value);
+                OnUpdated(Current);
+            }
+
+            protected override decimal ComputeNextValue(T input)
+            {
+                return input.Value;
             }
         }
     }

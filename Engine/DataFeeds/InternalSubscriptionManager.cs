@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -34,12 +34,12 @@ namespace QuantConnect.Lean.Engine.DataFeeds
         /// <summary>
         /// Event fired when a new internal subscription request is to be added
         /// </summary>
-        public EventHandler<SubscriptionRequest> Added;
+        public EventHandler<SubscriptionRequest> Added { get; set; }
 
         /// <summary>
         /// Event fired when an existing internal subscription should be removed
         /// </summary>
-        public EventHandler<SubscriptionRequest> Removed;
+        public EventHandler<SubscriptionRequest> Removed { get; set; }
 
         /// <summary>
         /// Creates a new instances
@@ -72,7 +72,14 @@ namespace QuantConnect.Lean.Engine.DataFeeds
                     // low resolution subscriptions we will add internal Resolution.Minute subscriptions
                     // if we don't already have this symbol added
                     var config = new SubscriptionDataConfig(request.Configuration, resolution: _resolution, isInternalFeed: true, extendedHours: true, isFilteredSubscription: false);
-                    var internalRequest = new SubscriptionRequest(false, null, request.Security, config, request.StartTimeUtc, request.EndTimeUtc);
+                    var startTimeUtc = request.StartTimeUtc;
+                    if (_algorithm.IsWarmingUp)
+                    {
+                        // during warmup in live trading do not add these internal subscription until the algorithm starts
+                        // these subscription are only added for realtime price in low resolution subscriptions which isn't required for warmup
+                        startTimeUtc = DateTime.UtcNow;
+                    }
+                    var internalRequest = new SubscriptionRequest(false, null, request.Security, config, startTimeUtc, request.EndTimeUtc);
                     if (existing)
                     {
                         _subscriptionRequests[request.Configuration.Symbol].Add(internalRequest);

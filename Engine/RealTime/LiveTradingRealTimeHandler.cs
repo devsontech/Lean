@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -17,77 +17,73 @@
 using System;
 using System.Linq;
 using System.Threading;
-using QuantConnect.Interfaces;
-using QuantConnect.Lean.Engine.Results;
+using QuantConnect.Util;
 using QuantConnect.Logging;
 using QuantConnect.Packets;
+using QuantConnect.Interfaces;
 using QuantConnect.Scheduling;
 using QuantConnect.Securities;
-using System.Collections.Generic;
-using QuantConnect.Configuration;
-using QuantConnect.Util;
+using QuantConnect.Lean.Engine.Results;
 
 namespace QuantConnect.Lean.Engine.RealTime
 {
     /// <summary>
     /// Live trading realtime event processing.
     /// </summary>
-    public class LiveTradingRealTimeHandler : BaseRealTimeHandler, IRealTimeHandler
+    public class LiveTradingRealTimeHandler : BacktestingRealTimeHandler
     {
         private Thread _realTimeThread;
-        private TimeMonitor _timeMonitor;
-        private static MarketHoursDatabase _marketHoursDatabase;
+        private CancellationTokenSource _cancellationTokenSource = new();
 
-        private IIsolatorLimitResultProvider _isolatorLimitProvider;
-        private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
+        /// <summary>
+        /// Gets the current market hours database instance
+        /// </summary>
+        protected MarketHoursDatabase MarketHoursDatabase { get; set; } = MarketHoursDatabase.FromDataFolder();
+
+        /// <summary>
+        /// Gets the current symbol properties database instance
+        /// </summary>
+        protected SymbolPropertiesDatabase SymbolPropertiesDatabase { get; set; } = SymbolPropertiesDatabase.FromDataFolder();
+
+        /// <summary>
+        /// Gets the time provider
+        /// </summary>
+        /// <remarks>
+        /// This should be fixed to RealTimeHandler, but made a protected property for testing purposes
+        /// </remarks>
+        protected virtual ITimeProvider TimeProvider { get; } = RealTimeProvider.Instance;
 
         /// <summary>
         /// Boolean flag indicating thread state.
         /// </summary>
-        public bool IsActive { get; private set; }
+        public override bool IsActive { get; protected set; }
 
         /// <summary>
         /// Initializes the real time handler for the specified algorithm and job
         /// </summary>
-        public void Setup(IAlgorithm algorithm, AlgorithmNodePacket job, IResultHandler resultHandler, IApi api, IIsolatorLimitResultProvider isolatorLimitProvider)
+        public override void Setup(IAlgorithm algorithm, AlgorithmNodePacket job, IResultHandler resultHandler, IApi api, IIsolatorLimitResultProvider isolatorLimitProvider)
         {
-            //Initialize:
-            Algorithm = algorithm;
-            ResultHandler = resultHandler;
-            _isolatorLimitProvider = isolatorLimitProvider;
-            _cancellationTokenSource = new CancellationTokenSource();
-            _marketHoursDatabase = MarketHoursDatabase.FromDataFolder();
+            base.Setup(algorithm, job, resultHandler, api, isolatorLimitProvider);
 
-            var todayInAlgorithmTimeZone = DateTime.UtcNow.ConvertFromUtc(Algorithm.TimeZone).Date;
+            var utcNow = TimeProvider.GetUtcNow();
+            var todayInAlgorithmTimeZone = utcNow.ConvertFromUtc(Algorithm.TimeZone).Date;
 
-            // refresh the market hours for today explicitly, and then set up an event to refresh them each day at midnight
-            RefreshMarketHoursToday(todayInAlgorithmTimeZone);
+            // set up an scheduled event to refresh market hours and symbol properties every certain period of time
+            var times = Time.DateTimeRange(utcNow.Date, Time.EndOfTime, Algorithm.Settings.DatabasesRefreshPeriod).Where(date => date > utcNow);
 
-            // every day at midnight from tomorrow until the end of time
-            var times =
-                from date in Time.EachDay(todayInAlgorithmTimeZone.AddDays(1), Time.EndOfTime)
-                select date.ConvertToUtc(Algorithm.TimeZone);
-
-            Add(new ScheduledEvent("RefreshMarketHours", times, (name, triggerTime) =>
+            Add(new ScheduledEvent("RefreshMarketHoursAndSymbolProperties", times, (name, triggerTime) =>
             {
-                // refresh market hours from api every day
-                RefreshMarketHoursToday(triggerTime.ConvertFromUtc(Algorithm.TimeZone).Date);
+                ResetMarketHoursDatabase();
+                ResetSymbolPropertiesDatabase();
             }));
+        }
 
-            base.Setup(todayInAlgorithmTimeZone, Time.EndOfTime, job.Language, DateTime.UtcNow);
-
-            foreach (var scheduledEvent in ScheduledEvents)
-            {
-                // zoom past old events
-                scheduledEvent.Key.SkipEventsUntil(algorithm.UtcTime);
-                // set logging accordingly
-                scheduledEvent.Key.IsLoggingEnabled = Log.DebuggingEnabled;
-            }
-
-            _timeMonitor = new TimeMonitor();
-
-            _realTimeThread = new Thread(Run) { IsBackground = true, Name = "RealTime Thread" };
-            _realTimeThread.Start(); // RealTime scan time for time based events
+        /// <summary>
+        /// Get's the timeout the scheduled task time monitor should use
+        /// </summary>
+        protected override int GetTimeMonitorTimeout()
+        {
+            return 500;
         }
 
         /// <summary>
@@ -101,33 +97,20 @@ namespace QuantConnect.Lean.Engine.RealTime
             // continue thread until cancellation is requested
             while (!_cancellationTokenSource.IsCancellationRequested)
             {
-                var time = DateTime.UtcNow;
-
-                // pause until the next second
-                var nextSecond = time.RoundUp(TimeSpan.FromSeconds(1));
-                var delay = Convert.ToInt32((nextSecond - time).TotalMilliseconds);
-                Thread.Sleep(delay < 0 ? 1 : delay);
+                var time = TimeProvider.GetUtcNow();
+                WaitTillNextSecond(time);
 
                 // poke each event to see if it should fire, we order by unique id to be deterministic
-                foreach (var kvp in ScheduledEvents.OrderBy(pair => pair.Value))
+                foreach (var kvp in ScheduledEvents.OrderBySafe(pair => pair.Value))
                 {
                     var scheduledEvent = kvp.Key;
                     try
                     {
-                        _isolatorLimitProvider.Consume(scheduledEvent, time, _timeMonitor);
+                        IsolatorLimitProvider.Consume(scheduledEvent, time, TimeMonitor);
                     }
-                    catch (ScheduledEventException scheduledEventException)
+                    catch (Exception exception)
                     {
-                        var errorMessage = "LiveTradingRealTimeHandler.Run(): There was an error in a scheduled " +
-                                           $"event {scheduledEvent.Name}. The error was {scheduledEventException.Message}";
-
-                        Log.Error(scheduledEventException, errorMessage);
-
-                        ResultHandler.RuntimeError(errorMessage);
-
-                        // Errors in scheduled event should be treated as runtime error
-                        // Runtime errors should end Lean execution
-                        Algorithm.RunTimeError = new Exception(errorMessage);
+                        Algorithm.SetRuntimeError(exception, $"Scheduled event: '{scheduledEvent.Name}' at {time}");
                     }
                 }
             }
@@ -137,64 +120,34 @@ namespace QuantConnect.Lean.Engine.RealTime
         }
 
         /// <summary>
-        /// Refresh the Today variable holding the market hours information
-        /// </summary>
-        private void RefreshMarketHoursToday(DateTime date)
-        {
-            date = date.Date;
-
-            // update market hours for each security
-            foreach (var kvp in Algorithm.Securities)
-            {
-                var security = kvp.Value;
-
-                var marketHours = MarketToday(date, security.Symbol);
-                security.Exchange.SetMarketHours(marketHours, date.DayOfWeek);
-                var localMarketHours = security.Exchange.Hours.MarketHours[date.DayOfWeek];
-                Log.Trace($"LiveTradingRealTimeHandler.RefreshMarketHoursToday({security.Type}): Market hours set: Symbol: {security.Symbol} {localMarketHours} ({security.Exchange.Hours.TimeZone})");
-            }
-        }
-
-        /// <summary>
-        /// Adds the specified event to the schedule
-        /// </summary>
-        /// <param name="scheduledEvent">The event to be scheduled, including the date/times the event fires and the callback</param>
-        public override void Add(ScheduledEvent scheduledEvent)
-        {
-            if (Algorithm != null)
-            {
-                scheduledEvent.SkipEventsUntil(Algorithm.UtcTime);
-            }
-
-            ScheduledEvents.AddOrUpdate(scheduledEvent, GetScheduledEventUniqueId());
-        }
-
-        /// <summary>
-        /// Removes the specified event from the schedule
-        /// </summary>
-        /// <param name="scheduledEvent">The event to be removed</param>
-        public override void Remove(ScheduledEvent scheduledEvent)
-        {
-            int id;
-            ScheduledEvents.TryRemove(scheduledEvent, out id);
-        }
-
-        /// <summary>
         /// Set the current time. If the date changes re-start the realtime event setup routines.
         /// </summary>
         /// <param name="time"></param>
-        public void SetTime(DateTime time)
+        public override void SetTime(DateTime time)
         {
-            // in live mode we use current time for our time keeping
-            // this method is used by backtesting to set time based on the data
+            if (Algorithm.IsWarmingUp)
+            {
+                base.SetTime(time);
+            }
+            else if (_realTimeThread == null)
+            {
+                // in live mode we use current time for our time keeping
+                // this method is used by backtesting to set time based on the data
+                _realTimeThread = new Thread(Run) { IsBackground = true, Name = "RealTime Thread" };
+                _realTimeThread.Start(); // RealTime scan time for time based events
+            }
         }
 
         /// <summary>
         /// Scan for past events that didn't fire because there was no data at the scheduled time.
         /// </summary>
         /// <param name="time">Current time.</param>
-        public void ScanPastEvents(DateTime time)
+        public override void ScanPastEvents(DateTime time)
         {
+            if (Algorithm.IsWarmingUp)
+            {
+                base.ScanPastEvents(time);
+            }
             // in live mode we use current time for our time keeping
             // this method is used by backtesting to scan for past events based on the data
         }
@@ -202,32 +155,42 @@ namespace QuantConnect.Lean.Engine.RealTime
         /// <summary>
         /// Stop the real time thread
         /// </summary>
-        public void Exit()
+        public override void Exit()
         {
-            _realTimeThread.StopSafely(TimeSpan.FromMinutes(5), _cancellationTokenSource);
-            _realTimeThread = null;
-            _timeMonitor.DisposeSafely();
-            _timeMonitor = null;
+            _realTimeThread.StopSafely(TimeSpan.FromMinutes(1), _cancellationTokenSource);
             _cancellationTokenSource.DisposeSafely();
-            _cancellationTokenSource = null;
+            base.Exit();
         }
 
         /// <summary>
-        /// Get the calendar open hours for the date.
+        /// Helper method to wait until the second passes, useful to testing
         /// </summary>
-        private IEnumerable<MarketHoursSegment> MarketToday(DateTime time, Symbol symbol)
+        protected virtual void WaitTillNextSecond(DateTime time)
         {
-            if (Config.GetBool("force-exchange-always-open"))
-            {
-                yield return MarketHoursSegment.OpenAllDay();
-                yield break;
-            }
+            // pause until the next second
+            var nextSecond = time.RoundUp(TimeSpan.FromSeconds(1));
+            var delay = Convert.ToInt32((nextSecond - time).TotalMilliseconds);
+            Thread.Sleep(delay < 0 ? 1 : delay);
+        }
 
-            var hours = _marketHoursDatabase.GetExchangeHours(symbol.ID.Market, symbol, symbol.ID.SecurityType);
-            foreach (var segment in hours.MarketHours[time.DayOfWeek].Segments)
-            {
-                yield return segment;
-            }
+        /// <summary>
+        /// Resets the market hours database, forcing a reload when reused.
+        /// Called in tests where multiple algorithms are run sequentially,
+        /// and we need to guarantee that every test starts with the same environment.
+        /// </summary>
+        protected virtual void ResetMarketHoursDatabase()
+        {
+            MarketHoursDatabase.UpdateDataFolderDatabase();
+            Log.Trace("LiveTradingRealTimeHandler.ResetMarketHoursDatabase(): Updated market hours database.");
+        }
+
+        /// <summary>
+        /// Resets the symbol properties database, forcing a reload when reused.
+        /// </summary>
+        protected virtual void ResetSymbolPropertiesDatabase()
+        {
+            SymbolPropertiesDatabase.UpdateDataFolderDatabase();
+            Log.Trace("LiveTradingRealTimeHandler.ResetSymbolPropertiesDatabase(): Updated symbol properties database.");
         }
     }
 }

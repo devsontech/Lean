@@ -1,4 +1,4 @@
-﻿# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+# QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
 # Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,15 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from clr import AddReference
-AddReference("System")
-AddReference("QuantConnect.Algorithm")
-AddReference("QuantConnect.Common")
-
-from System import *
-from QuantConnect import *
-from QuantConnect.Algorithm import *
-from datetime import datetime, timedelta
+from AlgorithmImports import *
 
 ### <summary>
 ### This regression algorithm tests option exercise and assignment functionality
@@ -29,44 +21,46 @@ from datetime import datetime, timedelta
 ### <meta name="tag" content="options" />
 class OptionExerciseAssignRegressionAlgorithm(QCAlgorithm):
 
-    def Initialize(self):
+    underlying_ticker = "GOOG"
 
-        self.SetCash(100000)
-        self.SetStartDate(2015,12,24)
-        self.SetEndDate(2015,12,28)
+    def initialize(self):
+        self.set_cash(100000)
+        self.set_start_date(2015,12,24)
+        self.set_end_date(2015,12,28)
 
-        option = self.AddOption("GOOG")
+        self.equity = self.add_equity(self.underlying_ticker)
+        self.option = self.add_option(self.underlying_ticker)
 
         # set our strike/expiry filter for this option chain
-        option.SetFilter(self.UniverseFunc)
+        self.option.set_filter(self.universe_func)
 
-        self.SetBenchmark("GOOG")
-        self._assignedOption = False
+        self.set_benchmark(self.equity.symbol)
+        self._assigned_option = False
 
-    def OnData(self, slice):
-        if self.Portfolio.Invested: return
-        for kvp in slice.OptionChains:
-            chain = kvp.Value
+    def on_data(self, slice):
+        if self.portfolio.invested: return
+        for kvp in slice.option_chains:
+            chain = kvp.value
             # find the call options expiring today
             contracts = filter(lambda x:
-                               x.Expiry.date() == self.Time.date() and
-                               x.Strike < chain.Underlying.Price and
-                               x.Right ==  OptionRight.Call, chain)
+                               x.expiry.date() == self.time.date() and
+                               x.strike < chain.underlying.price and
+                               x.right == OptionRight.CALL, chain)
             
             # sorted the contracts by their strikes, find the second strike under market price 
-            sorted_contracts = sorted(contracts, key = lambda x: x.Strike, reverse = True)[:2]
+            sorted_contracts = sorted(contracts, key = lambda x: x.strike, reverse = True)[:2]
 
             if sorted_contracts:
-                self.MarketOrder(sorted_contracts[0].Symbol, 1)
-                self.MarketOrder(sorted_contracts[1].Symbol, -1)
+                self.market_order(sorted_contracts[0].symbol, 1)
+                self.market_order(sorted_contracts[1].symbol, -1)
 
     # set our strike/expiry filter for this option chain
-    def UniverseFunc(self, universe):
-        return universe.IncludeWeeklys().Strikes(-2, 2).Expiration(timedelta(0), timedelta(10))
+    def universe_func(self, universe):
+        return universe.include_weeklys().strikes(-2, 2).expiration(timedelta(0), timedelta(10))
 
-    def OnOrderEvent(self, orderEvent):
-        self.Log(str(orderEvent))
+    def on_order_event(self, order_event):
+        self.log(str(order_event))
 
-    def OnAssignmentOrderEvent(self, assignmentEvent):
-        self.Log(str(assignmentEvent))
-        self._assignedOption = True
+    def on_assignment_order_event(self, assignment_event):
+        self.log(str(assignment_event))
+        self._assigned_option = True

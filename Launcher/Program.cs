@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -15,13 +15,12 @@
 */
 
 using System;
-using System.ComponentModel.Composition;
-using System.IO;
 using System.Threading;
 using QuantConnect.Configuration;
 using QuantConnect.Lean.Engine;
 using QuantConnect.Logging;
 using QuantConnect.Packets;
+using QuantConnect.Python;
 using QuantConnect.Util;
 
 namespace QuantConnect.Lean.Launcher
@@ -47,12 +46,6 @@ namespace QuantConnect.Lean.Launcher
 
         static void Main(string[] args)
         {
-            //Initialize:
-            var mode = "RELEASE";
-            #if DEBUG
-                mode = "DEBUG";
-            #endif
-
             if (OS.IsWindows)
             {
                 Console.OutputEncoding = System.Text.Encoding.UTF8;
@@ -64,52 +57,26 @@ namespace QuantConnect.Lean.Launcher
                 Config.MergeCommandLineArgumentsWithConfiguration(LeanArgumentParser.ParseArguments(args));
             }
 
-            var environment = Config.Get("environment");
-            var liveMode = Config.GetBool("live-mode");
-            Log.DebuggingEnabled = Config.GetBool("debug-mode");
-            Log.FilePath = Path.Combine(Config.Get("results-destination-folder"), "log.txt");
-            Log.LogHandler = Composer.Instance.GetExportedValueByTypeName<ILogHandler>(Config.Get("log-handler", "CompositeLogHandler"));
-
             //Name thread for the profiler:
             Thread.CurrentThread.Name = "Algorithm Analysis Thread";
-            Log.Trace("Engine.Main(): LEAN ALGORITHMIC TRADING ENGINE v" + Globals.Version + " Mode: " + mode + " (" + (Environment.Is64BitProcess ? "64" : "32") + "bit)");
-            Log.Trace("Engine.Main(): Started " + DateTime.Now.ToShortTimeString());
 
-            //Import external libraries specific to physical server location (cloud/local)
-
-            try
-            {
-                leanEngineSystemHandlers = LeanEngineSystemHandlers.FromConfiguration(Composer.Instance);
-            }
-            catch (CompositionException compositionException)
-            {
-                Log.Error("Engine.Main(): Failed to load library: " + compositionException);
-                throw;
-            }
-
-            //Setup packeting, queue and controls system: These don't do much locally.
-            leanEngineSystemHandlers.Initialize();
+            Initializer.Start();
+            leanEngineSystemHandlers = Initializer.GetSystemHandlers();
 
             //-> Pull job from QuantConnect job queue, or, pull local build:
-            string assemblyPath;
-            job = leanEngineSystemHandlers.JobQueue.NextJob(out assemblyPath);
+            job = leanEngineSystemHandlers.JobQueue.NextJob(out var assemblyPath);
+
+            leanEngineAlgorithmHandlers = Initializer.GetAlgorithmHandlers();
 
             if (job == null)
             {
                 const string jobNullMessage = "Engine.Main(): Sorry we could not process this algorithm request.";
                 Log.Error(jobNullMessage);
-                throw new ArgumentException(jobNullMessage);
+                Exit(1);
             }
 
-            try
-            {
-                leanEngineAlgorithmHandlers = LeanEngineAlgorithmHandlers.FromConfiguration(Composer.Instance);
-            }
-            catch (CompositionException compositionException)
-            {
-                Log.Error("Engine.Main(): Failed to load library: " + compositionException);
-                throw;
-            }
+            // Activate our PythonVirtualEnvironment
+            PythonInitializer.ActivatePythonVirtualEnvironment(job.PythonVirtualEnvironment);
 
             // if the job version doesn't match this instance version then we can't process it
             // we also don't want to reprocess redelivered jobs
@@ -131,11 +98,13 @@ namespace QuantConnect.Lean.Launcher
                 Console.CancelKeyPress += new ConsoleCancelEventHandler(ExitKeyPress);
 
                 // Create the algorithm manager and start our engine
-                algorithmManager = new AlgorithmManager(liveMode, job);
+                algorithmManager = new AlgorithmManager(Globals.LiveMode, job);
 
                 leanEngineSystemHandlers.LeanManager.Initialize(leanEngineSystemHandlers, leanEngineAlgorithmHandlers, job, algorithmManager);
 
-                var engine = new Engine.Engine(leanEngineSystemHandlers, leanEngineAlgorithmHandlers, liveMode);
+                OS.Initialize();
+
+                var engine = new Engine.Engine(leanEngineSystemHandlers, leanEngineAlgorithmHandlers, Globals.LiveMode);
                 engine.Run(job, algorithmManager, assemblyPath, WorkerThread.Instance);
             }
             finally
@@ -158,15 +127,21 @@ namespace QuantConnect.Lean.Launcher
 
         public static void Exit(int exitCode)
         {
-            //Delete the message from the job queue:
-            leanEngineSystemHandlers.JobQueue.AcknowledgeJob(job);
-            Log.Trace("Engine.Main(): Packet removed from queue: " + job.AlgorithmId);
+            // The job can be null if the algorithm file was not found
+            if (job != null)
+            {
+                //Delete the message from the job queue:
+                leanEngineSystemHandlers.JobQueue.AcknowledgeJob(job);
+                Log.Trace("Engine.Main(): Packet removed from queue: " + job.AlgorithmId);
+            }
 
             // clean up resources
             leanEngineSystemHandlers.DisposeSafely();
             leanEngineAlgorithmHandlers.DisposeSafely();
             Log.LogHandler.DisposeSafely();
-            OS.CpuPerformanceCounter.DisposeSafely();
+            OS.Dispose();
+
+            PythonInitializer.Shutdown();
 
             Log.Trace("Program.Main(): Exiting Lean...");
             Environment.Exit(exitCode);

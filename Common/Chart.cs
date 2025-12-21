@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -14,29 +14,45 @@
 */
 
 using System;
-using System.Collections.Generic;
+using System.Linq;
 using System.Data;
 using System.Drawing;
 using Newtonsoft.Json;
 using QuantConnect.Logging;
+using System.Collections.Generic;
+using Newtonsoft.Json.Serialization;
 
 namespace QuantConnect
 {
     /// <summary>
     /// Single Parent Chart Object for Custom Charting
     /// </summary>
-    [JsonObject]
     public class Chart
     {
-        /// Name of the Chart:
-        public string Name = "";
+        /// <summary>
+        /// Name of the Chart
+        /// </summary>
+        public string Name { get; set; } = string.Empty;
 
         /// Type of the Chart, Overlayed or Stacked.
         [Obsolete("ChartType is now obsolete. Please use Series indexes instead by setting index in the series constructor.")]
-        public ChartType ChartType = ChartType.Overlay;
+        public ChartType ChartType { get; set; } = ChartType.Overlay;
 
         /// List of Series Objects for this Chart:
-        public Dictionary<string, Series> Series = new Dictionary<string, Series>();
+        [JsonConverter(typeof(ChartSeriesJsonConverter))]
+        public Dictionary<string, BaseSeries> Series { get; set; } = new();
+
+        /// <summary>
+        /// Associated symbol if any, making this an asset plot
+        /// </summary>
+        [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+        public Symbol Symbol { get; set; }
+
+        /// <summary>
+        /// True to hide this series legend from the chart
+        /// </summary>
+        [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+        public bool LegendDisabled { get; set; }
 
         /// <summary>
         /// Default constructor for chart:
@@ -52,7 +68,7 @@ namespace QuantConnect
         public Chart(string name, ChartType type = ChartType.Overlay)
         {
             Name = name;
-            Series = new Dictionary<string, Series>();
+            Series = new Dictionary<string, BaseSeries>();
             ChartType = type;
         }
 
@@ -60,26 +76,32 @@ namespace QuantConnect
         /// Constructor for a chart
         /// </summary>
         /// <param name="name">String name of the chart</param>
-        public Chart(string name)
+        public Chart(string name) : this(name, null)
+        {
+        }
+
+        /// <summary>
+        /// Constructor for a chart
+        /// </summary>
+        /// <param name="name">String name of the chart</param>
+        /// <param name="symbol">Associated symbol if any</param>
+        public Chart(string name, Symbol symbol)
         {
             Name = name;
-            Series = new Dictionary<string, Series>();
+            Symbol = symbol;
+            Series = new Dictionary<string, BaseSeries>();
         }
 
         /// <summary>
         /// Add a reference to this chart series:
         /// </summary>
         /// <param name="series">Chart series class object</param>
-        public void AddSeries(Series series)
+        public void AddSeries(BaseSeries series)
         {
             //If we dont already have this series, add to the chrt:
-            if (!Series.ContainsKey(series.Name))
+            if (!Series.TryAdd(series.Name, series))
             {
-                Series.Add(series.Name, series);
-            }
-            else
-            {
-                throw new DuplicateNameException("Chart.AddSeries(): Chart series name already exists");
+                throw new DuplicateNameException($"Chart.AddSeries(): ${Messages.Chart.ChartSeriesAlreadyExists}");
             }
         }
 
@@ -96,7 +118,7 @@ namespace QuantConnect
         public Series TryAddAndGetSeries(string name, SeriesType type, int index, string unit,
                                       Color color, ScatterMarkerSymbol symbol, bool forceAddNew = false)
         {
-            Series series;
+            BaseSeries series;
             if (forceAddNew || !Series.TryGetValue(name, out series))
             {
                 series = new Series(name, type, index, unit)
@@ -107,16 +129,34 @@ namespace QuantConnect
                 Series[name] = series;
             }
 
-            return series;
+            return (Series)series;
         }
 
         /// <summary>
-        /// Fetch the updates of the chart, and save the index position.
+        /// Gets Series if already present in chart, else will add a new series and return it
+        /// </summary>
+        /// <param name="name">Name of the series</param>
+        /// <param name="templateSeries">Series to be used as a template. It will be clone without values if the series is added to the chart</param>
+        /// <param name="forceAddNew">True will always add a new Series instance, stepping on existing if any</param>
+        public BaseSeries TryAddAndGetSeries(string name, BaseSeries templateSeries, bool forceAddNew = false)
+        {
+            BaseSeries chartSeries;
+            if (forceAddNew || !Series.TryGetValue(name, out chartSeries))
+            {
+                Series[name] = chartSeries = templateSeries.Clone(empty: true);
+            }
+
+            return chartSeries;
+        }
+
+        /// <summary>
+        /// Fetch a chart with only the updates since the last request,
+        /// Underlying series will save the index position.
         /// </summary>
         /// <returns></returns>
         public Chart GetUpdates()
         {
-            var copy = new Chart(Name);
+            var copy = CloneEmpty();
             try
             {
                 foreach (var series in Series.Values)
@@ -135,9 +175,9 @@ namespace QuantConnect
         /// Return a new instance clone of this object
         /// </summary>
         /// <returns></returns>
-        public Chart Clone()
+        public virtual Chart Clone()
         {
-            var chart = new Chart(Name);
+            var chart = CloneEmpty();
 
             foreach (var kvp in Series)
             {
@@ -146,6 +186,44 @@ namespace QuantConnect
 
             return chart;
         }
+
+        /// <summary>
+        /// Return a new empty instance clone of this object
+        /// </summary>
+        public virtual Chart CloneEmpty()
+        {
+            return new Chart(Name) { LegendDisabled = LegendDisabled, Symbol = Symbol };
+        }
+
+        /// <summary>
+        /// Helper method to consolidate a chart into a single series chart by summing all values
+        /// </summary>
+        public virtual Chart Aggregate(SeriesType seriesType = SeriesType.Line)
+        {
+            var newChart = CloneEmpty();
+            if (Series == null || Series.Count == 0)
+            {
+                return newChart;
+            }
+
+            var referenceSeries = Series.Values.First();
+            var aggregatedSeries = new Series("TOTAL", seriesType, referenceSeries.Unit);
+            newChart.AddSeries(aggregatedSeries);
+            var aggregatedPoints = new Dictionary<long, decimal>(referenceSeries.Values.Count * Series.Count);
+            foreach (var point in Series.Values.SelectMany(x => x.Values.OfType<ChartPoint>()))
+            {
+                if (point.Y.HasValue)
+                {
+                    aggregatedPoints[point.X] = point.Y.Value + aggregatedPoints.GetValueOrDefault(point.X);
+                }
+            }
+
+            foreach (var kvp in aggregatedPoints.OrderBy(x => x.Key))
+            {
+                aggregatedSeries.Values.Add(new ChartPoint(kvp.Key, kvp.Value));
+            }
+            return newChart;
+        }
     }
 
     /// <summary>
@@ -153,9 +231,9 @@ namespace QuantConnect
     /// </summary>
     public enum ChartType
     {
-        /// Overlayed stacked
+        /// Overlayed stacked (0)
         Overlay,
-        /// Stacked series on top of each other.
+        /// Stacked series on top of each other. (1)
         Stacked
     }
 }

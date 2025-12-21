@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -16,6 +16,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using QuantConnect.Data;
 using QuantConnect.Data.Market;
 using QuantConnect.Indicators;
 
@@ -32,7 +33,7 @@ namespace QuantConnect.Algorithm.CSharp.Benchmarks
         public override void Initialize()
         {
             SetStartDate(2010, 01, 01);
-            SetEndDate(2018, 01, 01);
+            SetEndDate(2022, 01, 01);
 
             AddSecurity(SecurityType.Equity, "SPY", Resolution.Minute);
 
@@ -51,14 +52,14 @@ namespace QuantConnect.Algorithm.CSharp.Benchmarks
                 // define an indicator that takes the output of the sma and pipes it into our delay indicator
                 var delayedSma = delay.Of(sma);
 
-                // register our new 'delayedSma' for automaic updates on a daily resolution
+                // register our new 'delayedSma' for automatic updates on a daily resolution
                 RegisterIndicator(_spy, delayedSma, Resolution.Daily, data => data.Value);
 
                 return delayedSma;
             }).ToArray();
         }
 
-        public void OnData(TradeBars data)
+        public override void OnData(Slice slice)
         {
             // wait for our entire ribbon to be ready
             if (!_ribbon.All(x => x.IsReady)) return;

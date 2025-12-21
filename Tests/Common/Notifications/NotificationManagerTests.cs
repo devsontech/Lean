@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -15,12 +15,13 @@
 
 using System;
 using System.Linq;
+using System.Text;
 using NUnit.Framework;
+using Python.Runtime;
 using QuantConnect.Notifications;
 
 namespace QuantConnect.Tests.Common.Notifications
 {
-    [Parallelizable(ParallelScope.Fixtures)]
     [TestFixture(true)]
     [TestFixture(false)]
     public class NotificationManagerTests
@@ -73,46 +74,86 @@ namespace QuantConnect.Tests.Common.Notifications
         }
 
         [Test]
-        [TestCase("email")]
-        [TestCase("sms")]
-        [TestCase("web")]
-        public void RateLimits_Notifications_AfterThirtyCalls(string method)
+        public void TelegramAddsNotificationToMessagesWhenLiveModeIsTrue()
         {
-            for (var invocationNumber = 1; invocationNumber <= 31; invocationNumber++)
+            Assert.AreEqual(_liveMode, _notify.Telegram("pepe", "ImAMessage", "botToken"));
+            Assert.AreEqual(_liveMode ? 1 : 0, _notify.Messages.Count);
+            if (_liveMode)
             {
+                Assert.IsInstanceOf<NotificationTelegram>(_notify.Messages.Single());
+            }
+        }
+
+        [Test]
+        public void FtpAddsNotificationToMessagesWhenLiveModeIsTrue()
+        {
+            Assert.AreEqual(_liveMode, _notify.Ftp("qc.com", "username", "password", "path/to/file.json", Encoding.ASCII.GetBytes("{}")));
+            Assert.AreEqual(_liveMode ? 1 : 0, _notify.Messages.Count);
+            if (_liveMode)
+            {
+                Assert.IsInstanceOf<NotificationFtp>(_notify.Messages.Single());
+            }
+        }
+
+        [Test]
+        public void FtpAddsNotificationToMessagesWhenLiveModeIsTrueFromStringContents()
+        {
+            Assert.AreEqual(_liveMode, _notify.Ftp("qc.com", "username", "password", "path/to/file.json", "{}"));
+            Assert.AreEqual(_liveMode ? 1 : 0, _notify.Messages.Count);
+            if (_liveMode)
+            {
+                Assert.IsInstanceOf<NotificationFtp>(_notify.Messages.Single());
+            }
+        }
+
+        [TestCase("email")]
+        [TestCase("web")]
+        public void PythonOverloads(string notificationType)
+        {
+            using (Py.GIL())
+            {
+                dynamic function;
                 bool result;
-                switch (method)
+                var test = PyModule.FromString("testModule",
+                    @"
+from AlgorithmImports import *
+
+def email(notifier):
+    headers = {'header-key': 'header-value'}
+    return notifier.Email('me@email.com', 'subject', 'message', 'data', headers)
+    
+def web(notifier):
+    headers = {'header-key': 'header-value'}
+    data = {'objectA':'valueA', 'objectB':{'PropertyA':10, 'PropertyB':'stringB'}}
+    return notifier.Web('api.quantconnect.com', data, headers)");
+
+
+                switch (notificationType)
                 {
                     case "email":
-                        result = _notify.Email("address@domain.com", "subject", "message", "data");
-                        break;
-
-                    case "sms":
-                        result = _notify.Sms("phone-number", "message");
+                        function = test.GetAttr("email");
+                        result = function(_notify);
                         break;
 
                     case "web":
-                        result = _notify.Web("address", "data");
+                        function = test.GetAttr("web");
+                        result = function(_notify);
                         break;
 
                     default:
-                        throw new ArgumentException($"Invalid method: {method}");
+                        throw new ArgumentException($"Invalid method: {notificationType}");
                 }
 
-                if (_liveMode && invocationNumber <= 30)
+                if (_liveMode)
                 {
                     Assert.IsTrue(result);
                 }
                 else
                 {
                     Assert.IsFalse(result);
-                    if (!_liveMode)
-                    {
-                        // no need to test further
-                        Assert.Pass();
-                    }
                 }
             }
+
         }
     }
 }

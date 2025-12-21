@@ -47,9 +47,9 @@ namespace QuantConnect.Algorithm.CSharp
         /// OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
         /// </summary>
         /// <param name="data">Slice object keyed by symbol containing the stock data</param>
-        public override void OnData(Slice data)
+        public override void OnData(Slice slice)
         {
-            if (data.Time == new DateTime(2014, 06, 06))
+            if (slice.Time == new DateTime(2014, 06, 06))
             {
                 RemoveSecurity(_aapl.Symbol);
             }
@@ -68,54 +68,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp };
+        public List<Language> Languages { get; } = new() { Language.CSharp };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 35;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "1"},
+            {"Total Orders", "1"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
-            {"Compounding Annual Return", "716.979%"},
-            {"Drawdown", "0%"},
+            {"Compounding Annual Return", "76.334%"},
+            {"Drawdown", "0.300%"},
             {"Expectancy", "0"},
-            {"Net Profit", "2.919%"},
-            {"Sharpe Ratio", "51.393"},
-            {"Probabilistic Sharpe Ratio", "0%"},
+            {"Start Equity", "100000"},
+            {"End Equity", "100727.83"},
+            {"Net Profit", "0.728%"},
+            {"Sharpe Ratio", "6.14"},
+            {"Sortino Ratio", "0"},
+            {"Probabilistic Sharpe Ratio", "71.723%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "4.401"},
-            {"Beta", "1.732"},
-            {"Annual Standard Deviation", "0.1"},
-            {"Annual Variance", "0.01"},
-            {"Information Ratio", "57.872"},
-            {"Tracking Error", "0.082"},
-            {"Treynor Ratio", "2.973"},
+            {"Alpha", "1.02"},
+            {"Beta", "-1.043"},
+            {"Annual Standard Deviation", "0.094"},
+            {"Annual Variance", "0.009"},
+            {"Information Ratio", "1.332"},
+            {"Tracking Error", "0.114"},
+            {"Treynor Ratio", "-0.553"},
             {"Total Fees", "$1.00"},
-            {"Estimated Strategy Capacity", "$35000000.00"},
-            {"Fitness Score", "0.245"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "79228162514264337593543950335"},
-            {"Return Over Maximum Drawdown", "79228162514264337593543950335"},
-            {"Portfolio Turnover", "0.245"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "f21c21e86a17e6295635fd8fb9e4ef62"}
+            {"Estimated Strategy Capacity", "$46000000.00"},
+            {"Lowest Capacity Asset", "GOOCV VP83T1ZUHROL"},
+            {"Portfolio Turnover", "20.10%"},
+            {"Drawdown Recovery", "3"},
+            {"OrderListHash", "fd92ba2e36a1e755593fcc9791e97928"}
         };
     }
 }

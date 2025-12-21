@@ -14,10 +14,10 @@
 */
 
 using System;
+using QuantConnect.Util;
 using System.Collections.Generic;
 using System.Linq;
 using QuantConnect.Data;
-using QuantConnect.Data.Custom;
 using QuantConnect.Data.Market;
 using QuantConnect.Indicators;
 using QuantConnect.Securities.Equity;
@@ -36,7 +36,7 @@ namespace QuantConnect.Algorithm.CSharp
     public class HistoryAlgorithm : QCAlgorithm, IRegressionAlgorithmDefinition
     {
         private int _count;
-        private SimpleMovingAverage _spyDailySma;
+        private SimpleMovingAverage _dailySma;
 
         /// <summary>
         /// Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. All algorithms must initialized.
@@ -49,12 +49,12 @@ namespace QuantConnect.Algorithm.CSharp
 
             // Find more symbols here: http://quantconnect.com/data
             var SPY = AddSecurity(SecurityType.Equity, "SPY", Resolution.Daily).Symbol;
-            var CME_SP1 = AddData<QuandlFuture>("CHRIS/CME_SP1", Resolution.Daily).Symbol;
+            var IBM = AddData<CustomData>("IBM", Resolution.Daily).Symbol;
             // specifying the exchange will allow the history methods that accept a number of bars to return to work properly
-            Securities["CHRIS/CME_SP1"].Exchange = new EquityExchange();
+            Securities["IBM"].Exchange = new EquityExchange();
 
             // we can get history in initialize to set up indicators and such
-            _spyDailySma = new SimpleMovingAverage(14);
+            _dailySma = new SimpleMovingAverage(14);
 
             // get the last calendar year's worth of SPY data at the configured resolution (daily)
             var tradeBarHistory = History<TradeBar>("SPY", TimeSpan.FromDays(365));
@@ -76,99 +76,100 @@ namespace QuantConnect.Algorithm.CSharp
             // we can use these TradeBars to initialize indicators or perform other math
             foreach (TradeBar tradeBar in tradeBarHistory)
             {
-                _spyDailySma.Update(tradeBar.EndTime, tradeBar.Close);
+                _dailySma.Update(tradeBar.EndTime, tradeBar.Close);
             }
 
-            // get the last calendar year's worth of quandl data at the configured resolution (daily)
-            var quandlHistory = History<QuandlFuture>("CHRIS/CME_SP1", TimeSpan.FromDays(365));
-            AssertHistoryCount("History<Quandl>(\"CHRIS/CME_SP1\", TimeSpan.FromDays(365))", quandlHistory, 250, CME_SP1);
+            // get the last calendar year's worth of IBM data at the configured resolution (daily)
+            var customDataHistory = History<CustomData>("IBM", TimeSpan.FromDays(365));
+            AssertHistoryCount("History<CustomData>(\"IBM\", TimeSpan.FromDays(365))", customDataHistory, 250, IBM);
 
-            // get the last 14 bars of SPY at the configured resolution (daily)
-            quandlHistory = History<QuandlFuture>("CHRIS/CME_SP1", 14);
-            AssertHistoryCount("History<Quandl>(\"CHRIS/CME_SP1\", 14)", quandlHistory, 14, CME_SP1);
+            // get the last 14 bars of IBM at the configured resolution (daily)
+            customDataHistory = History<CustomData>("IBM", 14);
+            AssertHistoryCount("History<CustomData>(\"IBM\", 14)", customDataHistory, 14, IBM);
 
-            // get the last 14 minute bars of SPY
-
-            // we can loop over the return values from these functions and we'll get Quandl data
+            // we can loop over the return values from these functions and we'll get custom data
             // this can be used in much the same way as the tradeBarHistory above
-            _spyDailySma.Reset();
-            foreach (QuandlFuture quandl in quandlHistory)
+            _dailySma.Reset();
+            foreach (CustomData customData in customDataHistory)
             {
-                _spyDailySma.Update(quandl.EndTime, quandl.Value);
+                _dailySma.Update(customData.EndTime, customData.Value);
             }
 
-            // get the last year's worth of all configured Quandl data at the configured resolution (daily)
-            var allQuandlData = History<QuandlFuture>(TimeSpan.FromDays(365));
-            AssertHistoryCount("History<QuandlFuture>(TimeSpan.FromDays(365))", allQuandlData, 250, CME_SP1);
+            // get the last year's worth of all configured custom data at the configured resolution (daily)
+            var allCustomData = History<CustomData>(TimeSpan.FromDays(365));
+            AssertHistoryCount("History<CustomData>(TimeSpan.FromDays(365))", allCustomData, 250, IBM, SPY);
 
-            // get the last 14 bars worth of Quandl data for the specified symbols at the configured resolution (daily)
-            allQuandlData = History<QuandlFuture>(Securities.Keys, 14);
-            AssertHistoryCount("History<QuandlFuture>(Securities.Keys, 14)", allQuandlData, 14, CME_SP1);
+            // get the last 14 bars worth of custom data for the specified symbols at the configured resolution (daily)
+            allCustomData = History<CustomData>(Securities.Keys, 14);
+            AssertHistoryCount("History<CustomData>(Securities.Keys, 14)", allCustomData, 14, IBM, SPY);
 
-            // NOTE: using different resolutions require that they are properly implemented in your data type, since
-            //  Quandl doesn't support minute data, this won't actually work, but if your custom data source has
-            //  different resolutions, it would need to be implemented in the GetSource and Reader methods properly
-            //quandlHistory = History<QuandlFuture>("CHRIS/CME_SP1", TimeSpan.FromDays(7), Resolution.Minute);
-            //quandlHistory = History<QuandlFuture>("CHRIS/CME_SP1", 14, Resolution.Minute);
-            //allQuandlData = History<QuandlFuture>(TimeSpan.FromDays(365), Resolution.Minute);
-            //allQuandlData = History<QuandlFuture>(Securities.Keys, 14, Resolution.Minute);
-            //allQuandlData = History<QuandlFuture>(Securities.Keys, TimeSpan.FromDays(1), Resolution.Minute);
-            //allQuandlData = History<QuandlFuture>(Securities.Keys, 14, Resolution.Minute);
+            // NOTE: Using different resolutions require that they are properly implemented in your data type. If your
+            // custom data source has different resolutions, it would need to be implemented in the GetSource and Reader
+            // methods properly.
+            //customDataHistory = History<CustomData>("IBM", TimeSpan.FromDays(7), Resolution.Minute);
+            //customDataHistory = History<CustomData>("IBM", 14, Resolution.Minute);
+            //allCustomData = History<CustomData>(TimeSpan.FromDays(365), Resolution.Minute);
+            //allCustomData = History<CustomData>(Securities.Keys, 14, Resolution.Minute);
+            //allCustomData = History<CustomData>(Securities.Keys, TimeSpan.FromDays(1), Resolution.Minute);
+            //allCustomData = History<CustomData>(Securities.Keys, 14, Resolution.Minute);
 
-            // get the last calendar year's worth of all quandl data
-            allQuandlData = History<QuandlFuture>(Securities.Keys, TimeSpan.FromDays(365));
-            AssertHistoryCount("History<QuandlFuture>(Securities.Keys, TimeSpan.FromDays(365))", allQuandlData, 250, CME_SP1);
+            // get the last calendar year's worth of all custom data
+            allCustomData = History<CustomData>(Securities.Keys, TimeSpan.FromDays(365));
+            AssertHistoryCount("History<CustomData>(Securities.Keys, TimeSpan.FromDays(365))", allCustomData, 250, IBM, SPY);
 
-            // the return is a series of dictionaries containing all quandl data at each time
+            // the return is a series of dictionaries containing all custom data at each time
             // we can loop over it to get the individual dictionaries
-            foreach (DataDictionary<QuandlFuture> quandlsDataDictionary in allQuandlData)
+            foreach (DataDictionary<CustomData> customDataDictionary in allCustomData)
             {
-                // we can access the dictionary to get the quandl data we want
-                var quandl = quandlsDataDictionary["CHRIS/CME_SP1"];
+                // we can access the dictionary to get the custom data we want
+                var customData = customDataDictionary["IBM"];
             }
 
             // we can also access the return value from the multiple symbol functions to request a single
             // symbol and then loop over it
-            var singleSymbolQuandl = allQuandlData.Get("CHRIS/CME_SP1");
-            AssertHistoryCount("allQuandlData.Get(\"CHRIS/CME_SP1\")", singleSymbolQuandl, 250, CME_SP1);
-            foreach (QuandlFuture quandl in singleSymbolQuandl)
+            var singleSymbolCustomData = allCustomData.Get("IBM");
+            AssertHistoryCount("allCustomData.Get(\"IBM\")", singleSymbolCustomData, 250, IBM);
+            foreach (CustomData customData in singleSymbolCustomData)
             {
-                // do something with 'CHRIS/CME_SP1' quandl data
+                // do something with 'IBM' custom data
             }
 
             // we can also access individual properties on our data, this will
-            // get the 'CHRIS/CME_SP1' quandls like above, but then only return the Low properties
-            var quandlSpyLows = allQuandlData.Get("CHRIS/CME_SP1", "Low");
-            AssertHistoryCount("allQuandlData.Get(\"CHRIS/CME_SP1\", \"Low\")", quandlSpyLows, 250);
-            foreach (decimal low in quandlSpyLows)
+            // get the 'IBM' CustomData objects like above, but then only return the Value properties
+            var customDataIbmValues = allCustomData.Get("IBM", "Value");
+            AssertHistoryCount("allCustomData.Get(\"IBM\", \"Value\")", customDataIbmValues, 250);
+            foreach (decimal value in customDataIbmValues)
             {
-                // do something with each low value
+                // do something with each value
             }
 
             // sometimes it's necessary to get the history for many configured symbols
 
             // request the last year's worth of history for all configured symbols at their configured resolutions
+            // SPY daily data arrives at 4pm, while this custom data at midnight so we get 250 * 2 points
             var allHistory = History(TimeSpan.FromDays(365));
-            AssertHistoryCount("History(TimeSpan.FromDays(365))", allHistory, 250, SPY, CME_SP1);
+            AssertHistoryCount("History(TimeSpan.FromDays(365))", allHistory, 250 * 2, SPY, IBM);
 
             // request the last days's worth of history at the minute resolution
             allHistory = History(TimeSpan.FromDays(1), Resolution.Minute);
-            AssertHistoryCount("History(TimeSpan.FromDays(1), Resolution.Minute)", allHistory, 391, SPY, CME_SP1);
+            AssertHistoryCount("History(TimeSpan.FromDays(1), Resolution.Minute)", allHistory, 390, SPY, IBM);
 
             // request the last 100 bars for the specified securities at the configured resolution
             allHistory = History(Securities.Keys, 100);
-            AssertHistoryCount("History(Securities.Keys, 100)", allHistory, 100, SPY, CME_SP1);
+            // SPY daily data arrives at 4pm, while this custom data at midnight so we get 100 * 2 points
+            AssertHistoryCount("History(Securities.Keys, 100)", allHistory, 100 * 2, SPY, IBM);
 
             // request the last 100 minute bars for the specified securities
             allHistory = History(Securities.Keys, 100, Resolution.Minute);
-            AssertHistoryCount("History(Securities.Keys, 100, Resolution.Minute)", allHistory, 101, SPY, CME_SP1);
+            AssertHistoryCount("History(Securities.Keys, 100, Resolution.Minute)", allHistory, 100, SPY, IBM);
 
             // request the last calendar years worth of history for the specified securities
             allHistory = History(Securities.Keys, TimeSpan.FromDays(365));
-            AssertHistoryCount("History(Securities.Keys, TimeSpan.FromDays(365))", allHistory, 250, SPY, CME_SP1);
+            // SPY daily data arrives at 4pm, while this custom data at midnight so we get 250 * 2 points
+            AssertHistoryCount("History(Securities.Keys, TimeSpan.FromDays(365))", allHistory, 250 * 2, SPY, IBM);
             // we can also specify the resolution
             allHistory = History(Securities.Keys, TimeSpan.FromDays(1), Resolution.Minute);
-            AssertHistoryCount("History(Securities.Keys, TimeSpan.FromDays(1), Resolution.Minute)", allHistory, 391, SPY, CME_SP1);
+            AssertHistoryCount("History(Securities.Keys, TimeSpan.FromDays(1), Resolution.Minute)", allHistory, 390, SPY, IBM);
 
             // if we loop over this allHistory, we get Slice objects
             foreach (Slice slice in allHistory)
@@ -200,7 +201,7 @@ namespace QuantConnect.Algorithm.CSharp
             var universeSecurityHistory = History(UniverseManager.Keys, TimeSpan.FromDays(10)).ToList();
             if (universeSecurityHistory.Count != 0)
             {
-                throw new Exception("History request for universe symbols incorrectly returned data. "
+                throw new RegressionTestException("History request for universe symbols incorrectly returned data. "
                     + "These requests are intended to be filtered out and never sent to the history provider.");
             }
         }
@@ -208,14 +209,14 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
         /// </summary>
-        /// <param name="data">Slice object keyed by symbol containing the stock data</param>
-        public override void OnData(Slice data)
+        /// <param name="slice">Slice object keyed by symbol containing the stock data</param>
+        public override void OnData(Slice slice)
         {
             _count++;
 
-            if (_count > 5)
+            if (_count > 5 * 2)
             {
-                throw new Exception("Invalid number of bars arrived. Expected exactly 5");
+                throw new RegressionTestException($"Invalid number of bars arrived. Expected exactly 5, but received {_count}");
             }
 
             if (!Portfolio.Invested)
@@ -231,7 +232,7 @@ namespace QuantConnect.Algorithm.CSharp
             var count = history.Count();
             if (count != expected)
             {
-                throw new Exception(methodCall + " expected " + expected + ", but received " + count);
+                throw new RegressionTestException(methodCall + " expected " + expected + ", but received " + count);
             }
 
             IEnumerable<Symbol> unexpectedSymbols = null;
@@ -245,9 +246,9 @@ namespace QuantConnect.Algorithm.CSharp
             }
             else if (typeof(T).IsGenericType && typeof(T).GetGenericTypeDefinition() == typeof(DataDictionary<>))
             {
-                if (typeof(T).GetGenericArguments()[0] == typeof(QuandlFuture))
+                if (typeof(T).GetGenericArguments()[0] == typeof(CustomData))
                 {
-                    var dictionaries = (IEnumerable<DataDictionary<QuandlFuture>>) history;
+                    var dictionaries = (IEnumerable<DataDictionary<CustomData>>) history;
                     unexpectedSymbols = dictionaries.SelectMany(dd => dd.Keys)
                         .Distinct()
                         .Where(sym => !expectedSymbols.Contains(sym))
@@ -272,13 +273,13 @@ namespace QuantConnect.Algorithm.CSharp
 
             if (unexpectedSymbols == null)
             {
-                throw new Exception("Unhandled case: " + typeof(T).GetBetterTypeName());
+                throw new RegressionTestException("Unhandled case: " + typeof(T).GetBetterTypeName());
             }
 
             var unexpectedSymbolsString = string.Join(" | ", unexpectedSymbols);
             if (!string.IsNullOrWhiteSpace(unexpectedSymbolsString))
             {
-                throw new Exception($"{methodCall} contains unexpected symbols: {unexpectedSymbolsString}");
+                throw new RegressionTestException($"{methodCall} contains unexpected symbols: {unexpectedSymbolsString}");
             }
         }
 
@@ -290,68 +291,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => -1;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => -1;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "1"},
+            {"Total Orders", "1"},
             {"Average Win", "0%"},
             {"Average Loss", "0%"},
-            {"Compounding Annual Return", "363.283%"},
-            {"Drawdown", "1.200%"},
+            {"Compounding Annual Return", "1033.443%"},
+            {"Drawdown", "0.200%"},
             {"Expectancy", "0"},
-            {"Net Profit", "1.694%"},
-            {"Sharpe Ratio", "8.671"},
-            {"Probabilistic Sharpe Ratio", "67.159%"},
+            {"Start Equity", "100000"},
+            {"End Equity", "102696.36"},
+            {"Net Profit", "2.696%"},
+            {"Sharpe Ratio", "44.092"},
+            {"Sortino Ratio", "0"},
+            {"Probabilistic Sharpe Ratio", "0%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "1.614"},
-            {"Beta", "0.062"},
-            {"Annual Standard Deviation", "0.223"},
-            {"Annual Variance", "0.05"},
-            {"Information Ratio", "-11.911"},
-            {"Tracking Error", "0.271"},
-            {"Treynor Ratio", "31.034"},
-            {"Total Fees", "$3.45"},
-            {"Estimated Strategy Capacity", "$840000000.00"},
-            {"Fitness Score", "0.252"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "79228162514264337593543950335"},
-            {"Return Over Maximum Drawdown", "308.644"},
-            {"Portfolio Turnover", "0.252"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "33d01821923c397f999cfb2e5b5928ad"}
+            {"Alpha", "-2.58"},
+            {"Beta", "1.075"},
+            {"Annual Standard Deviation", "0.192"},
+            {"Annual Variance", "0.037"},
+            {"Information Ratio", "-95.146"},
+            {"Tracking Error", "0.019"},
+            {"Treynor Ratio", "7.862"},
+            {"Total Fees", "$3.49"},
+            {"Estimated Strategy Capacity", "$1200000000.00"},
+            {"Lowest Capacity Asset", "SPY R735QTJ8XC9X"},
+            {"Portfolio Turnover", "25.02%"},
+            {"Drawdown Recovery", "1"},
+            {"OrderListHash", "70f21e930175a2ec9d465b21edc1b6d9"}
         };
-
-        /// <summary>
-        /// Custom quandl data type for setting customized value column name. Value column is used for the primary trading calculations and charting.
-        /// </summary>
-        public class QuandlFuture : Quandl
-        {
-            /// <summary>
-            /// Initializes a new instance of the <see cref="QuandlFuture"/> class.
-            /// </summary>
-            public QuandlFuture()
-                : base(valueColumnName: "Settle")
-            {
-            }
-        }
     }
 }

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -14,10 +14,11 @@
 */
 
 using System;
-using System.Collections.Generic;
 using QuantConnect.Interfaces;
 using QuantConnect.Securities;
-using static QuantConnect.StringExtensions;
+using System.Collections.Generic;
+using QuantConnect.Securities.Positions;
+using QuantConnect.Algorithm.Framework.Alphas;
 
 namespace QuantConnect.Algorithm.Framework.Portfolio
 {
@@ -27,6 +28,13 @@ namespace QuantConnect.Algorithm.Framework.Portfolio
     /// </summary>
     public class PortfolioTarget : IPortfolioTarget
     {
+
+        /// <summary>
+        /// Flag to determine if the minimum order margin portfolio percentage warning should or has already been sent to the user algorithm
+        /// <see cref="IAlgorithmSettings.MinimumOrderMarginPortfolioPercentage"/>
+        /// </summary>
+        public static bool? MinimumOrderMarginPercentageWarningSent { get; set; }
+
         /// <summary>
         /// Gets the symbol of this target
         /// </summary>
@@ -38,14 +46,55 @@ namespace QuantConnect.Algorithm.Framework.Portfolio
         public decimal Quantity { get; }
 
         /// <summary>
+        /// Portfolio target tag with additional information
+        /// </summary>
+        public string Tag { get; }
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="PortfolioTarget"/> class
         /// </summary>
         /// <param name="symbol">The symbol this target is for</param>
         /// <param name="quantity">The target quantity</param>
-        public PortfolioTarget(Symbol symbol, decimal quantity)
+        /// <param name="tag">The target tag with additional information</param>
+        public PortfolioTarget(Symbol symbol, decimal quantity, string tag = "")
         {
             Symbol = symbol;
             Quantity = quantity;
+            Tag = tag;
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="PortfolioTarget"/> class
+        /// </summary>
+        /// <param name="symbol">The symbol this target is for</param>
+        /// <param name="quantity">The target quantity</param>
+        /// <param name="tag">The target tag with additional information</param>
+        public PortfolioTarget(Symbol symbol, int quantity, string tag = "")
+            : this(symbol, (decimal)quantity, tag)
+        {
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="PortfolioTarget"/> class
+        /// </summary>
+        /// <param name="symbol">The symbol this target is for</param>
+        /// <param name="insightDirection">
+        /// The insight direction, which will be used to calculate the target quantity
+        /// (1 for Up, 0 for flat, -1 for down)
+        /// </param>
+        /// <param name="tag">The target tag with additional information</param>
+        public PortfolioTarget(Symbol symbol, InsightDirection insightDirection, string tag = "")
+            : this(symbol,
+                  insightDirection switch
+                  {
+                      InsightDirection.Up => 1m,
+                      InsightDirection.Down => -1m,
+                      InsightDirection.Flat => 0m,
+                      _ => throw new ArgumentOutOfRangeException(nameof(insightDirection), insightDirection,
+                          Messages.PortfolioTarget.InvalidInsightDirection(symbol, insightDirection)),
+                  },
+                  tag)
+        {
         }
 
         /// <summary>
@@ -66,20 +115,30 @@ namespace QuantConnect.Algorithm.Framework.Portfolio
         /// <param name="algorithm">The algorithm instance, used for getting total portfolio value and current security price</param>
         /// <param name="symbol">The symbol the target is for</param>
         /// <param name="percent">The requested target percent of total portfolio value</param>
+        /// <param name="tag">The target tag with additional information</param>
+        /// <returns>A portfolio target for the specified symbol/percent</returns>
+        public static IPortfolioTarget Percent(IAlgorithm algorithm, Symbol symbol, double percent, string tag)
+        {
+            return Percent(algorithm, symbol, percent.SafeDecimalCast(), tag: tag);
+        }
+
+        /// <summary>
+        /// Creates a new target for the specified percent
+        /// </summary>
+        /// <param name="algorithm">The algorithm instance, used for getting total portfolio value and current security price</param>
+        /// <param name="symbol">The symbol the target is for</param>
+        /// <param name="percent">The requested target percent of total portfolio value</param>
         /// <param name="returnDeltaQuantity">True, result quantity will be the Delta required to reach target percent.
         /// False, the result quantity will be the Total quantity to reach the target percent, including current holdings</param>
+        /// <param name="tag">The target tag with additional information</param>
         /// <returns>A portfolio target for the specified symbol/percent</returns>
-        public static IPortfolioTarget Percent(IAlgorithm algorithm, Symbol symbol, decimal percent, bool returnDeltaQuantity = false)
+        public static IPortfolioTarget Percent(IAlgorithm algorithm, Symbol symbol, decimal percent, bool returnDeltaQuantity = false, string tag = "")
         {
             var absolutePercentage = Math.Abs(percent);
             if (absolutePercentage > algorithm.Settings.MaxAbsolutePortfolioTargetPercentage
                 || absolutePercentage != 0 && absolutePercentage < algorithm.Settings.MinAbsolutePortfolioTargetPercentage)
             {
-                algorithm.Error(
-                    Invariant($"The portfolio target percent: {percent}, does not comply with the current ") +
-                    Invariant($"'Algorithm.Settings' 'MaxAbsolutePortfolioTargetPercentage': {algorithm.Settings.MaxAbsolutePortfolioTargetPercentage}") +
-                    Invariant($" or 'MinAbsolutePortfolioTargetPercentage': {algorithm.Settings.MinAbsolutePortfolioTargetPercentage}. Skipping")
-                );
+                algorithm.Error(Messages.PortfolioTarget.InvalidTargetPercent(algorithm, percent));
                 return null;
             }
 
@@ -90,7 +149,7 @@ namespace QuantConnect.Algorithm.Framework.Portfolio
             }
             catch (KeyNotFoundException)
             {
-                algorithm.Error(Invariant($"{symbol} not found in portfolio. Request this data when initializing the algorithm."));
+                algorithm.Error(Messages.PortfolioTarget.SymbolNotFound(symbol));
                 return null;
             }
 
@@ -101,30 +160,36 @@ namespace QuantConnect.Algorithm.Framework.Portfolio
             }
 
             // Factoring in FreePortfolioValuePercentage.
-            var adjustedPercent = percent * (algorithm.Portfolio.TotalPortfolioValue - algorithm.Settings.FreePortfolioValue)
-                                  / algorithm.Portfolio.TotalPortfolioValue;
+            var adjustedPercent = percent * algorithm.Portfolio.TotalPortfolioValueLessFreeBuffer / algorithm.Portfolio.TotalPortfolioValue;
 
             // we normalize the target buying power by the leverage so we work in the land of margin
             var targetFinalMarginPercentage = adjustedPercent / security.BuyingPowerModel.GetLeverage(security);
 
-            var result = security.BuyingPowerModel.GetMaximumOrderQuantityForTargetBuyingPower(
-                new GetMaximumOrderQuantityForTargetBuyingPowerParameters(algorithm.Portfolio, security, targetFinalMarginPercentage, silenceNonErrorReasons:true)
-            );
+            var positionGroup = algorithm.Portfolio.Positions.GetOrCreateDefaultGroup(security);
+            var result = positionGroup.BuyingPowerModel.GetMaximumLotsForTargetBuyingPower(
+                new GetMaximumLotsForTargetBuyingPowerParameters(algorithm.Portfolio, positionGroup,
+                    targetFinalMarginPercentage, algorithm.Settings.MinimumOrderMarginPortfolioPercentage));
 
             if (result.IsError)
             {
-                algorithm.Error(Invariant(
-                    $"Unable to compute order quantity of {symbol}. Reason: {result.Reason} Returning null."
-                ));
+                algorithm.Error(Messages.PortfolioTarget.UnableToComputeOrderQuantityDueToNullResult(symbol, result));
 
                 return null;
             }
 
+            if (MinimumOrderMarginPercentageWarningSent.HasValue && !MinimumOrderMarginPercentageWarningSent.Value)
+            {
+                // we send the warning once
+                MinimumOrderMarginPercentageWarningSent = true;
+                algorithm.Debug(Messages.BuyingPowerModel.TargetOrderMarginNotAboveMinimum());
+            }
+
             // be sure to back out existing holdings quantity since the buying power model yields
             // the required delta quantity to reach a final target portfolio value for a symbol
-            var quantity = result.Quantity + (returnDeltaQuantity ? 0 : security.Holdings.Quantity);
+            var lotSize = security.SymbolProperties.LotSize;
+            var quantity = result.NumberOfLots * lotSize + (returnDeltaQuantity ? 0 : security.Holdings.Quantity);
 
-            return new PortfolioTarget(symbol, quantity);
+            return new PortfolioTarget(symbol, quantity, tag);
         }
 
         /// <summary>Returns a string that represents the current object.</summary>
@@ -132,7 +197,7 @@ namespace QuantConnect.Algorithm.Framework.Portfolio
         /// <filterpriority>2</filterpriority>
         public override string ToString()
         {
-            return $"{Symbol}: {Quantity.Normalize()}";
+            return Messages.PortfolioTarget.ToString(this);
         }
     }
 }

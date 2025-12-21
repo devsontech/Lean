@@ -54,8 +54,8 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
         /// </summary>
-        /// <param name="data">Slice object keyed by symbol containing the stock data</param>
-        public override void OnData(Slice data)
+        /// <param name="slice">Slice object keyed by symbol containing the stock data</param>
+        public override void OnData(Slice slice)
         {
             if (!Portfolio.Invested)
             {
@@ -81,13 +81,13 @@ namespace QuantConnect.Algorithm.CSharp
                 // leave a 1% margin for are expected calculations
                 if (Math.Abs(expectedFinalQuantity - actualFinalQuantity) > (quantityHold * 0.01m))
                 {
-                    throw new Exception($"Expected {expectedFinalQuantity} final quantity but was {actualFinalQuantity}");
+                    throw new RegressionTestException($"Expected {expectedFinalQuantity} final quantity but was {actualFinalQuantity}");
                 }
 
                 if (!Securities[_spy].Exchange.ExchangeOpen
                     || !Securities[_spy].Exchange.ClosingSoon)
                 {
-                    throw new Exception($"Expected exchange to be open: {Securities[_spy].Exchange.ExchangeOpen} and to be closing soon: {Securities[_spy].Exchange.ClosingSoon}");
+                    throw new RegressionTestException($"Expected exchange to be open: {Securities[_spy].Exchange.ExchangeOpen} and to be closing soon: {Securities[_spy].Exchange.ClosingSoon}");
                 }
             }
         }
@@ -96,7 +96,7 @@ namespace QuantConnect.Algorithm.CSharp
         {
             if (_marginCall != 1)
             {
-                throw new Exception($"We expected a single margin call to happen, {_marginCall} occurred");
+                throw new RegressionTestException($"We expected a single margin call to happen, {_marginCall} occurred");
             }
         }
 
@@ -108,54 +108,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp };
+        public List<Language> Languages { get; } = new() { Language.CSharp };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 3943;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "2"},
+            {"Total Orders", "2"},
             {"Average Win", "0.39%"},
             {"Average Loss", "0%"},
-            {"Compounding Annual Return", "1754.167%"},
+            {"Compounding Annual Return", "1750.998%"},
             {"Drawdown", "5.500%"},
             {"Expectancy", "0"},
-            {"Net Profit", "3.804%"},
-            {"Sharpe Ratio", "18.048"},
-            {"Probabilistic Sharpe Ratio", "67.763%"},
+            {"Start Equity", "100000"},
+            {"End Equity", "103801.65"},
+            {"Net Profit", "3.802%"},
+            {"Sharpe Ratio", "18.012"},
+            {"Sortino Ratio", "0"},
+            {"Probabilistic Sharpe Ratio", "67.762%"},
             {"Loss Rate", "0%"},
             {"Win Rate", "100%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "4.105"},
-            {"Beta", "2.018"},
+            {"Alpha", "4.101"},
+            {"Beta", "2.017"},
             {"Annual Standard Deviation", "0.449"},
-            {"Annual Variance", "0.202"},
-            {"Information Ratio", "27.019"},
-            {"Tracking Error", "0.227"},
-            {"Treynor Ratio", "4.017"},
+            {"Annual Variance", "0.201"},
+            {"Information Ratio", "26.993"},
+            {"Tracking Error", "0.226"},
+            {"Treynor Ratio", "4.008"},
             {"Total Fees", "$27.50"},
-            {"Estimated Strategy Capacity", "$19000000.00"},
-            {"Fitness Score", "0.999"},
-            {"Kelly Criterion Estimate", "0"},
-            {"Kelly Criterion Probability Value", "0"},
-            {"Sortino Ratio", "79228162514264337593543950335"},
-            {"Return Over Maximum Drawdown", "209.948"},
-            {"Portfolio Turnover", "1.982"},
-            {"Total Insights Generated", "0"},
-            {"Total Insights Closed", "0"},
-            {"Total Insights Analysis Completed", "0"},
-            {"Long Insight Count", "0"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$0"},
-            {"Total Accumulated Estimated Alpha Value", "$0"},
-            {"Mean Population Estimated Insight Value", "$0"},
-            {"Mean Population Direction", "0%"},
-            {"Mean Population Magnitude", "0%"},
-            {"Rolling Averaged Population Direction", "0%"},
-            {"Rolling Averaged Population Magnitude", "0%"},
-            {"OrderListHash", "944baeb4b368b53b21d03fc4b2853576"}
+            {"Estimated Strategy Capacity", "$22000000.00"},
+            {"Lowest Capacity Asset", "SPY R735QTJ8XC9X"},
+            {"Portfolio Turnover", "158.79%"},
+            {"Drawdown Recovery", "3"},
+            {"OrderListHash", "a6d4b7e1b4255477e693d6773996b6fe"}
         };
     }
 }

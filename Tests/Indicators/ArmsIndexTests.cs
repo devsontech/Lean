@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -17,41 +17,50 @@ using NUnit.Framework;
 using QuantConnect.Data.Market;
 using QuantConnect.Indicators;
 using System;
+using System.Linq;
 
 namespace QuantConnect.Tests.Indicators
 {
     [TestFixture]
-    public class ArmsIndexTests : CommonIndicatorTests<TradeBar>
+    public class ArmsIndexTests : AdvanceDeclineDifferenceTests
     {
         protected override IndicatorBase<TradeBar> CreateIndicator()
         {
             var indicator = new ArmsIndex("test_name");
-            indicator.AddStock(Symbols.AAPL);
-            indicator.AddStock(Symbols.IBM);
-            indicator.AddStock(Symbols.GOOG);
+            if (SymbolList.Count > 2)
+            {
+                SymbolList.Take(3).ToList().ForEach(indicator.AddStock);
+            }
+            else
+            {
+                indicator.Add(Symbols.AAPL);
+                indicator.Add(Symbols.IBM);
+                indicator.Add(Symbols.GOOG);
+                RenkoBarSize = 5000000;
+            }
             return indicator;
         }
 
         [Test]
-        public virtual void ShouldIgnoreRemovedStocks()
+        public override void ShouldIgnoreRemovedStocks()
         {
-            var trin = (ArmsIndex) CreateIndicator();
+            var trin = (ArmsIndex)CreateIndicator();
             var reference = System.DateTime.Today;
 
             trin.Update(new TradeBar() { Symbol = Symbols.AAPL, Close = 1, Volume = 100, Time = reference.AddMinutes(1) });
             trin.Update(new TradeBar() { Symbol = Symbols.IBM, Close = 1, Volume = 100, Time = reference.AddMinutes(1) });
             trin.Update(new TradeBar() { Symbol = Symbols.GOOG, Close = 1, Volume = 100, Time = reference.AddMinutes(1) });
-            
+
             // value is not ready yet
             Assert.AreEqual(0m, trin.Current.Value);
-            
+
             trin.Update(new TradeBar() { Symbol = Symbols.AAPL, Close = 2, Volume = 100, Time = reference.AddMinutes(2) });
             trin.Update(new TradeBar() { Symbol = Symbols.IBM, Close = 0.5m, Volume = 100, Time = reference.AddMinutes(2) });
             trin.Update(new TradeBar() { Symbol = Symbols.GOOG, Close = 3, Volume = 100, Time = reference.AddMinutes(2) });
 
             Assert.AreEqual(1m, trin.Current.Value);
             trin.Reset();
-            trin.RemoveStock(Symbols.IBM);
+            trin.Remove(Symbols.IBM);
 
             trin.Update(new TradeBar() { Symbol = Symbols.AAPL, Close = 1, Volume = 100, Time = reference.AddMinutes(1) });
             trin.Update(new TradeBar() { Symbol = Symbols.IBM, Close = 1, Volume = 100, Time = reference.AddMinutes(1) });
@@ -68,10 +77,10 @@ namespace QuantConnect.Tests.Indicators
         }
 
         [Test]
-        public virtual void IgnorePeriodIfAnyStockMissed()
+        public override void IgnorePeriodIfAnyStockMissed()
         {
             var adr = (ArmsIndex)CreateIndicator();
-            adr.AddStock(Symbols.MSFT);
+            adr.Add(Symbols.MSFT);
             var reference = System.DateTime.Today;
 
             adr.Update(new TradeBar() { Symbol = Symbols.AAPL, Close = 1, Volume = 100, Time = reference.AddMinutes(1) });
@@ -100,7 +109,7 @@ namespace QuantConnect.Tests.Indicators
             adr.Update(new TradeBar() { Symbol = Symbols.GOOG, Close = 2, Volume = 100, Time = reference.AddMinutes(4) });
             adr.Update(new TradeBar() { Symbol = Symbols.MSFT, Close = 2, Volume = 150, Time = reference.AddMinutes(4) });
 
-            Assert.AreEqual(3m/5m, adr.Current.Value);
+            Assert.AreEqual(3m / 5m, adr.Current.Value);
 
             adr.Update(new TradeBar() { Symbol = Symbols.AAPL, Close = 2, Volume = 140, Time = reference.AddMinutes(5) });
             adr.Update(new TradeBar() { Symbol = Symbols.GOOG, Close = 5, Volume = 110, Time = reference.AddMinutes(5) });
@@ -136,7 +145,7 @@ namespace QuantConnect.Tests.Indicators
         }
 
         [Test]
-        public void WarmsUpOrdered()
+        public override void WarmsUpOrdered()
         {
             var indicator = CreateIndicator();
             var reference = System.DateTime.Today;
@@ -216,5 +225,15 @@ namespace QuantConnect.Tests.Indicators
         protected override string TestFileName => "arms_data.txt";
 
         protected override string TestColumnName => "TRIN";
+
+        /// <summary>
+        /// The final value of this indicator is zero because it uses the Volume of the bars it receives.
+        /// Since RenkoBar's don't always have Volume, the final current value is zero. Therefore we
+        /// skip this test
+        /// </summary>
+        /// <param name="indicator"></param>
+        protected override void IndicatorValueIsNotZeroAfterReceiveRenkoBars(IndicatorBase indicator)
+        {
+        }
     }
 }

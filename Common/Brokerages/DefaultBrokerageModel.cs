@@ -15,9 +15,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using QuantConnect.Benchmarks;
-using QuantConnect.Data;
 using QuantConnect.Data.Market;
 using QuantConnect.Data.Shortable;
 using QuantConnect.Interfaces;
@@ -26,6 +24,7 @@ using QuantConnect.Orders.Fees;
 using QuantConnect.Orders.Fills;
 using QuantConnect.Orders.Slippage;
 using QuantConnect.Securities;
+using QuantConnect.Securities.CryptoFuture;
 using QuantConnect.Securities.Equity;
 using QuantConnect.Securities.Future;
 using QuantConnect.Securities.Option;
@@ -50,20 +49,12 @@ namespace QuantConnect.Brokerages
             {SecurityType.Future, Market.CME},
             {SecurityType.FutureOption, Market.CME},
             {SecurityType.Forex, Market.Oanda},
-            {SecurityType.Cfd, Market.FXCM},
-            {SecurityType.Crypto, Market.GDAX},
+            {SecurityType.Cfd, Market.Oanda},
+            {SecurityType.Crypto, Market.Coinbase},
+            {SecurityType.CryptoFuture, Market.Binance},
             {SecurityType.Index, Market.USA},
             {SecurityType.IndexOption, Market.USA}
         }.ToReadOnlyDictionary();
-
-        /// <summary>
-        /// Determines whether the asset you want to short is shortable.
-        /// The default is set to <see cref="NullShortableProvider"/>,
-        /// which allows for infinite shorting of any asset. You can limit the
-        /// quantity you can short for an asset class by setting this variable to
-        /// your own implementation of <see cref="IShortableProvider"/>.
-        /// </summary>
-        protected IShortableProvider ShortableProvider { get; set; }
 
         /// <summary>
         /// Gets or sets the account type used by this model
@@ -96,11 +87,6 @@ namespace QuantConnect.Brokerages
         public DefaultBrokerageModel(AccountType accountType = AccountType.Margin)
         {
             AccountType = accountType;
-
-            // Shortable provider, responsible for loading the data that indicates how much
-            // quantity we can short for a given asset. The NullShortableProvider default will
-            // allow for infinite quantities of any asset to be shorted.
-            ShortableProvider = new NullShortableProvider();
         }
 
         /// <summary>
@@ -116,6 +102,13 @@ namespace QuantConnect.Brokerages
         /// <returns>True if the brokerage could process the order, false otherwise</returns>
         public virtual bool CanSubmitOrder(Security security, Order order, out BrokerageMessageEvent message)
         {
+            if ((security.Type == SecurityType.Future || security.Type == SecurityType.FutureOption) && order.Type == OrderType.MarketOnOpen)
+            {
+                message = new BrokerageMessageEvent(BrokerageMessageType.Warning, "NotSupported",
+                    Messages.DefaultBrokerageModel.UnsupportedMarketOnOpenOrdersForFuturesAndFutureOptions);
+                return false;
+            }
+
             message = null;
             return true;
         }
@@ -165,7 +158,9 @@ namespace QuantConnect.Brokerages
             {
                 Quantity = (int?) (ticket.Quantity/splitFactor),
                 LimitPrice = ticket.OrderType.IsLimitOrder() ? ticket.Get(OrderField.LimitPrice)*splitFactor : (decimal?) null,
-                StopPrice = ticket.OrderType.IsStopOrder() ? ticket.Get(OrderField.StopPrice)*splitFactor : (decimal?) null
+                StopPrice = ticket.OrderType.IsStopOrder() ? ticket.Get(OrderField.StopPrice)*splitFactor : (decimal?) null,
+                TriggerPrice = ticket.OrderType == OrderType.LimitIfTouched ? ticket.Get(OrderField.TriggerPrice) * splitFactor : (decimal?) null,
+                TrailingAmount = ticket.OrderType == OrderType.TrailingStop && !ticket.Get<bool>(OrderField.TrailingAsPercentage) ? ticket.Get(OrderField.TrailingAmount) * splitFactor : (decimal?) null
             }));
         }
 
@@ -183,6 +178,9 @@ namespace QuantConnect.Brokerages
 
             switch (security.Type)
             {
+                case SecurityType.CryptoFuture:
+                    return 25m;
+
                 case SecurityType.Equity:
                     return 2m;
 
@@ -225,33 +223,25 @@ namespace QuantConnect.Brokerages
         {
             switch (security.Type)
             {
-                case SecurityType.Base:
-                    break;
                 case SecurityType.Equity:
                     return new EquityFillModel();
-                case SecurityType.Option:
-                    break;
                 case SecurityType.FutureOption:
-                    break;
-                case SecurityType.Commodity:
-                    break;
-                case SecurityType.Forex:
-                    break;
+                    return new FutureOptionFillModel();
                 case SecurityType.Future:
-                    break;
+                    return new FutureFillModel();
+                case SecurityType.Base:
+                case SecurityType.Option:
+                case SecurityType.Commodity:
+                case SecurityType.Forex:
                 case SecurityType.Cfd:
-                    break;
                 case SecurityType.Crypto:
-                    break;
+                case SecurityType.CryptoFuture:
                 case SecurityType.Index:
-                    break;
                 case SecurityType.IndexOption:
-                    break;
+                    return new ImmediateFillModel();
                 default:
-                    throw new ArgumentOutOfRangeException($"{GetType().Name}.GetFillModel: Invalid security type {security.Type}");
+                    throw new ArgumentOutOfRangeException(Messages.DefaultBrokerageModel.InvalidSecurityTypeToGetFillModel(this, security));
             }
-
-            return new ImmediateFillModel();
         }
 
         /// <summary>
@@ -267,6 +257,7 @@ namespace QuantConnect.Brokerages
                 case SecurityType.Forex:
                 case SecurityType.Cfd:
                 case SecurityType.Crypto:
+                case SecurityType.CryptoFuture:
                 case SecurityType.Index:
                     return new ConstantFeeModel(0m);
 
@@ -289,25 +280,7 @@ namespace QuantConnect.Brokerages
         /// <returns>The new slippage model for this brokerage</returns>
         public virtual ISlippageModel GetSlippageModel(Security security)
         {
-            switch (security.Type)
-            {
-                case SecurityType.Base:
-                case SecurityType.Equity:
-                case SecurityType.Index:
-                    return new ConstantSlippageModel(0);
-
-                case SecurityType.Forex:
-                case SecurityType.Cfd:
-                case SecurityType.Crypto:
-                    return new ConstantSlippageModel(0);
-
-                case SecurityType.Commodity:
-                case SecurityType.Option:
-                case SecurityType.FutureOption:
-                case SecurityType.Future:
-                default:
-                    return new ConstantSlippageModel(0);
-            }
+            return NullSlippageModel.Instance;
         }
 
         /// <summary>
@@ -327,6 +300,11 @@ namespace QuantConnect.Brokerages
                     case SecurityType.Option:
                         return new DelayedSettlementModel(Option.DefaultSettlementDays, Option.DefaultSettlementTime);
                 }
+            }
+
+            if(security.Symbol.SecurityType == SecurityType.Future)
+            {
+                return new FutureSettlementModel();
             }
 
             return new ImmediateSettlementModel();
@@ -352,42 +330,44 @@ namespace QuantConnect.Brokerages
         /// <returns>The buying power model for this brokerage/security</returns>
         public virtual IBuyingPowerModel GetBuyingPowerModel(Security security)
         {
-            var leverage = GetLeverage(security);
-            IBuyingPowerModel model;
+            IBuyingPowerModel getCurrencyBuyingPowerModel() =>
+                AccountType == AccountType.Cash
+                    ? new CashBuyingPowerModel()
+                    : new SecurityMarginModel(GetLeverage(security), RequiredFreeBuyingPowerPercent);
 
-            switch (security.Type)
+            return security?.Type switch
             {
-                case SecurityType.Crypto:
-                    model = new CashBuyingPowerModel();
-                    break;
-                case SecurityType.Forex:
-                case SecurityType.Cfd:
-                    model = new SecurityMarginModel(leverage, RequiredFreeBuyingPowerPercent);
-                    break;
-                case SecurityType.Option:
-                    model = new OptionMarginModel(RequiredFreeBuyingPowerPercent);
-                    break;
-                case SecurityType.FutureOption:
-                    model = new FuturesOptionsMarginModel(RequiredFreeBuyingPowerPercent, (Option)security);
-                    break;
-                case SecurityType.Future:
-                    model = new FutureMarginModel(RequiredFreeBuyingPowerPercent, security);
-                    break;
-                case SecurityType.Index:
-                default:
-                    model = new SecurityMarginModel(leverage, RequiredFreeBuyingPowerPercent);
-                    break;
-            }
-            return model;
+                SecurityType.Crypto => getCurrencyBuyingPowerModel(),
+                SecurityType.Forex => getCurrencyBuyingPowerModel(),
+                SecurityType.CryptoFuture => new CryptoFutureMarginModel(GetLeverage(security)),
+                SecurityType.Future => new FutureMarginModel(RequiredFreeBuyingPowerPercent, security),
+                SecurityType.FutureOption => new FuturesOptionsMarginModel(RequiredFreeBuyingPowerPercent, (Option)security),
+                SecurityType.IndexOption => new OptionMarginModel(RequiredFreeBuyingPowerPercent),
+                SecurityType.Option => new OptionMarginModel(RequiredFreeBuyingPowerPercent),
+                _ => new SecurityMarginModel(GetLeverage(security), RequiredFreeBuyingPowerPercent)
+            };
         }
 
         /// <summary>
         /// Gets the shortable provider
         /// </summary>
         /// <returns>Shortable provider</returns>
-        public virtual IShortableProvider GetShortableProvider()
+        public virtual IShortableProvider GetShortableProvider(Security security)
         {
-            return ShortableProvider;
+            // Shortable provider, responsible for loading the data that indicates how much
+            // quantity we can short for a given asset. The NullShortableProvider default will
+            // allow for infinite quantities of any asset to be shorted.
+            return NullShortableProvider.Instance;
+        }
+
+        /// <summary>
+        /// Gets a new margin interest rate model for the security
+        /// </summary>
+        /// <param name="security">The security to get a margin interest rate model for</param>
+        /// <returns>The margin interest rate model for this brokerage</returns>
+        public virtual IMarginInterestRateModel GetMarginInterestRateModel(Security security)
+        {
+            return MarginInterestRateModel.Null;
         }
 
         /// <summary>
@@ -400,6 +380,28 @@ namespace QuantConnect.Brokerages
         public IBuyingPowerModel GetBuyingPowerModel(Security security, AccountType accountType)
         {
             return GetBuyingPowerModel(security);
+        }
+
+        /// <summary>
+        /// Checks if the order quantity is valid, it means, the order size is bigger than the minimum size allowed
+        /// </summary>
+        /// <param name="security">The security of the order</param>
+        /// <param name="orderQuantity">The quantity of the order to be processed</param>
+        /// <param name="message">If this function returns false, a brokerage message detailing why the order may be invalid</param>
+        /// <returns>True if the order quantity is bigger than the minimum allowed, false otherwise</returns>
+        public static bool IsValidOrderSize(Security security, decimal orderQuantity, out BrokerageMessageEvent message)
+        {
+            var minimumOrderSize = security.SymbolProperties.MinimumOrderSize;
+            if (minimumOrderSize != null && Math.Abs(orderQuantity) < minimumOrderSize)
+            {
+                message = new BrokerageMessageEvent(BrokerageMessageType.Warning, "NotSupported",
+                    Messages.DefaultBrokerageModel.InvalidOrderQuantity(security, orderQuantity));
+
+                return false;
+            }
+
+            message = null;
+            return true;
         }
     }
 }

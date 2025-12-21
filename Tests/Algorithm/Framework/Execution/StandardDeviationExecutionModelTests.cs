@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -25,10 +25,10 @@ using QuantConnect.Algorithm.Framework.Execution;
 using QuantConnect.Algorithm.Framework.Portfolio;
 using QuantConnect.Data;
 using QuantConnect.Data.Market;
-using QuantConnect.Data.UniverseSelection;
 using QuantConnect.Interfaces;
 using QuantConnect.Orders;
 using QuantConnect.Securities;
+using QuantConnect.Tests.Common.Data.UniverseSelection;
 using QuantConnect.Tests.Engine.DataFeeds;
 
 namespace QuantConnect.Tests.Algorithm.Framework.Execution
@@ -45,7 +45,7 @@ namespace QuantConnect.Tests.Algorithm.Framework.Execution
             var orderProcessor = new Mock<IOrderProcessor>();
             orderProcessor.Setup(m => m.Process(It.IsAny<SubmitOrderRequest>()))
                 .Returns((OrderTicket)null)
-                .Callback((SubmitOrderRequest request) => actualOrdersSubmitted.Add(request));
+                .Callback((OrderRequest request) => actualOrdersSubmitted.Add((SubmitOrderRequest)request));
 
             var algorithm = new QCAlgorithm();
             algorithm.SetPandasConverter();
@@ -55,7 +55,7 @@ namespace QuantConnect.Tests.Algorithm.Framework.Execution
             var model = GetExecutionModel(language);
             algorithm.SetExecution(model);
 
-            var changes = new SecurityChanges(Enumerable.Empty<Security>(), Enumerable.Empty<Security>());
+            var changes = SecurityChangesTests.CreateNonInternal(Enumerable.Empty<Security>(), Enumerable.Empty<Security>());
             model.OnSecuritiesChanged(algorithm, changes);
 
             model.Execute(algorithm, new IPortfolioTarget[0]);
@@ -74,8 +74,6 @@ namespace QuantConnect.Tests.Algorithm.Framework.Execution
             int expectedOrdersSubmitted,
             decimal expectedTotalQuantity)
         {
-            var actualOrdersSubmitted = new List<SubmitOrderRequest>();
-
             var time = new DateTime(2018, 8, 2, 16, 0, 0);
             var historyProvider = new Mock<IHistoryProvider>();
             historyProvider.Setup(m => m.GetHistory(It.IsAny<IEnumerable<HistoryRequest>>(), It.IsAny<DateTimeZone>()))
@@ -93,7 +91,7 @@ namespace QuantConnect.Tests.Algorithm.Framework.Execution
                                 Close = Convert.ToDecimal(x),
                                 Volume = 100m
                             }
-                        })));
+                        }, time.AddMinutes(i))));
 
             var algorithm = new QCAlgorithm();
             algorithm.SetPandasConverter();
@@ -106,31 +104,35 @@ namespace QuantConnect.Tests.Algorithm.Framework.Execution
 
             algorithm.SetFinishedWarmingUp();
 
-            var orderProcessor = new Mock<IOrderProcessor>();
-            orderProcessor.Setup(m => m.Process(It.IsAny<SubmitOrderRequest>()))
-                .Returns((SubmitOrderRequest request) => new OrderTicket(algorithm.Transactions, request))
-                .Callback((SubmitOrderRequest request) => actualOrdersSubmitted.Add(request));
-            orderProcessor.Setup(m => m.GetOpenOrders(It.IsAny<Func<Order, bool>>()))
-                .Returns(new List<Order>());
-            algorithm.Transactions.SetOrderProcessor(orderProcessor.Object);
+            var orderProcessor = ImmediateExecutionModelTests.GetAndSetBrokerageTransactionHandler(algorithm, out var brokerage);
 
-            var model = GetExecutionModel(language);
-            algorithm.SetExecution(model);
-
-            var changes = new SecurityChanges(new[] { security }, Enumerable.Empty<Security>());
-            model.OnSecuritiesChanged(algorithm, changes);
-
-            var targets = new IPortfolioTarget[] { new PortfolioTarget(Symbols.AAPL, 10) };
-            model.Execute(algorithm, targets);
-
-            Assert.AreEqual(expectedOrdersSubmitted, actualOrdersSubmitted.Count);
-            Assert.AreEqual(expectedTotalQuantity, actualOrdersSubmitted.Sum(x => x.Quantity));
-
-            if (actualOrdersSubmitted.Count == 1)
+            try
             {
-                var request = actualOrdersSubmitted[0];
-                Assert.AreEqual(expectedTotalQuantity, request.Quantity);
-                Assert.AreEqual(algorithm.UtcTime, request.Time);
+                var model = GetExecutionModel(language);
+                algorithm.SetExecution(model);
+
+                var changes = SecurityChangesTests.CreateNonInternal(new[] { security }, Enumerable.Empty<Security>());
+                model.OnSecuritiesChanged(algorithm, changes);
+
+                var targets = new IPortfolioTarget[] { new PortfolioTarget(Symbols.AAPL, 10) };
+                model.Execute(algorithm, targets);
+                orderProcessor.ProcessSynchronousEvents();
+
+                var orders = orderProcessor.GetOrders().ToList();
+
+                Assert.AreEqual(expectedOrdersSubmitted, orders.Count);
+                Assert.AreEqual(expectedTotalQuantity, orders.Sum(x => x.Quantity));
+
+                if (expectedOrdersSubmitted == 1)
+                {
+                    var order = orders[0];
+                    Assert.AreEqual(expectedTotalQuantity, order.Quantity);
+                    Assert.AreEqual(algorithm.UtcTime, order.Time);
+                }
+            }
+            finally
+            {
+                brokerage?.Dispose();
             }
         }
 
@@ -162,7 +164,7 @@ namespace QuantConnect.Tests.Algorithm.Framework.Execution
 
             var historyProvider = new Mock<IHistoryProvider>();
             historyProvider.Setup(m => m.GetHistory(It.IsAny<IEnumerable<HistoryRequest>>(), It.IsAny<DateTimeZone>()))
-                .Returns(historicalPrices.Select((x, i) => new Slice(time.AddMinutes(i), new List<BaseData> { func(x, i) })));
+                .Returns(historicalPrices.Select((x, i) => new Slice(time.AddMinutes(i), new List<BaseData> { func(x, i) }, time.AddMinutes(i))));
 
             var algorithm = new QCAlgorithm();
             algorithm.SetPandasConverter();
@@ -177,7 +179,7 @@ namespace QuantConnect.Tests.Algorithm.Framework.Execution
             var model = GetExecutionModel(language);
             algorithm.SetExecution(model);
 
-            var changes = new SecurityChanges(new[] { security }, Enumerable.Empty<Security>());
+            var changes = SecurityChangesTests.CreateNonInternal(new[] { security }, Enumerable.Empty<Security>());
             Assert.DoesNotThrow(() => model.OnSecuritiesChanged(algorithm, changes));
         }
 

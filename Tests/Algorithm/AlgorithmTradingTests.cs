@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -21,13 +21,17 @@ using QuantConnect.Data.Market;
 using QuantConnect.Securities;
 using QuantConnect.Brokerages;
 using Moq;
-using QuantConnect.Data.Shortable;
 using QuantConnect.Interfaces;
 using QuantConnect.Lean.Engine.TransactionHandlers;
 using QuantConnect.Orders;
 using QuantConnect.Orders.Fees;
 using QuantConnect.Tests.Common.Securities;
 using QuantConnect.Tests.Engine.DataFeeds;
+using System.Linq;
+using QuantConnect.Data;
+using QuantConnect.Indicators;
+using Python.Runtime;
+using QuantConnect.Algorithm.Framework.Portfolio;
 
 namespace QuantConnect.Tests.Algorithm
 {
@@ -198,9 +202,37 @@ namespace QuantConnect.Tests.Algorithm
             //75% cash spent on 3000 MSFT shares.
             algo.Portfolio.SetCash(25000);
             algo.Portfolio[Symbols.MSFT].SetHoldings(25, 3000);
-            //Sell all 2000 held:
+
+            // TPV =  Cash + Holdings  - Fees  - Buffer => Target = TVP * 0.5
+            // TPV = 25000 + 25 * 3000 - 0 - 250 = 99,750 => 99,750 * 0.5 = 49875
+            // Final Quantity = Target / Unit - Holdings Quantity
+            // Final Quantity = 49875 / 25 - 3000 = 1995 - 3000 = -1,005
             var actual = algo.CalculateOrderQuantity(Symbols.MSFT, 0.5m);
+
+            // 3000 - 1005 = 1995. Multiply by unit 1995 * 25 = 49,875. Weight = 49,875 / 99,750 (TPV) = 0.5
             Assert.AreEqual(-1005m, actual);
+            Assert.IsTrue(HasSufficientBuyingPowerForOrder(actual, msft, algo));
+        }
+
+        /// <summary>
+        /// Reproduce QC Slack Issue https://quantconnect.slack.com/archives/G51920EN4/p1625782914057900
+        /// Original Algorithm: https://www.quantconnect.com/terminal/processCache?request=embedded_backtest_e35c58ed9304f452bb43c4fbf76fe153.html
+        ///
+        /// Test to see that in the event of a precision error we still adjust the quantity to reach our target
+        /// </summary>
+        [Test]
+        public void PrecisionFailureAdjustment()
+        {
+            Security msft;
+            var algo = GetAlgorithm(out msft, 2, 0);
+            Update(msft, 66.5m);
+
+            algo.Portfolio.SetCash(112302.5m);
+            algo.Settings.FreePortfolioValue = 0;
+            algo.Portfolio[Symbols.MSFT].SetHoldings(66.5m, -190);
+            var actual = algo.CalculateOrderQuantity(Symbols.MSFT, 0.4987458298843655153385005142m * 2);
+
+            Assert.AreEqual(1684, actual);
             Assert.IsTrue(HasSufficientBuyingPowerForOrder(actual, msft, algo));
         }
 
@@ -214,9 +246,15 @@ namespace QuantConnect.Tests.Algorithm
             //75% cash spent on 3000 MSFT shares.
             algo.Portfolio.SetCash(25000);
             algo.Portfolio[Symbols.MSFT].SetHoldings(25, 3000);
-            //Sell all 2000 held:
+
+            // TPV =  Cash + Holdings  - Fees  - Buffer => Target = TVP * 0.5
+            // TPV = 25000 + 25 * 3000 - 1 - 250 = 99,749 => 99,749 * 0.5 = 49874.5
+            // Final Quantity = Target / Unit - Holdings Quantity
+            // Final Quantity = 49874.5 / 25 - 3000 = 1794.98 - 3000 = -1,005.02 -> -1006
             var actual = algo.CalculateOrderQuantity(Symbols.MSFT, 0.5m);
-            Assert.AreEqual(-1005m, actual);
+
+            // 3000 - 1006 = 1994. Multiply by unit 1994 * 25 = 49,850. Weight = 49,875 / 99,749 (TPV) = 0.49975 < 0.5
+            Assert.AreEqual(-1006m, actual);
             Assert.IsTrue(HasSufficientBuyingPowerForOrder(actual, msft, algo));
         }
 
@@ -230,9 +268,15 @@ namespace QuantConnect.Tests.Algorithm
             //75% cash spent on 3000 MSFT shares.
             algo.Portfolio.SetCash(25000);
             algo.Portfolio[Symbols.MSFT].SetHoldings(25, 3000);
-            //Sell all 2000 held:
+
+            // TPV =  Cash + Holdings  - Fees  - Buffer => Target = TVP * 0.5
+            // TPV = 25000 + 25 * 3000 - 10000 - 250 = 89750 => 89750 * 0.5 = 44875
+            // Final Quantity = Target / Unit - Holdings Quantity
+            // Final Quantity = 44875 / 25 - 3000 = 1795.0 - 3000 = -1205
             var actual = algo.CalculateOrderQuantity(Symbols.MSFT, 0.5m);
-            Assert.AreEqual(-1204m, actual);
+
+            // 3000 - 1205 = 1795. Multiply by unit 1795 * 25 = 44875. Weight = 44875 / 89750 (TPV) = 0.5
+            Assert.AreEqual(-1205m, actual);
             Assert.IsTrue(HasSufficientBuyingPowerForOrder(actual, msft, algo));
         }
 
@@ -793,8 +837,8 @@ namespace QuantConnect.Tests.Algorithm
             //Calculate the new holdings for 50% MSFT::
             var actual = algo.CalculateOrderQuantity(Symbols.MSFT, 0.5m);
 
-            // Need to sell ($150k total value * 0.5m  target * 0.9975 buffer - 100k current holdings) / 50 =~ -500
-            Assert.AreEqual(-503m, actual);
+            // Need to sell ($150k total value * 0.5m  target * 0.9975 buffer - 100k current holdings) / 50 = -503.75 > ~-504
+            Assert.AreEqual(-504m, actual);
             Assert.IsTrue(HasSufficientBuyingPowerForOrder(actual, msft, algo));
         }
 
@@ -820,8 +864,8 @@ namespace QuantConnect.Tests.Algorithm
             //Calculate the new holdings for 50% MSFT::
             var actual = algo.CalculateOrderQuantity(Symbols.MSFT, 0.5m);
 
-            // Need to sell ($150k total value * 0.5m  target * 0.9975 buffer - 100k current holdings) / 50 =~ -500
-            Assert.AreEqual(-503m, actual);
+            // Need to sell ($150k total value * 0.5m  target * 0.9975 buffer - 100k current holdings) / 50 =~ -503.75 > ~504
+            Assert.AreEqual(-504m, actual);
             Assert.IsTrue(HasSufficientBuyingPowerForOrder(actual, msft, algo));
         }
 
@@ -847,8 +891,8 @@ namespace QuantConnect.Tests.Algorithm
             //Calculate the new holdings for 50% MSFT::
             var actual = algo.CalculateOrderQuantity(Symbols.MSFT, 0.5m);
 
-            // Need to sell (( $150k total value - 10 k fees) * 0.5m  target * 0.9975 buffer - 100k current holdings) / 50 =~ -603
-            Assert.AreEqual(-603, actual);
+            // Need to sell (( $150k total value - 10 k fees) * 0.5m  target * 0.9975 buffer - 100k current holdings) / 50 =~ -603.5 > -604
+            Assert.AreEqual(-604, actual);
             // After the trade: TPV 140k (due to fees), holdings at 1397 shares (2000 - 603) * $50 = 69850 value, which is 0.4989% holdings
             Assert.IsTrue(HasSufficientBuyingPowerForOrder(actual, msft, algo));
         }
@@ -953,8 +997,8 @@ namespace QuantConnect.Tests.Algorithm
             //Calculate the order for 50% MSFT:
             var actual = algo.CalculateOrderQuantity(Symbols.MSFT, 0.5m);
 
-            //Need to sell to make position ($175k total value * 0.5 target * 0.9975 buffer - $150k current holdings) / 50 =~ -1254m
-            Assert.AreEqual(-1254m, actual);
+            //Need to sell to make position ($175k total value * 0.5 target * 0.9975 buffer - $150k current holdings) / 50 =~ -1255m
+            Assert.AreEqual(-1255m, actual);
             Assert.IsTrue(HasSufficientBuyingPowerForOrder(actual, msft, algo));
         }
 
@@ -1005,11 +1049,11 @@ namespace QuantConnect.Tests.Algorithm
             // TPV: 50k
             Assert.AreEqual(50000, algo.Portfolio.TotalPortfolioValue);
 
-            // we should end with -750 shares (-.75*50000/50)
+            // we should end with -748 shares (-.75*(50000-125)/50)
             var actual = algo.CalculateOrderQuantity(Symbols.MSFT, -0.75m);
 
-            // currently -2000, so plus 1251
-            Assert.AreEqual(1251m, actual);
+            // currently -2000, so plus 1252
+            Assert.AreEqual(1252m, actual);
             Assert.IsTrue(HasSufficientBuyingPowerForOrder(actual, msft, algo));
         }
 
@@ -1120,7 +1164,7 @@ namespace QuantConnect.Tests.Algorithm
             var actual = algo.CalculateOrderQuantity(symbol, 1m);
             Assert.AreEqual(3000m, actual);
 
-            var btcusd = algo.AddCrypto("BTCUSD", market: Market.GDAX);
+            var btcusd = algo.AddCrypto("BTCUSD", market: Market.Coinbase);
             btcusd.FeeModel = new ConstantFeeModel(0);
             // Set Price to $26
             Update(btcusd, 26);
@@ -1145,7 +1189,8 @@ namespace QuantConnect.Tests.Algorithm
             var actual = algo.CalculateOrderQuantity(symbol, -1m);
             Assert.AreEqual(-3000m, actual);
 
-            var btcusd = algo.AddCrypto("BTCUSD", market: Market.GDAX);
+            var btcusd = algo.AddCrypto("BTCUSD", market: Market.Coinbase);
+            btcusd.BuyingPowerModel = new CashBuyingPowerModel();
             btcusd.FeeModel = new ConstantFeeModel(0);
             // Set Price to $26
             Update(btcusd, 26);
@@ -1276,6 +1321,60 @@ namespace QuantConnect.Tests.Algorithm
         //    Assert.AreEqual(2500, actual);
         //}
 
+        [TestCaseSource(nameof(SetHoldingReturnsOrderTicketsTestCases))]
+        public void SetHoldingsReturnsOrderTicketsTest(List<Symbol> symbols, bool liquidateExistingHoldings, Dictionary<Symbol, decimal> expectedOrders, string tag)
+        {
+            // Initialize the algorithm and add equities to the portfolio
+            var algo = GetAlgorithm(out _, 1, 0);
+            var appl = algo.AddEquity("AAPL");
+            var spy = algo.AddEquity("SPY");
+            var ibm = algo.AddEquity("IBM");
+
+            // Update prices and set initial holdings for the equities
+            Update(appl, 100);
+            Update(spy, 200);
+            Update(ibm, 300);
+            appl.Holdings.SetHoldings(25, 3);
+            spy.Holdings.SetHoldings(25, 3);
+            ibm.Holdings.SetHoldings(25, 3);
+
+            List<OrderTicket> orderTickets;
+            if (symbols.Count > 1)
+            {
+                // Handle multiple symbols by creating portfolio targets
+                var portfolioTargets = new List<PortfolioTarget>();
+                foreach (var symbol in symbols)
+                {
+                    portfolioTargets.Add(new PortfolioTarget(symbol, 0.5m));
+                }
+                orderTickets = algo.SetHoldings(portfolioTargets, liquidateExistingHoldings, tag: tag);
+            }
+            else
+            {
+                // Handle a single symbol or no symbols
+                if (symbols.Count != 0)
+                {
+                    orderTickets = algo.SetHoldings(symbols.First(), 1, liquidateExistingHoldings, tag: tag);
+                }
+                else
+                {
+                    orderTickets = algo.SetHoldings(new List<PortfolioTarget>(), liquidateExistingHoldings, tag: tag);
+                }
+            }
+
+            // Assert that the number of tickets matches the expected count
+            Assert.AreEqual(expectedOrders.Count, orderTickets.Count);
+
+            // Check each ticket:
+            // 1. Ensure the symbol is in the expectedOrders dictionary.
+            // 2. Verify the quantity matches the expected value for that symbol.
+            foreach (var ticket in orderTickets)
+            {
+                Assert.IsTrue(expectedOrders.ContainsKey(ticket.Symbol));
+                Assert.AreEqual(expectedOrders[ticket.Symbol], ticket.Quantity);
+            }
+        }
+
         [Test]
         public void OrderQuantityConversionTest()
         {
@@ -1288,7 +1387,7 @@ namespace QuantConnect.Tests.Algorithm
             algo.Portfolio.SetCash(150000);
 
             var mock = new Mock<ITransactionHandler>();
-            var request = new Mock<SubmitOrderRequest>(null, null, null, null, null, null, null, null, null, null);
+            var request = new Mock<SubmitOrderRequest>(null, null, null, null, null, null, null, null, null, null, null);
             mock.Setup(m => m.Process(It.IsAny<OrderRequest>())).Returns(new OrderTicket(null, request.Object));
             mock.Setup(m => m.GetOpenOrders(It.IsAny<Func<Order, bool>>())).Returns(new List<Order>());
             algo.Transactions.SetOrderProcessor(mock.Object);
@@ -1332,7 +1431,14 @@ namespace QuantConnect.Tests.Algorithm
             algo.StopLimitOrder(Symbols.MSFT, 1, 1, 2);
             algo.StopLimitOrder(Symbols.MSFT, 1.0, 1, 2);
             algo.StopLimitOrder(Symbols.MSFT, 1.0m, 1, 2);
-            
+
+            algo.TrailingStopOrder(Symbols.MSFT, 1, 1, true);
+            algo.TrailingStopOrder(Symbols.MSFT, 1.0, 1, true);
+            algo.TrailingStopOrder(Symbols.MSFT, 1.0m, 1, true);
+            algo.TrailingStopOrder(Symbols.MSFT, 1, 1, 0.01m, false);
+            algo.TrailingStopOrder(Symbols.MSFT, 1.0, 1, 0.01m, false);
+            algo.TrailingStopOrder(Symbols.MSFT, 1.0m, 1, 0.01m, false);
+
             algo.LimitIfTouchedOrder(Symbols.MSFT, 1, 1, 2);
             algo.LimitIfTouchedOrder(Symbols.MSFT, 1.0, 1, 2);
             algo.LimitIfTouchedOrder(Symbols.MSFT, 1.0m, 1, 2);
@@ -1342,23 +1448,355 @@ namespace QuantConnect.Tests.Algorithm
             algo.SetHoldings(Symbols.MSFT, 1.0m);
             algo.SetHoldings(Symbols.MSFT, 1.0f);
 
-            int expected = 35;
+            const int expected = 44;
             Assert.AreEqual(expected, algo.Transactions.LastOrderId);
         }
 
-        private class TestShortableProvider : IShortableProvider
+        [TestCaseSource(nameof(LiquidateWorksAsExpectedTestCases))]
+        public void LiquidateWorksAsExpected(Language language, bool? multipleSymbols, bool isAsynchronous, TimeInForce timeInForce)
         {
-            public Dictionary<Symbol, long> AllShortableSymbols(DateTime localTime)
+            Security msft;
+            var algo = GetAlgorithm(out msft, 1, 0);
+            algo.AddEquity("AAPL");
+            algo.Securities[Symbols.AAPL].FeeModel = new ConstantFeeModel(0);
+            var aapl = algo.Securities[Symbols.AAPL];
+            aapl.SetLeverage(1);
+            msft.Holdings.SetHoldings(25, 3);
+            aapl.Holdings.SetHoldings(25, 7);
+
+            msft.Exchange.SetMarketHours(new List<MarketHoursSegment>() { MarketHoursSegment.OpenAllDay() });
+            aapl.Exchange.SetMarketHours(new List<MarketHoursSegment>() { MarketHoursSegment.OpenAllDay() });
+
+            //Set price to $25
+            Update(msft, 25);
+            Update(aapl, 25);
+
+            algo.Portfolio.SetCash(15000000);
+            var limitOrderCanceled = false;
+
+            // Setup the transaction handler
+            var tickets = new Dictionary<int, OrderTicket>();
+            var mock = new Mock<ITransactionHandler>();
+            var request = new Mock<SubmitOrderRequest>(null, null, null, null, null, null, null, null, null, null, null);
+            mock.Setup(m => m.Process(It.IsAny<OrderRequest>())).Returns<OrderRequest>(s =>
             {
-                return new Dictionary<Symbol, long>
+                if (s.OrderRequestType == OrderRequestType.Cancel)
                 {
-                    { Symbols.MSFT, 1000 }
-                };
+                    limitOrderCanceled = true;
+                    return new OrderTicket(null, request.Object);
+                }
+                var orderRequest = s as SubmitOrderRequest;
+                var submitOrderRequest = new SubmitOrderRequest(orderRequest.OrderType, SecurityType.Equity, orderRequest.Symbol, orderRequest.Quantity, 0, 0, DateTime.UtcNow, "", orderRequest.OrderProperties);
+                submitOrderRequest.SetOrderId((int)orderRequest.Quantity);
+                var ticket = new OrderTicket(null, submitOrderRequest);
+                tickets[ticket.OrderId] = ticket;
+                return ticket;
+            });
+            algo.Transactions.SetOrderProcessor(mock.Object);
+
+            // Make the initial orders
+            var order1 = algo.MarketOrder(Symbols.MSFT, 1);
+            var order2 = algo.MarketOrder(Symbols.MSFT, 2);
+            var order3 = algo.MarketOrder(Symbols.AAPL, 3);
+            var order4 = algo.MarketOrder(Symbols.AAPL, 4);
+            var order5 = algo.LimitOrder(Symbols.AAPL, 5, 10);
+
+            // Setup the transaction handler to get the open orders as well as the order tickets
+            mock.Setup(m => m.GetOpenOrders(It.IsAny<Func<Order, bool>>())).Returns<Func<Order, bool>>(filter => tickets.Values.Select(x => Order.CreateOrder(x.SubmitRequest)).Where(x => filter(x)).ToList());
+            mock.Setup(m => m.GetOrderTicket(It.IsAny<int>())).Returns<int>(s =>
+            {
+                if (s < 0 && isAsynchronous)
+                {
+                    // This means that the method `Transactions.WaitForOrder()` was called, since the
+                    // negative ID's, in these case, come from the cancel orders, this is, from the
+                    // liquidate method
+                    throw new RegressionTestException("The orders were supposed to be liquidated asynchronously, but instead" +
+                        "they were liquidated synchronously");
+                }
+                else
+                {
+                    return tickets[s];
+                }
+            });
+
+            // Test different Liquidate() constructors
+            var orderProperties = timeInForce != null ? new OrderProperties() { TimeInForce = timeInForce } : null;
+            List<OrderTicket> liquidatedTickets;
+            if (language == Language.CSharp)
+            {
+                if (multipleSymbols == true)
+                {
+                    liquidatedTickets = algo.Liquidate(new List<Symbol>() { Symbols.AAPL, Symbols.MSFT }, asynchronous: isAsynchronous, orderProperties: orderProperties);
+                }
+                else if (multipleSymbols == false)
+                {
+                    liquidatedTickets = algo.Liquidate(Symbols.AAPL, asynchronous: isAsynchronous, orderProperties: orderProperties);
+                    liquidatedTickets.AddRange(algo.Liquidate(Symbols.MSFT, asynchronous: isAsynchronous, orderProperties: orderProperties));
+                }
+                else
+                {
+                    liquidatedTickets = algo.Liquidate(asynchronous: isAsynchronous, orderProperties: orderProperties);
+                }
+            }
+            else
+            {
+                using (Py.GIL())
+                {
+                    liquidatedTickets = algo.Liquidate((new List<Symbol>() { Symbols.AAPL, Symbols.MSFT }).ToPython(), asynchronous: isAsynchronous, orderProperties: orderProperties);
+                }
             }
 
-            public long? ShortableQuantity(Symbol symbol, DateTime localTime)
+            // Assert the symbols were liquidated asynchronously
+            var aaplTicket = liquidatedTickets.Where(x => x.Symbol == Symbols.AAPL).Single();
+            var msftTicket = liquidatedTickets.Where(x => x.Symbol == Symbols.MSFT).Single();
+            Assert.AreEqual(aapl.Holdings.Quantity * (-2), aaplTicket.Quantity);
+            Assert.AreEqual(msft.Holdings.Quantity * (-2), msftTicket.Quantity);
+            Assert.AreEqual(timeInForce ?? TimeInForce.GoodTilCanceled, aaplTicket.SubmitRequest.OrderProperties.TimeInForce);
+            Assert.AreEqual(timeInForce ?? TimeInForce.GoodTilCanceled, msftTicket.SubmitRequest.OrderProperties.TimeInForce);
+            Assert.IsTrue(limitOrderCanceled);
+        }
+
+        [Test]
+        public void MarketOrdersAreSupportedForFuturesOnExtendedMarketHours()
+        {
+            var algo = GetAlgorithm(out _, 1, 0);
+
+            var mockOrderProcessor = new Mock<ITransactionHandler>();
+            var mockRequest = new Mock<SubmitOrderRequest>(null, null, null, null, null, null, null, null, null, null, null);
+            var mockTicket = new OrderTicket(algo.Transactions, mockRequest.Object);
+            mockOrderProcessor.Setup(m => m.Process(It.IsAny<OrderRequest>())).Returns(mockTicket);
+            mockOrderProcessor.Setup(m => m.GetOrderTicket(It.IsAny<int>())).Returns(mockTicket);
+            algo.Transactions.SetOrderProcessor(mockOrderProcessor.Object);
+
+            var es20h20 = algo.AddFutureContract(
+                QuantConnect.Symbol.CreateFuture(Futures.Indices.SP500EMini, Market.CME, new DateTime(2020, 3, 20)),
+                Resolution.Minute,
+                extendedMarketHours: true);
+            var es20h20FOP = algo.AddFutureOptionContract(
+                Symbol.CreateOption(es20h20.Symbol, Market.CME, OptionStyle.American, OptionRight.Call, 2550m, new DateTime(2020, 3, 20)),
+                Resolution.Minute);
+
+            //Set price to $25
+            Update(es20h20, 25);
+            Update(es20h20FOP, 25);
+            algo.Portfolio.SetCash(150000);
+
+            var testOrders = (DateTime dateTime) =>
             {
-                return 1000;
+                algo.SetDateTime(dateTime);
+
+                var ticket = algo.Buy(es20h20.Symbol, 1);
+                Assert.AreEqual(OrderStatus.New, ticket.Status, $"Future buy market order status should be new at {dateTime}, but was {ticket.Status}");
+                ticket = algo.Sell(es20h20.Symbol, 1);
+                Assert.AreEqual(OrderStatus.New, ticket.Status, $"Future sell market order status should be new at {dateTime}, but was {ticket.Status}");
+
+                ticket = algo.Buy(es20h20FOP.Symbol, 1);
+                Assert.AreEqual(OrderStatus.New, ticket.Status, $"Future option buy market order status should be new at {dateTime}, but was {ticket.Status}");
+                ticket = algo.Sell(es20h20FOP.Symbol, 1);
+                Assert.AreEqual(OrderStatus.New, ticket.Status, $"Future option sell market order status should be new at {dateTime}, but was {ticket.Status}");
+            };
+
+            // October 7 to 11 (monday to friday). Testing pre-market hours
+            for (var i = 7; i <= 11; i++)
+            {
+                testOrders(new DateTime(2013, 10, i, 5, 0, 0));
+            }
+
+            // October 6 to 10 (sunday to thrusday). Testing post-market hours
+            for (var i = 6; i <= 10; i++)
+            {
+                testOrders(new DateTime(2013, 10, i, 23, 0, 0));
+            }
+        }
+
+        [Test]
+        public void MarketOnOpenOrdersNotSupportedForFutures()
+        {
+            var algo = GetAlgorithm(out _, 1, 0);
+            var es20h20 = algo.AddFutureContract(
+                QuantConnect.Symbol.CreateFuture(Futures.Indices.SP500EMini, Market.CME, new DateTime(2020, 3, 20)),
+                Resolution.Minute);
+
+            var ticket = algo.MarketOnOpenOrder(es20h20.Symbol, 1);
+            Assert.That(ticket, Has.Property("Status").EqualTo(OrderStatus.Invalid));
+        }
+
+        [Test]
+        public void OptionOrdersAreNotAllowedDuringASplit()
+        {
+            var algo = GetAlgorithm(out _, 1, 0);
+            var aapl = algo.AddEquity("AAPL");
+            var applOptionContract = algo.AddOptionContract(
+                Symbol.CreateOption(aapl.Symbol, Market.USA, OptionStyle.American, OptionRight.Call, 40m, new DateTime(2014, 07, 19)));
+
+            var splitDate = new DateTime(2014, 06, 09);
+            aapl.SetMarketPrice(new IndicatorDataPoint(splitDate, 650m));
+            applOptionContract.SetMarketPrice(new IndicatorDataPoint(splitDate, 5m));
+
+            algo.SetCurrentSlice(new Slice(splitDate, new[] { new Split(aapl.Symbol, splitDate, 650m, 1 / 7, SplitType.SplitOccurred) }, splitDate));
+
+            var ticket = algo.MarketOrder(applOptionContract.Symbol, 1);
+            Assert.AreEqual(OrderStatus.Invalid, ticket.Status);
+            Assert.IsTrue(ticket.SubmitRequest.Response.IsError);
+            Assert.AreEqual(OrderResponseErrorCode.OptionOrderOnStockSplit, ticket.SubmitRequest.Response.ErrorCode);
+            Assert.IsTrue(ticket.SubmitRequest.Response.ErrorMessage.Contains(
+                "Options orders are not allowed when a split occurred for its underlying stock", StringComparison.InvariantCulture));
+        }
+
+        [TestCase(OrderType.MarketOnOpen)]
+        [TestCase(OrderType.MarketOnClose)]
+        public void GoodTilDateTimeInForceNotSupportedForMOOAndMOCOrders(OrderType orderType)
+        {
+            var algorithm = GetAlgorithm(out var msft, 1, 0);
+            Update(msft, 25);
+
+            var orderProperties = new OrderProperties() { TimeInForce = TimeInForce.GoodTilDate(algorithm.Time.AddDays(1)) };
+
+            OrderTicket ticket;
+            switch (orderType)
+            {
+                case OrderType.MarketOnOpen:
+                    ticket = algorithm.MarketOnOpenOrder(msft.Symbol, 1, orderProperties: orderProperties);
+                    break;
+                case OrderType.MarketOnClose:
+                    ticket = algorithm.MarketOnCloseOrder(msft.Symbol, 1, orderProperties: orderProperties);
+                    break;
+                default:
+                    Assert.Fail("Unexpected order type");
+                    return;
+            }
+
+
+            Assert.AreEqual(OrderStatus.New, ticket.Status);
+            Assert.AreEqual(TimeInForce.GoodTilCanceled, ticket.SubmitRequest.OrderProperties.TimeInForce);
+        }
+
+        [Test]
+        public void EuropeanOptionsCannotBeExercisedBeforeExpiry()
+        {
+            var algo = GetAlgorithm(out _, 1, 0);
+
+            var optionExpiry = new DateTime(2020, 3, 20);
+
+            var indexSymbol = Symbol.Create("SPX", SecurityType.Index, Market.USA);
+            var optionSymbol = Symbol.CreateOption(indexSymbol, Market.USA, OptionStyle.European, OptionRight.Call, 1, optionExpiry);
+            var europeanOptionContract = algo.AddOptionContract(optionSymbol, Resolution.Minute);
+            europeanOptionContract.SetMarketPrice(new TradeBar() { Symbol = europeanOptionContract.Symbol, Value = 1, Time = algo.Time });
+
+            europeanOptionContract.Holdings.SetHoldings(1, 1);
+
+            algo.SetDateTime(optionExpiry.AddDays(-1).AddHours(15));
+            var ticket = algo.ExerciseOption(europeanOptionContract.Symbol, 1);
+            Assert.AreEqual(OrderStatus.Invalid, ticket.Status);
+            Assert.AreEqual(OrderResponseErrorCode.EuropeanOptionNotExpiredOnExercise, ticket.SubmitRequest.Response.ErrorCode);
+
+            algo.SetDateTime(optionExpiry.AddHours(15));
+            ticket = algo.ExerciseOption(europeanOptionContract.Symbol, 1);
+            Assert.AreEqual(OrderStatus.New, ticket.Status);
+        }
+
+        [Test]
+        public void ComboOrderPreChecks()
+        {
+            var start = DateTime.UtcNow;
+            var algo = new AlgorithmStub();
+            algo.SetFinishedWarmingUp();
+            algo.AddEquity("SPY").SetMarketPrice(new TradeBar
+            {
+                Time = algo.Time,
+                Open = 10m,
+                High = 10,
+                Low = 10,
+                Close = 10,
+                Volume = 0,
+                Symbol = Symbols.SPY,
+                DataType = MarketDataType.TradeBar
+            });
+
+            algo.AddOptionContract(Symbols.SPY_C_192_Feb19_2016);
+            var legs = new List<Leg>
+            {
+                new Leg { Symbol = Symbols.SPY, Quantity = 1 },
+                new Leg { Symbol = Symbols.SPY_C_192_Feb19_2016, Quantity = 1 },
+            };
+
+            // the underlying has a price but the option does not
+            var result = algo.ComboMarketOrder(legs, 1);
+
+            Assert.AreEqual(1, result.Count);
+            Assert.AreEqual(OrderStatus.Invalid, result.Single().Status);
+            Assert.IsTrue(result.Single().SubmitRequest.Response.IsError);
+            Assert.IsTrue(result.Single().SubmitRequest.Response.ErrorMessage.Contains("does not have an accurate price"));
+
+            Assert.IsTrue(DateTime.UtcNow - start < TimeSpan.FromMilliseconds(500));
+        }
+
+        [TestCase(new int[] { 1, 2 }, false)]
+        [TestCase(new int[] { -1, 10 }, false)]
+        [TestCase(new int[] { 2, -5 }, false)]
+        [TestCase(new int[] { 1, 2, 3 }, false)]
+        [TestCase(new int[] { 200, -11, 7 }, false)]
+        [TestCase(new int[] { 10, 20 }, true)]
+        [TestCase(new int[] { -10, 100 }, true)]
+        [TestCase(new int[] { 20, -50 }, true)]
+        [TestCase(new int[] { 10, 20, 30 }, true)]
+        [TestCase(new int[] { 1000, -55, 35 }, true)]
+        public void ComboOrderLegsRatiosAreValidated(int[] quantities, bool shouldThrow)
+        {
+            var algo = GetAlgorithm(out _, 1, 0);
+            var legs = quantities.Select(q => Leg.Create(Symbols.MSFT, q)).ToList();
+
+            if (shouldThrow)
+            {
+                Assert.Throws<ArgumentException>(() => algo.ComboMarketOrder(legs, 1));
+                Assert.Throws<ArgumentException>(() => algo.ComboLimitOrder(legs, 1, 100));
+                Assert.Throws<ArgumentException>(() => algo.ComboLegLimitOrder(legs.Select(leg =>
+                {
+                    leg.OrderPrice = 10;
+                    return leg;
+                }).ToList(), 1));
+            }
+            else
+            {
+                Assert.DoesNotThrow(() => algo.ComboMarketOrder(legs, 1));
+                Assert.DoesNotThrow(() => algo.ComboLimitOrder(legs, 1, 100));
+                Assert.DoesNotThrow(() => algo.ComboLegLimitOrder(legs.Select(leg =>
+                {
+                    leg.OrderPrice = 10;
+                    return leg;
+                }).ToList(), 1));
+            }
+        }
+
+        [Test]
+        public void MarketOnCloseOrdersSubmissionTimeCheck([Values] bool beforeLatestSubmissionTime)
+        {
+            var algo = GetAlgorithm(out _, 1, 0);
+            algo.SetTimeZone(TimeZones.London);
+            algo.SetDateTime(new DateTime(2023, 02, 16));
+
+            var es20h20 = algo.AddFutureContract(
+                Symbol.CreateFuture(Futures.Indices.SP500EMini, Market.CME, new DateTime(2020, 3, 20)),
+                Resolution.Minute);
+            es20h20.SetMarketPrice(new Tick(algo.Time, es20h20.Symbol, 1, 1));
+
+            var dateTimeInExchangeTimeZone = algo.Time.Date + new TimeSpan(17, 0, 0) - MarketOnCloseOrder.SubmissionTimeBuffer;
+            if (!beforeLatestSubmissionTime)
+            {
+                dateTimeInExchangeTimeZone += TimeSpan.FromSeconds(1);
+            }
+            algo.SetDateTime(dateTimeInExchangeTimeZone.ConvertTo(es20h20.Exchange.TimeZone, algo.TimeZone));
+
+            var ticket = algo.MarketOnCloseOrder(es20h20.Symbol, 1);
+
+            if (!beforeLatestSubmissionTime)
+            {
+                Assert.AreEqual(OrderStatus.Invalid, ticket.Status);
+                Assert.AreEqual(OrderResponseErrorCode.MarketOnCloseOrderTooLate, ticket.SubmitRequest.Response.ErrorCode);
+            }
+            else
+            {
+                Assert.AreNotEqual(OrderStatus.Invalid, ticket.Status, ticket.SubmitRequest.Response.ErrorMessage);
             }
         }
 
@@ -1366,15 +1804,18 @@ namespace QuantConnect.Tests.Algorithm
         {
             //Initialize algorithm
             var algo = new QCAlgorithm();
+            algo.Settings.MinimumOrderMarginPortfolioPercentage = 0;
             algo.SubscriptionManager.SetDataManager(new DataManagerStub(algo));
             algo.AddSecurity(SecurityType.Equity, "MSFT");
             algo.SetCash(100000);
             algo.SetFinishedWarmingUp();
             algo.Securities[Symbols.MSFT].FeeModel = new ConstantFeeModel(fee);
+            algo.SetLiveMode(false);
             _fakeOrderProcessor = new FakeOrderProcessor();
             algo.Transactions.SetOrderProcessor(_fakeOrderProcessor);
             msft = algo.Securities[Symbols.MSFT];
             msft.SetLeverage(leverage);
+            algo.SetCurrentSlice(new Slice(DateTime.MinValue, Enumerable.Empty<BaseData>(), DateTime.MinValue));
             return algo;
         }
 
@@ -1415,5 +1856,34 @@ namespace QuantConnect.Tests.Algorithm
                 security, new MarketOrder(security.Symbol, orderQuantity, DateTime.UtcNow));
             return hashSufficientBuyingPower.IsSufficient;
         }
+
+        private static object[] LiquidateWorksAsExpectedTestCases =
+        {
+            new object[] { Language.CSharp, true, true, TimeInForce.Day },
+            new object[] { Language.CSharp, false, true, TimeInForce.Day },
+            new object[] { Language.CSharp, null, true, TimeInForce.Day },
+            new object[] { Language.Python, null, true, TimeInForce.Day },
+            new object[] { Language.CSharp, true, false, TimeInForce.Day },
+            new object[] { Language.CSharp, false, false, TimeInForce.Day },
+            new object[] { Language.CSharp, null, false, TimeInForce.Day },
+            new object[] { Language.Python, null, false, TimeInForce.Day },
+            new object[] { Language.CSharp, true, true, null },
+            new object[] { Language.CSharp, false, true, null },
+            new object[] { Language.CSharp, null, true, null },
+            new object[] { Language.Python, null, true, null },
+            new object[] { Language.CSharp, true, false, null },
+            new object[] { Language.CSharp, false, false, null },
+            new object[] { Language.CSharp, null, false, null },
+            new object[] { Language.Python, null, false, null }
+        };
+        private static object[] SetHoldingReturnsOrderTicketsTestCases =
+        {
+            new object[] { new List<Symbol>(), true, new Dictionary<Symbol, decimal> { { Symbols.AAPL, -3 }, { Symbols.IBM, -3 }, { Symbols.SPY, -3 } }, "(Empty, true)"},
+            new object[] { new List<Symbol>(), false, new Dictionary<Symbol, decimal>(), "(Empty, false)" },
+            new object[] { new List<Symbol>() { Symbols.IBM }, true, new Dictionary<Symbol, decimal> { { Symbols.AAPL, -3m }, { Symbols.IBM, 335m }, { Symbols.SPY, -3m } }, "(OneSymbol, true)" },
+            new object[] { new List<Symbol>() { Symbols.IBM }, false, new Dictionary<Symbol, decimal> { { Symbols.IBM, 335m } }, "(OneSymbol, true)" },
+            new object[] { new List<Symbol>() { Symbols.AAPL, Symbols.SPY }, true, new Dictionary<Symbol, decimal> { { Symbols.AAPL, 504m }, { Symbols.IBM, -3m }, { Symbols.SPY, 250m } }, "(MultipleSymbols, true)" },
+            new object[] { new List<Symbol>() { Symbols.AAPL, Symbols.SPY }, false, new Dictionary<Symbol, decimal> { { Symbols.AAPL, 504m }, { Symbols.SPY, 250m } }, "(MultipleSymbols, false)" },
+        };
     }
 }

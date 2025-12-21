@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -41,8 +41,8 @@ namespace QuantConnect.Tests.Python
                 _algorithm = module.GetAttr("Test_MethodOverload").Invoke();
                 // this is required else will get a 'RuntimeBinderException' because fails to match constructor method
                 dynamic algo = _algorithm.AsManagedObject((Type)_algorithm.GetPythonType().AsManagedObject(typeof(Type)));
-                _algorithm.SubscriptionManager.SetDataManager(new DataManagerStub(algo));
-                _algorithm.Initialize();
+                _algorithm.subscription_manager.set_data_manager(new DataManagerStub(algo));
+                _algorithm.initialize();
             }
         }
 
@@ -64,10 +64,12 @@ namespace QuantConnect.Tests.Python
                 Assert.Throws<PythonException>(() => _algorithm.call_plot_throw_test());
 
                 // self.Plot("ERROR", self.Portfolio), where self.Portfolio is IAlgorithm.Portfolio: instance of SecurityPortfolioManager
-                Assert.Throws<PythonException>(() => _algorithm.call_plot_throw_managed_test());
+                Assert.That(() => _algorithm.call_plot_throw_managed_test(),
+                    Throws.InstanceOf<ClrBubbledException>().With.InnerException.InstanceOf<ArgumentException>());
 
                 // self.Plot("ERROR", self.a), where self.a is an instance of a python object
-                Assert.Throws<PythonException>(() => _algorithm.call_plot_throw_pyobject_test());
+                Assert.That(() => _algorithm.call_plot_throw_pyobject_test(),
+                    Throws.InstanceOf<ClrBubbledException>().With.InnerException.InstanceOf<ArgumentException>());
             }
         }
     }

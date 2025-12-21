@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -30,7 +30,6 @@ namespace QuantConnect.Algorithm.Framework.Portfolio
     public class PortfolioConstructionModel : IPortfolioConstructionModel
     {
         private Func<DateTime, DateTime?> _rebalancingFunc;
-        private List<Symbol> _removedSymbols;
         private DateTime? _rebalancingTime;
         private bool _securityChanges;
 
@@ -45,13 +44,6 @@ namespace QuantConnect.Algorithm.Framework.Portfolio
         public virtual bool RebalanceOnInsightChanges { get; set; } = true;
 
         /// <summary>
-        /// Provides a collection for managing insights
-        /// </summary>
-        /// <remarks>Derived classes should use this collection if they want insight
-        /// expiration to trigger a rebalance</remarks>
-        protected InsightCollection InsightCollection { get; }
-
-        /// <summary>
         /// The algorithm instance
         /// </summary>
         protected IAlgorithm Algorithm { get; private set; }
@@ -61,7 +53,7 @@ namespace QuantConnect.Algorithm.Framework.Portfolio
         /// When Python calls a C# method that calls a method that's overriden in python it won't
         /// run the python implementation unless the call is performed through python too.
         /// </summary>
-        protected PortfolioConstructionModelPythonWrapper PythonWrapper;
+        protected PortfolioConstructionModelPythonWrapper PythonWrapper { get; set; }
 
         /// <summary>
         /// Initialize a new instance of <see cref="PortfolioConstructionModel"/>
@@ -72,7 +64,6 @@ namespace QuantConnect.Algorithm.Framework.Portfolio
         public PortfolioConstructionModel(Func<DateTime, DateTime?> rebalancingFunc)
         {
             _rebalancingFunc = rebalancingFunc;
-            InsightCollection = new InsightCollection();
         }
 
         /// <summary>
@@ -103,15 +94,6 @@ namespace QuantConnect.Algorithm.Framework.Portfolio
         {
             Algorithm = algorithm;
 
-            // always add new insights
-            if (insights.Length > 0)
-            {
-                // Validate we should create a target for this insight
-                InsightCollection.AddRange(insights
-                    .Where(insight => PythonWrapper?.ShouldCreateTargetForInsight(insight)
-                                      ?? ShouldCreateTargetForInsight(insight)));
-            }
-
             if (!(PythonWrapper?.IsRebalanceDue(insights, algorithm.UtcTime)
                   ?? IsRebalanceDue(insights, algorithm.UtcTime)))
             {
@@ -120,16 +102,8 @@ namespace QuantConnect.Algorithm.Framework.Portfolio
 
             var targets = new List<IPortfolioTarget>();
 
-            // Create flatten target for each security that was removed from the universe
-            if (_removedSymbols != null)
-            {
-                var universeDeselectionTargets = _removedSymbols.Select(symbol => new PortfolioTarget(symbol, 0));
-                targets.AddRange(universeDeselectionTargets);
-                _removedSymbols = null;
-            }
-
             var lastActiveInsights = PythonWrapper?.GetTargetInsights()
-                                     ?? GetTargetInsights();
+                                                 ?? GetTargetInsights();
 
             var errorSymbols = new HashSet<Symbol>();
 
@@ -139,8 +113,7 @@ namespace QuantConnect.Algorithm.Framework.Portfolio
 
             foreach (var insight in lastActiveInsights)
             {
-                double percent;
-                if (!percents.TryGetValue(insight, out percent))
+                if (!percents.TryGetValue(insight, out var percent))
                 {
                     continue;
                 }
@@ -157,12 +130,12 @@ namespace QuantConnect.Algorithm.Framework.Portfolio
             }
 
             // Get expired insights and create flatten targets for each symbol
-            var expiredInsights = InsightCollection.RemoveExpiredInsights(algorithm.UtcTime);
+            var expiredInsights = Algorithm.Insights.RemoveExpiredInsights(algorithm.UtcTime);
 
             var expiredTargets = from insight in expiredInsights
-                                 group insight.Symbol by insight.Symbol into g
-                                 where !InsightCollection.HasActiveInsights(g.Key, algorithm.UtcTime) && !errorSymbols.Contains(g.Key)
-                                 select new PortfolioTarget(g.Key, 0);
+                                                          group insight.Symbol by insight.Symbol into g
+                                                          where !Algorithm.Insights.HasActiveInsights(g.Key, algorithm.UtcTime) && !errorSymbols.Contains(g.Key)
+                                                          select new PortfolioTarget(g.Key, 0);
 
             targets.AddRange(expiredTargets);
 
@@ -176,10 +149,12 @@ namespace QuantConnect.Algorithm.Framework.Portfolio
         /// <param name="changes">The security additions and removals from the algorithm</param>
         public virtual void OnSecuritiesChanged(QCAlgorithm algorithm, SecurityChanges changes)
         {
+            Algorithm ??= algorithm;
+
             _securityChanges = changes != SecurityChanges.None;
             // Get removed symbol and invalidate them in the insight collection
-            _removedSymbols = changes.RemovedSecurities.Select(x => x.Symbol).ToList();
-            InsightCollection.Clear(_removedSymbols.ToArray());
+            var removedSymbols = changes.RemovedSecurities.Select(x => x.Symbol);
+            algorithm?.Insights.Expire(removedSymbols);
         }
 
         /// <summary>
@@ -188,8 +163,12 @@ namespace QuantConnect.Algorithm.Framework.Portfolio
         /// <returns>An enumerable of the target insights</returns>
         protected virtual List<Insight> GetTargetInsights()
         {
+            // Validate we should create a target for this insight
+            bool IsValidInsight(Insight insight) => PythonWrapper?.ShouldCreateTargetForInsight(insight)
+                ?? ShouldCreateTargetForInsight(insight);
+
             // Get insight that haven't expired of each symbol that is still in the universe
-            var activeInsights = InsightCollection.GetActiveInsights(Algorithm.UtcTime);
+            var activeInsights = Algorithm.Insights.GetActiveInsights(Algorithm.UtcTime).Where(IsValidInsight);
 
             // Get the last generated active insight for each symbol
             return (from insight in activeInsights
@@ -237,15 +216,18 @@ namespace QuantConnect.Algorithm.Framework.Portfolio
             {
                 _rebalancingFunc = dateRules.ToFunc();
             }
-            else if (!rebalance.TryConvertToDelegate(out _rebalancingFunc))
+            else if (!rebalance.TrySafeAs(out _rebalancingFunc))
             {
                 try
                 {
-                    // try convert does not work for timespan
-                    timeSpan = rebalance.As<TimeSpan>();
-                    if (timeSpan != default(TimeSpan))
+                    using (Py.GIL())
                     {
-                        _rebalancingFunc = time => time.Add(timeSpan);
+                        // try convert does not work for timespan
+                        timeSpan = rebalance.As<TimeSpan>();
+                        if (timeSpan != default(TimeSpan))
+                        {
+                            _rebalancingFunc = time => time.Add(timeSpan);
+                        }
                     }
                 }
                 catch
@@ -275,7 +257,7 @@ namespace QuantConnect.Algorithm.Framework.Portfolio
 
             // we always get the next expiry time
             // we don't know if a new insight was added or removed
-            var nextInsightExpiryTime = InsightCollection.GetNextExpiryTime();
+            var nextInsightExpiryTime = Algorithm.Insights.GetNextExpiryTime();
 
             if (_rebalancingTime == null)
             {

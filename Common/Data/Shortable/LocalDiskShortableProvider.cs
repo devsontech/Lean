@@ -14,84 +14,74 @@
 */
 
 using System;
-using System.Collections.Generic;
 using System.IO;
+using QuantConnect.Util;
+using System.Threading.Tasks;
 using QuantConnect.Interfaces;
+using System.Collections.Generic;
+using System.Globalization;
 
 namespace QuantConnect.Data.Shortable
 {
     /// <summary>
-    /// Sources easy-to-borrow (ETB) data from the local disk for the given brokerage
+    /// Sources short availability data from the local disk for the given brokerage
     /// </summary>
     public class LocalDiskShortableProvider : IShortableProvider
     {
-        private readonly DirectoryInfo _shortableDataDirectory;
+        /// <summary>
+        /// The data provider instance to use
+        /// </summary>
+        protected static IDataProvider DataProvider = Composer.Instance.GetPart<IDataProvider>();
+
+        private string _ticker;
+        private bool _scheduledCleanup;
+        private Dictionary<DateTime, ShortableData> _shortableDataPerDate;
+
+        /// <summary>
+        /// The short availability provider
+        /// </summary>
+        protected string Brokerage { get; set; }
 
         /// <summary>
         /// Creates an instance of the class. Establishes the directory to read from.
         /// </summary>
-        /// <param name="securityType">SecurityType to read data</param>
-        /// <param name="brokerage">Brokerage to read ETB data</param>
-        /// <param name="market">Market to read ETB data</param>
-        public LocalDiskShortableProvider(SecurityType securityType, string brokerage, string market)
+        /// <param name="brokerage">Brokerage to read the short availability data</param>
+        public LocalDiskShortableProvider(string brokerage)
         {
-            var shortableDataDirectory = Path.Combine(Globals.DataFolder, securityType.SecurityTypeToLower(), market, "shortable", brokerage.ToLowerInvariant());
-            _shortableDataDirectory = Directory.Exists(shortableDataDirectory) ? new DirectoryInfo(shortableDataDirectory) : null;
+            Brokerage = brokerage.ToLowerInvariant();
         }
 
         /// <summary>
-        /// Gets a list of all shortable Symbols, including the quantity shortable as a Dictionary.
+        /// Gets interest rate charged on borrowed shares for a given asset.
         /// </summary>
-        /// <param name="localTime">The algorithm's local time</param>
-        /// <returns>Symbol/quantity shortable as a Dictionary. Returns null if no entry data exists for this date or brokerage</returns>
-        public Dictionary<Symbol, long> AllShortableSymbols(DateTime localTime)
+        /// <param name="symbol">Symbol to lookup fee rate</param>
+        /// <param name="localTime">Time of the algorithm</param>
+        /// <returns>Fee rate. Zero if the data for the brokerage/date does not exist.</returns>
+        public decimal FeeRate(Symbol symbol, DateTime localTime)
         {
-            var allSymbols = new Dictionary<Symbol, long>();
-            if (_shortableDataDirectory == null)
+            if (symbol != null && GetCacheData(symbol).TryGetValue(localTime.Date, out var result))
             {
-                return allSymbols;
+                return result.FeeRate;
             }
+            // Any missing entry will be considered to be zero.
+            return 0m;
+        }
 
-            FileInfo shortableListFile = null;
-            // Check backwards up to one week to see if we can source a previous file.
-            // If not, then we return a list of all Symbols with quantity set to zero.
-            var i = 0;
-            var shortableListFileExists = false;
-            while (i <= 7)
+        /// <summary>
+        /// Gets the Fed funds or other currency-relevant benchmark rate minus the interest rate charged on borrowed shares for a given asset.
+        /// E.g.: Interest rate - borrow fee rate = borrow rebate rate: 5.32% - 0.25% = 5.07%.
+        /// </summary>
+        /// <param name="symbol">Symbol to lookup rebate rate</param>
+        /// <param name="localTime">Time of the algorithm</param>
+        /// <returns>Rebate fee. Zero if the data for the brokerage/date does not exist.</returns>
+        public decimal RebateRate(Symbol symbol, DateTime localTime)
+        {
+            if (symbol != null && GetCacheData(symbol).TryGetValue(localTime.Date, out var result))
             {
-                shortableListFile = new FileInfo(Path.Combine(_shortableDataDirectory.FullName, "dates", $"{localTime.AddDays(-i):yyyyMMdd}.csv"));
-                if (shortableListFile.Exists)
-                {
-                    shortableListFileExists = true;
-                    break;
-                }
-
-                i++;
+                return result.RebateFee;
             }
-
-            if (!shortableListFileExists)
-            {
-                // Empty case, we'll know to consider all quantities zero.
-                return allSymbols;
-            }
-
-            using (var fileStream = shortableListFile.OpenRead())
-            using (var streamReader = new StreamReader(fileStream))
-            {
-                string line;
-                while ((line = streamReader.ReadLine()) != null)
-                {
-                    var csv = line.Split(',');
-                    var ticker = csv[0];
-
-                    var symbol = new Symbol(SecurityIdentifier.GenerateEquity(ticker, QuantConnect.Market.USA, mappingResolveDate: localTime), ticker);
-                    var quantity = Parse.Long(csv[1]);
-
-                    allSymbols[symbol] = quantity;
-                }
-            }
-
-            return allSymbols;
+            // Any missing entry will be considered to be zero.
+            return 0m;
         }
 
         /// <summary>
@@ -102,40 +92,84 @@ namespace QuantConnect.Data.Shortable
         /// <returns>Quantity shortable. Null if the data for the brokerage/date does not exist.</returns>
         public long? ShortableQuantity(Symbol symbol, DateTime localTime)
         {
-            if (_shortableDataDirectory == null)
+            if (symbol != null && GetCacheData(symbol).TryGetValue(localTime.Date, out var result))
             {
-                return 0;
+                return result.ShortableQuantity;
             }
+            // Any missing entry will be considered to be Shortable.
+            return null;
+        }
+
+        /// <summary>
+        /// We cache data per ticker
+        /// </summary>
+        /// <param name="symbol">The requested symbol</param>
+        private Dictionary<DateTime, ShortableData> GetCacheData(Symbol symbol)
+        {
+            var result = _shortableDataPerDate;
+            if (_ticker == symbol.Value)
+            {
+                return result;
+            }
+
+            if (!_scheduledCleanup)
+            {
+                // we schedule it once
+                _scheduledCleanup = true;
+                ClearCache();
+            }
+
+            // create a new collection
+            _ticker = symbol.Value;
+            result = _shortableDataPerDate = new();
 
             // Implicitly trusts that Symbol.Value has been mapped and updated to the latest ticker
-            var shortableSymbolFile = new FileInfo(Path.Combine(_shortableDataDirectory.FullName, "symbols", $"{symbol.Value.ToLowerInvariant()}.csv"));
-            if (!shortableSymbolFile.Exists)
-            {
-                // Don't allow shorting if data is missing for the provided Symbol.
-                return 0;
-            }
+            var shortableSymbolFile = Path.Combine(Globals.DataFolder, symbol.SecurityType.SecurityTypeToLower(), symbol.ID.Market,
+                "shortable", Brokerage, "symbols", $"{_ticker.ToLowerInvariant()}.csv");
 
-            var localDate = localTime.Date;
-
-            using (var fileStream = shortableSymbolFile.OpenRead())
-            using (var streamReader = new StreamReader(fileStream))
+            foreach (var line in DataProvider.ReadLines(shortableSymbolFile))
             {
-                string line;
-                while ((line = streamReader.ReadLine()) != null)
+                if (string.IsNullOrEmpty(line) || line.StartsWith("#"))
                 {
-                    var csv = line.Split(',');
-                    var date = Parse.DateTimeExact(csv[0], "yyyyMMdd");
-                    var quantity = Parse.Long(csv[1]);
-
-                    if (localDate == date)
-                    {
-                        return quantity;
-                    }
+                    // ignore empty or comment lines
+                    continue;
                 }
+                // Data example. The rates, if available, are expressed in percentage.
+                // 20201221,2000,5.0700,0.2500
+                var csv = line.Split(',');
+                var date = Parse.DateTimeExact(csv[0], "yyyyMMdd");
+                var lenght = csv.Length;
+                var shortableQuantity = csv[1].IfNotNullOrEmpty(s => long.Parse(s, NumberStyles.Any, CultureInfo.InvariantCulture));
+                var rebateRate = csv.Length > 2 ? csv[2].IfNotNullOrEmpty(s => decimal.Parse(s, NumberStyles.Any, CultureInfo.InvariantCulture)) : 0;
+                var feeRate = csv.Length > 3 ? csv[3].IfNotNullOrEmpty(s => decimal.Parse(s, NumberStyles.Any, CultureInfo.InvariantCulture)) : 0;
+                result[date] = new ShortableData(shortableQuantity, rebateRate / 100, feeRate / 100);
             }
 
-            // Any missing entry will be considered to be unshortable.
-            return 0;
+            return result;
         }
+
+        /// <summary>
+        /// For live deployments we don't want to have stale short quantity so we refresh them every day
+        /// </summary>
+        private void ClearCache()
+        {
+            var now = DateTime.UtcNow;
+            var tomorrowMidnight = now.Date.AddDays(1);
+            var delayToClean = tomorrowMidnight - now;
+
+            Task.Delay(delayToClean).ContinueWith((_) =>
+            {
+                // create new instances so we don't need to worry about locks
+                _ticker = null;
+                _shortableDataPerDate = new();
+
+                ClearCache();
+            });
+        }
+
+        /// <summary>
+        /// Gets the shortable data
+        /// </summary>
+        protected record ShortableData(long? ShortableQuantity, decimal RebateFee, decimal FeeRate);
     }
 }

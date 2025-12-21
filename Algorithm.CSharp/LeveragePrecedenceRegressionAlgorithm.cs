@@ -52,8 +52,8 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
         /// </summary>
-        /// <param name="data">Slice object keyed by symbol containing the stock data</param>
-        public override void OnData(Slice data)
+        /// <param name="slice">Slice object keyed by symbol containing the stock data</param>
+        public override void OnData(Slice slice)
         {
             if (!Portfolio.Invested)
             {
@@ -63,7 +63,7 @@ namespace QuantConnect.Algorithm.CSharp
 
             if (Securities[_spy].Leverage != 10)
             {
-                throw new Exception($"Expecting leverage to be 10, was {Securities[_spy].Leverage}");
+                throw new RegressionTestException($"Expecting leverage to be 10, was {Securities[_spy].Leverage}");
             }
         }
 
@@ -75,54 +75,56 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp };
+        public List<Language> Languages { get; } = new() { Language.CSharp };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public long DataPoints => 3943;
+
+        /// <summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "2"},
+            {"Total Orders", "2"},
             {"Average Win", "0%"},
             {"Average Loss", "-0.12%"},
-            {"Compounding Annual Return", "240.487%"},
+            {"Compounding Annual Return", "239.838%"},
             {"Drawdown", "2.200%"},
             {"Expectancy", "-1"},
-            {"Net Profit", "1.579%"},
-            {"Sharpe Ratio", "8.903"},
+            {"Start Equity", "100000"},
+            {"End Equity", "101576.33"},
+            {"Net Profit", "1.576%"},
+            {"Sharpe Ratio", "8.861"},
+            {"Sortino Ratio", "0"},
             {"Probabilistic Sharpe Ratio", "67.609%"},
             {"Loss Rate", "100%"},
             {"Win Rate", "0%"},
             {"Profit-Loss Ratio", "0"},
-            {"Alpha", "-0.002"},
-            {"Beta", "0.999"},
+            {"Alpha", "-0.003"},
+            {"Beta", "0.997"},
             {"Annual Standard Deviation", "0.222"},
             {"Annual Variance", "0.049"},
-            {"Information Ratio", "-14.44"},
-            {"Tracking Error", "0"},
-            {"Treynor Ratio", "1.981"},
+            {"Information Ratio", "-14.544"},
+            {"Tracking Error", "0.001"},
+            {"Treynor Ratio", "1.972"},
             {"Total Fees", "$65.43"},
-            {"Estimated Strategy Capacity", "$4800000.00"},
-            {"Fitness Score", "0.979"},
-            {"Kelly Criterion Estimate", "38.796"},
-            {"Kelly Criterion Probability Value", "0.228"},
-            {"Sortino Ratio", "7.448"},
-            {"Return Over Maximum Drawdown", "70.494"},
-            {"Portfolio Turnover", "4.74"},
-            {"Total Insights Generated", "100"},
-            {"Total Insights Closed", "99"},
-            {"Total Insights Analysis Completed", "99"},
-            {"Long Insight Count", "100"},
-            {"Short Insight Count", "0"},
-            {"Long/Short Ratio", "100%"},
-            {"Estimated Monthly Alpha Value", "$117277.2200"},
-            {"Total Accumulated Estimated Alpha Value", "$18894.6632"},
-            {"Mean Population Estimated Insight Value", "$190.8552"},
-            {"Mean Population Direction", "53.5354%"},
-            {"Mean Population Magnitude", "53.5354%"},
-            {"Rolling Averaged Population Direction", "58.2788%"},
-            {"Rolling Averaged Population Magnitude", "58.2788%"},
-            {"OrderListHash", "5d45f854274d541d6f32c4aa7ed6e11d"}
+            {"Estimated Strategy Capacity", "$5600000.00"},
+            {"Lowest Capacity Asset", "SPY R735QTJ8XC9X"},
+            {"Portfolio Turnover", "379.43%"},
+            {"Drawdown Recovery", "3"},
+            {"OrderListHash", "b339a5e17142fe5496d80ee26079d8d0"}
         };
 
         private class TestBrokerageModel : DefaultBrokerageModel

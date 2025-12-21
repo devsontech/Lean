@@ -14,7 +14,6 @@
  *
 */
 
-using System;
 using QuantConnect.Data;
 using System.Collections.Generic;
 using QuantConnect.Indicators;
@@ -30,24 +29,28 @@ namespace QuantConnect.Algorithm.CSharp
         private Symbol _spx;
         private ExponentialMovingAverage _emaSlow;
         private ExponentialMovingAverage _emaFast;
+        protected virtual Resolution Resolution => Resolution.Minute;
+        protected virtual int StartDay => 4;
 
         /// <summary>
         /// Initialize your algorithm and add desired assets.
         /// </summary>
         public override void Initialize()
         {
-            SetStartDate(2021, 1, 4);
+            SetStartDate(2021, 1, StartDay);
             SetEndDate(2021, 2, 1);
             SetCash(1000000);
 
             // Use indicator for signal; but it cannot be traded.
             // We will instead trade on SPX options
-            _spx = AddIndex("SPX", Resolution.Minute).Symbol;
-            var spxOptions = AddIndexOption(_spx, Resolution.Minute);
+            _spx = AddIndex("SPX", Resolution).Symbol;
+            var spxOptions = AddIndexOption(_spx, Resolution);
             spxOptions.SetFilter(filterFunc => filterFunc.CallsOnly());
 
-            _emaSlow = EMA(_spx, 80);
-            _emaFast = EMA(_spx, 200);
+            _emaSlow = EMA(_spx, Resolution > Resolution.Minute ? 6 : 80);
+            _emaFast = EMA(_spx, Resolution > Resolution.Minute ? 2 : 200);
+
+            Settings.DailyPreciseEndTime = true;
         }
 
         /// <summary>
@@ -100,12 +103,13 @@ namespace QuantConnect.Algorithm.CSharp
         {
             if (Portfolio[_spx].TotalSaleVolume > 0)
             {
-                throw new Exception("Index is not tradable.");
+                throw new RegressionTestException("Index is not tradable.");
             }
             if (Portfolio.TotalSaleVolume == 0)
             {
-                throw new Exception("Trade volume should be greater than zero by the end of this algorithm");
+                throw new RegressionTestException("Trade volume should be greater than zero by the end of this algorithm");
             }
+            AssertIndicators();
         }
 
         public Symbol InvertOption(Symbol symbol)
@@ -120,21 +124,48 @@ namespace QuantConnect.Algorithm.CSharp
         }
 
         /// <summary>
+        /// Asserts indicators are ready
+        /// </summary>
+        /// <exception cref="RegressionTestException"></exception>
+        protected void AssertIndicators()
+        {
+            if (!_emaSlow.IsReady || !_emaFast.IsReady)
+            {
+                throw new RegressionTestException("Indicators are not ready!");
+            }
+        }
+
+        /// <summary>
         /// This is used by the regression test system to indicate if the open source Lean repository has the required data to run this algorithm.
         /// </summary>
-        public bool CanRunLocally { get; } = false;
+        public virtual bool CanRunLocally { get; } = false;
 
         /// <summary>
         /// This is used by the regression test system to indicate which languages this algorithm is written in.
         /// </summary>
-        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+        public virtual List<Language> Languages { get; } = new() { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// Data Points count of all timeslices of algorithm
+        /// </summary>
+        public virtual long DataPoints => 0;
+
+        /// </summary>
+        /// Data Points count of the algorithm history
+        /// </summary>
+        public virtual int AlgorithmHistoryDataPoints => 0;
+
+        /// <summary>
+        /// Final status of the algorithm
+        /// </summary>
+        public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
-        public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
+        public virtual Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
         {
-            {"Total Trades", "8220"},
+            {"Total Orders", "8220"},
             {"Average Win", "0.00%"},
             {"Average Loss", "0.00%"},
             {"Compounding Annual Return", "-100.000%"},

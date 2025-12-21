@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -14,6 +14,7 @@
 */
 
 using NUnit.Framework;
+using QuantConnect.Statistics;
 using System.Collections.Generic;
 
 namespace QuantConnect.Tests.Common
@@ -26,14 +27,14 @@ namespace QuantConnect.Tests.Common
         {
             var parameter = new RegressionTests.AlgorithmStatisticsTestParameters("SliceGetByTypeRegressionAlgorithm",
                 new Dictionary<string, string> {
-                    {"Total Trades", "1"},
+                    {PerformanceMetrics.TotalOrders, "1"},
                     {"Average Win", "0%"},
                     {"Average Loss", "0%"},
                     {"Compounding Annual Return", "284.284%"},
                     {"Drawdown", "2.200%"},
                     {"Expectancy", "0"},
                     {"Net Profit", "1.736%"},
-                    {"Sharpe Ratio", "8.894"},
+                    {"Sharpe Ratio", "8.86"},
                     {"Probabilistic Sharpe Ratio", "67.609%"},
                     {"Loss Rate", "0%"},
                     {"Win Rate", "0%"},
@@ -44,16 +45,15 @@ namespace QuantConnect.Tests.Common
                     {"Annual Variance", "0.049"},
                     {"Information Ratio", "-14.547"},
                     {"Tracking Error", "0.001"},
-                    {"Treynor Ratio", "1.979"},
+                    {"Treynor Ratio", "1.972"},
                     {"Total Fees", "$3.45"},
-                    {"OrderListHash", "46d026d39478ff13853319c2f891af39"}
+                    {"OrderListHash", "275925e122dc6f40501d1e3f35339e26"}
                 },
                 Language.Python,
                 AlgorithmStatus.Completed);
 
             AlgorithmRunner.RunLocalBacktest(parameter.Algorithm,
                 parameter.Statistics,
-                parameter.AlphaStatistics,
                 parameter.Language,
                 parameter.ExpectedFinalStatus);
         }

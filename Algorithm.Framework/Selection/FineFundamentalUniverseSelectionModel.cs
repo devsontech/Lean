@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -18,7 +18,6 @@ using System.Collections.Generic;
 using Python.Runtime;
 using QuantConnect.Data.Fundamental;
 using QuantConnect.Data.UniverseSelection;
-using QuantConnect.Securities;
 
 namespace QuantConnect.Algorithm.Framework.Selection
 {
@@ -36,14 +35,11 @@ namespace QuantConnect.Algorithm.Framework.Selection
         /// <param name="coarseSelector">Selects symbols from the provided coarse data set</param>
         /// <param name="fineSelector">Selects symbols from the provided fine data set (this set has already been filtered according to the coarse selection)</param>
         /// <param name="universeSettings">Universe settings define attributes of created subscriptions, such as their resolution and the minimum time in universe before they can be removed</param>
-        /// <param name="securityInitializer">Performs extra initialization (such as setting models) after we create a new security object</param>
         public FineFundamentalUniverseSelectionModel(
             Func<IEnumerable<CoarseFundamental>, IEnumerable<Symbol>> coarseSelector,
             Func<IEnumerable<FineFundamental>, IEnumerable<Symbol>> fineSelector,
-            UniverseSettings universeSettings = null,
-            ISecurityInitializer securityInitializer = null
-            )
-            : base(true, universeSettings, securityInitializer)
+            UniverseSettings universeSettings = null)
+            : base(true, universeSettings)
         {
             _coarseSelector = coarseSelector;
             _fineSelector = fineSelector;
@@ -55,19 +51,17 @@ namespace QuantConnect.Algorithm.Framework.Selection
         /// <param name="coarseSelector">Selects symbols from the provided coarse data set</param>
         /// <param name="fineSelector">Selects symbols from the provided fine data set (this set has already been filtered according to the coarse selection)</param>
         /// <param name="universeSettings">Universe settings define attributes of created subscriptions, such as their resolution and the minimum time in universe before they can be removed</param>
-        /// <param name="securityInitializer">Performs extra initialization (such as setting models) after we create a new security object</param>
         public FineFundamentalUniverseSelectionModel(
             PyObject coarseSelector,
             PyObject fineSelector,
-            UniverseSettings universeSettings = null,
-            ISecurityInitializer securityInitializer = null
+            UniverseSettings universeSettings = null
             )
-            : base(true, universeSettings, securityInitializer)
+            : base(true, universeSettings)
         {
             Func<IEnumerable<FineFundamental>, object> fineFunc;
             Func<IEnumerable<CoarseFundamental>, object> coarseFunc;
-            if (fineSelector.TryConvertToDelegate(out fineFunc) &&
-                coarseSelector.TryConvertToDelegate(out coarseFunc))
+            if (fineSelector.TrySafeAs(out fineFunc) &&
+                coarseSelector.TrySafeAs(out coarseFunc))
             {
                 _fineSelector = fineFunc.ConvertToUniverseSelectionSymbolDelegate();
                 _coarseSelector = coarseFunc.ConvertToUniverseSelectionSymbolDelegate();
@@ -77,12 +71,24 @@ namespace QuantConnect.Algorithm.Framework.Selection
         /// <inheritdoc />
         public override IEnumerable<Symbol> SelectCoarse(QCAlgorithm algorithm, IEnumerable<CoarseFundamental> coarse)
         {
+            // Check if this method was overridden in Python
+            if (TryInvokePythonOverride(nameof(SelectCoarse), out IEnumerable<Symbol> result, algorithm, coarse))
+            {
+                return result;
+            }
+
             return _coarseSelector(coarse);
         }
 
         /// <inheritdoc />
         public override IEnumerable<Symbol> SelectFine(QCAlgorithm algorithm, IEnumerable<FineFundamental> fine)
         {
+            // Check if this method was overridden in Python
+            if (TryInvokePythonOverride(nameof(SelectFine), out IEnumerable<Symbol> result, algorithm, fine))
+            {
+                return result;
+            }
+
             return _fineSelector(fine);
         }
     }

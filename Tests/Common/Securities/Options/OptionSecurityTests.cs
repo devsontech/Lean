@@ -14,9 +14,13 @@
 */
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
+using QuantConnect.Algorithm.CSharp;
 using QuantConnect.Securities;
 using QuantConnect.Securities.Option;
+using QuantConnect.Statistics;
 
 namespace QuantConnect.Tests.Common.Securities.Options
 {
@@ -45,7 +49,8 @@ namespace QuantConnect.Tests.Common.Securities.Options
                 new OptionSymbolProperties(string.Empty, "USD", 1m, 0.01m, 1m),
                 new CashBook(),
                 new RegisteredSecurityDataTypesProvider(),
-                new SecurityCache());
+                new SecurityCache(),
+                null);
 
             Assert.IsTrue(futureOptionSecurity.BuyingPowerModel is FuturesOptionsMarginModel);
         }
@@ -68,9 +73,53 @@ namespace QuantConnect.Tests.Common.Securities.Options
                 new OptionSymbolProperties(string.Empty, "USD", 100m, 0.0001m, 1m),
                 new CashBook(),
                 new RegisteredSecurityDataTypesProvider(),
-                new SecurityCache());
+                new SecurityCache(),
+                null);
 
             Assert.IsTrue(equityOptionSecurity.BuyingPowerModel is OptionMarginModel);
+        }
+
+        [Test]
+        public void AlgorithmSendsOneTimeWarningAboutOptionModelsConsistency(
+            [Values(nameof(OptionModelsConsistencyRegressionAlgorithm), nameof(IndexOptionModelsConsistencyRegressionAlgorithm))] string algorithmName,
+            [Values(Language.CSharp, Language.Python)] Language language)
+        {
+            var parameter = new RegressionTests.AlgorithmStatisticsTestParameters(
+                algorithmName,
+                new Dictionary<string, string> {
+                    {PerformanceMetrics.TotalOrders, "0"},
+                    {"Average Win", "0%"},
+                    {"Average Loss", "0%"},
+                    {"Compounding Annual Return", "0%"},
+                    {"Drawdown", "0%"},
+                    {"Expectancy", "0"},
+                    {"Net Profit", "0%"},
+                    {"Sharpe Ratio", "0"},
+                    {"Probabilistic Sharpe Ratio", "0%"},
+                    {"Loss Rate", "0%"},
+                    {"Win Rate", "0%"},
+                    {"Profit-Loss Ratio", "0"},
+                    {"Alpha", "0"},
+                    {"Beta", "0"},
+                    {"Annual Standard Deviation", "0"},
+                    {"Annual Variance", "0"},
+                    {"Information Ratio", "0"},
+                    {"Tracking Error", "0"},
+                    {"Treynor Ratio", "0"},
+                    {"Total Fees", "$0.00"},
+                    {"OrderListHash", "d41d8cd98f00b204e9800998ecf8427e"}
+                },
+                language,
+                AlgorithmStatus.Completed);
+
+            var result = AlgorithmRunner.RunLocalBacktest(parameter.Algorithm,
+                parameter.Statistics,
+                parameter.Language,
+                parameter.ExpectedFinalStatus,
+                returnLogs: true);
+
+            Assert.IsTrue(result.Logs.Any(message => message.Contains("Warning: Security ") &&
+                message.EndsWith("To avoid this, consider using a security initializer to set the right models to each security type according to your algorithm's requirements.")));
         }
     }
 }

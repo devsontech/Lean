@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  * 
@@ -25,6 +25,8 @@ namespace QuantConnect.Tests.Indicators
     {
         protected override IndicatorBase<IBaseDataBar> CreateIndicator()
         {
+            RenkoBarSize = 1m;
+            VolumeRenkoBarSize = 0.5m;
             return new AverageTrueRange(14);
         }
 
@@ -60,9 +62,21 @@ namespace QuantConnect.Tests.Indicators
         }
 
         [Test]
-        public void TrueRangePropertyIsReadyAfterOneSample()
+        public void TrueRangePropertyIsReadyAfterTwoUpdates()
         {
             var atr = new AverageTrueRange(14, MovingAverageType.Simple);
+            Assert.IsFalse(atr.TrueRange.IsReady);
+
+            atr.Update(new TradeBar
+            {
+                Time = DateTime.Today,
+                Open = 1m,
+                High = 3m,
+                Low = .5m,
+                Close = 2.75m,
+                Volume = 1234567890
+            });
+
             Assert.IsFalse(atr.TrueRange.IsReady);
 
             atr.Update(new TradeBar
